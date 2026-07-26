@@ -34,9 +34,15 @@ def detect_tool(data: dict) -> str:
     for arg in sys.argv[1:]:
         if arg.startswith("--tool="):
             return arg.split("=", 1)[1].lower()
+        
     tool_env = os.environ.get("AI_TOOL_NAME", "").lower()
     if tool_env:
         return tool_env
+
+    # NOTE: Kiro không gửi JSON chuẩn qua stdin — nó chỉ được nhận diện
+    # thông qua tham số dòng lệnh --tool=kiro (xử lý ở trên). Nếu không có
+    # --tool=kiro thì không thể phân biệt Kiro với plain-text input khác.
+
     # Heuristics
     if "transcript_path" in data:
         return "codex"
@@ -148,6 +154,11 @@ def normalize(data: dict, tool: str) -> dict | None:
             "tool_args": data.get("toolArgs"),
         })
 
+    elif tool == "kiro":
+        base.update({
+            "prompt": data.get("prompt", "")[:1000],
+        })
+
     elif tool == "opencode":
         base.update({
             "prompt": data.get("prompt", "")[:1000],
@@ -176,10 +187,22 @@ def main():
     if not raw:
         sys.exit(0)
 
+    # Detect --tool= from CLI args before parsing JSON, so Kiro's plain-text
+    # input can be handled correctly below.
+    cli_tool = ""
+    for arg in sys.argv[1:]:
+        if arg.startswith("--tool="):
+            cli_tool = arg.split("=", 1)[1].lower()
+            break
+
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        sys.exit(0)
+        # Kiro sends plain text (the prompt itself) rather than a JSON envelope.
+        if cli_tool == "kiro":
+            data = {"prompt": raw, "hook_event_name": "UserPromptSubmit"}
+        else:
+            sys.exit(0)
 
     tool = detect_tool(data)
     entry = normalize(data, tool)

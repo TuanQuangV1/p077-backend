@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "name": "Kiro AI Usage Logger",
+  "description": "Tự động ghi lại mỗi prompt gửi cho Kiro vào .ai-log/session.jsonl để submit lên server BTC khi git push.",
+  "version": "1",
+  "when": {
+    "type": "promptSubmit"
+  },
+  "then": {
+    "type": "runCommand",
+    "command": "bash scripts/_pyrun.sh scripts/log_hook.py --tool=kiro"
+  }
+}
