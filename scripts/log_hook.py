@@ -13,9 +13,12 @@ from pathlib import Path
 VN_TZ = timezone(timedelta(hours=7))
 
 
+# Resolve project root from this script's location: scripts/../ = project root
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+
 def git(cmd):
     try:
-        return subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL).strip()
+        return subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL, cwd=_PROJECT_ROOT).strip()
     except Exception:
         return ""
 
@@ -37,8 +40,13 @@ def detect_tool(data: dict) -> str:
     # Heuristics
     if "transcript_path" in data:
         return "codex"
+    
     if data.get("hook_event_name", "").startswith(("Before", "After", "Session", "Pre", "Notification")):
         return "gemini"
+    
+    if "opencode" in data or data.get("source") == "opencode":
+        return "opencode"
+    
     if data.get("hook_event_name", "")[0:1].islower():
         # camelCase event names → Cursor or Copilot
         if "workspace_roots" in data:
@@ -79,7 +87,7 @@ def normalize(data: dict, tool: str) -> dict | None:
         "repo": repo,
         "branch": git("git rev-parse --abbrev-ref HEAD"),
         "commit": git("git rev-parse --short HEAD"),
-        "student": git("git config user.email"),
+        "student": git("git config user.name"),
     }
 
     if tool == "claude":
@@ -140,6 +148,11 @@ def normalize(data: dict, tool: str) -> dict | None:
             "tool_args": data.get("toolArgs"),
         })
 
+    elif tool == "opencode":
+        base.update({
+            "prompt": data.get("prompt", "")[:1000],
+        })
+
     # Skip only true noise: no prompt AND no tool-specific payload (tool_input,
     # response_summary, tool_response, tool_args, files_context). Previously
     # this only checked `prompt`, which dropped Claude Bash/Edit events (their
@@ -173,7 +186,7 @@ def main():
     if not entry:
         sys.exit(0)
 
-    log_dir = Path(os.environ.get("AI_LOG_DIR", ".ai-log"))
+    log_dir = Path(_PROJECT_ROOT, os.environ.get("AI_LOG_DIR", ".ai-log"))
     log_dir.mkdir(exist_ok=True)
     log_file = log_dir / "session.jsonl"
 

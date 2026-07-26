@@ -1,0 +1,6 @@
+{
+    "$schema": "./opencode.schema.json",
+    "plugin": [
+        "./plugins/ai-logger.ts"
+    ]
+}

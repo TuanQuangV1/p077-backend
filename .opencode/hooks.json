@@ -1,0 +1,27 @@
+{
+    "version": 1,
+    "hooks": {
+        "UserPromptSubmit": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "scripts/_pyrun.cmd scripts/log_hook.py --tool=opencode",
+                        "timeout": 10
+                    }
+                ]
+            }
+        ],
+        "SessionEnd": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "scripts/_pyrun.cmd scripts/log_hook.py --tool=opencode",
+                        "timeout": 10
+                    }
+                ]
+            }
+        ]
+    }
+}
