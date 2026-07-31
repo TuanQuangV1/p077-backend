@@ -70,6 +70,26 @@ uvicorn src.main:app --reload --port 8000
 # http://localhost:8000/docs
 ```
 
+### Frontend Next.js
+
+Giao diện RAV-13 nằm trong thư mục `frontend/` và hiện chạy với dữ liệu mô phỏng
+qua các route API của Next.js. Cài dependency và khởi động frontend:
+
+```bash
+pnpm --dir frontend install --frozen-lockfile
+pnpm --dir frontend dev
+# http://localhost:3000
+```
+
+Hoặc chạy từ root:
+
+```bash
+npm run frontend:dev
+```
+
+Backend FastAPI vẫn chạy riêng trên port `8000`. Việc thay mock API bằng các
+endpoint FastAPI sẽ được thực hiện ở bước tích hợp tiếp theo.
+
 ### Bước 5: Đọc hướng dẫn
 
 📖 Mở **[Technical Guidebook](https://phoenix.note.transformerlabs.ai/technical-book)** và làm theo từng chương.
