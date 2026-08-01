@@ -90,6 +90,32 @@ npm run frontend:dev
 Backend FastAPI vẫn chạy riêng trên port `8000`. Việc thay mock API bằng các
 endpoint FastAPI sẽ được thực hiện ở bước tích hợp tiếp theo.
 
+### Chạy bằng Docker Compose
+
+Docker Compose chạy backend FastAPI và frontend Next.js ở hai service riêng:
+
+```bash
+# Production: build image và khởi động cả hai service
+docker compose up --build
+
+# Development: bật hot-reload cho backend và frontend
+docker compose --profile dev up --build backend-dev frontend-dev
+```
+
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8000
+- Swagger UI: http://localhost:8000/docs
+- Healthcheck: http://localhost:8000/health
+
+Backend dependencies được cài trực tiếp từ `pyproject.toml`; frontend dependencies
+được cài từ `frontend/pnpm-lock.yaml`. Tạo file `.env` từ `.env.example` trước khi
+chạy compose nếu backend cần API key hoặc cấu hình riêng.
+
+```bash
+# Dừng service và xóa volume development
+docker compose down -v
+```
+
 ### Bước 5: Đọc hướng dẫn
 
 📖 Mở **[Technical Guidebook](https://phoenix.note.transformerlabs.ai/technical-book)** và làm theo từng chương.

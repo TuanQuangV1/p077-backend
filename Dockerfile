@@ -1,28 +1,24 @@
-# ---- Stage 1: Build ----
-FROM python:3.11-slim AS builder
+# ---- Backend dependency layer ----
+FROM python:3.11-slim AS backend-builder
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+COPY pyproject.toml README.md ./
+COPY src ./src
 
-# ---- Stage 2: Production ----
-FROM python:3.11-slim
+RUN python -m pip install --no-cache-dir --prefix=/install .
+
+# ---- Backend production image ----
+FROM python:3.11-slim AS backend
 
 WORKDIR /app
 
-# Copy installed packages from builder
-COPY --from=builder /root/.local /root/.local
-ENV PATH=/root/.local/bin:$PATH
+COPY --from=backend-builder /install /usr/local
+COPY src ./src
 
-# Security: run as non-root user
-RUN useradd -m appuser
-
-# Copy application code
-COPY . .
-
-# Create data directory with correct ownership
-RUN mkdir -p /app/data && chown -R appuser:appuser /app
+RUN useradd --create-home appuser \
+    && mkdir -p /app/data \
+    && chown -R appuser:appuser /app
 
 USER appuser
 
@@ -32,3 +28,48 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# ---- Frontend dependency layer ----
+FROM node:22-bookworm-slim AS frontend-deps
+
+WORKDIR /app/frontend
+
+RUN corepack enable
+COPY frontend/package.json frontend/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
+# ---- Frontend production build ----
+FROM frontend-deps AS frontend-builder
+
+ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+
+COPY frontend ./
+RUN pnpm build
+
+# ---- Frontend production image ----
+FROM node:22-bookworm-slim AS frontend
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=frontend-builder /app/frontend/public ./frontend/public
+COPY --from=frontend-builder /app/frontend/.next/standalone ./frontend
+COPY --from=frontend-builder /app/frontend/.next/static ./frontend/.next/static
+
+RUN useradd --create-home nextjs \
+    && chown -R nextjs:nextjs /app
+
+USER nextjs
+
+EXPOSE 3000
+
+CMD ["node", "frontend/server.js"]
+
+# ---- Frontend development image ----
+FROM frontend-deps AS frontend-dev
+
+COPY frontend ./
+EXPOSE 3000
+
+CMD ["pnpm", "dev"]
