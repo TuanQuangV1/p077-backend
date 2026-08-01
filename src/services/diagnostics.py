@@ -21,6 +21,7 @@ def parse_mcap_file(path: str | Path) -> list[dict[str, Any]]:
             line = line.strip()
             if not line:
                 continue
+            
             messages.append(json.loads(line))
             
     return messages
@@ -42,13 +43,15 @@ def denormalize_message_stream(messages: list[dict[str, Any]]) -> np.ndarray:
         ])
 
     rows = []
-    for idx, message in enumerate(messages):
+    previous_timestamp: float | None = None
+    for message in messages:
         timestamp = float(message["timestamp"])
         topic = str(message["topic"])
         node = str(message["node"])
         message_type = str(message["message_type"])
-        dt_sec = 0.0 if idx == 0 else timestamp - float(messages[idx - 1]["timestamp"])
+        dt_sec = 0.0 if previous_timestamp is None else timestamp - previous_timestamp
         rows.append((timestamp, topic, node, message_type, dt_sec))
+        previous_timestamp = timestamp
 
     return np.array(rows, dtype=[
         ("timestamp", "f8"),

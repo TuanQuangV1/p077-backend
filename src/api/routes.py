@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
 
@@ -24,12 +25,26 @@ from src.models.schemas import (
     ReviewItem,
     ReviewListResponse,
 )
-from pathlib import Path
-
 from src.services.diagnostics import detect_anomalies, parse_mcap_file
 from src.services.llm import explain_diagnostics
 
 router = APIRouter()
+
+
+def _resolve_diagnostics_file_path(file_path: str) -> Path:
+    requested_path = Path(file_path)
+    if requested_path.is_absolute() or ".." in requested_path.parts:
+        raise HTTPException(status_code=400, detail="invalid diagnostics file path")
+
+    base_dir = (Path.cwd() / "data" / "diagnostics").resolve()
+    resolved = (base_dir / requested_path).resolve()
+    if resolved != base_dir and base_dir not in resolved.parents:
+        raise HTTPException(status_code=400, detail="invalid diagnostics file path")
+
+    if not resolved.exists() or not resolved.is_file():
+        raise HTTPException(status_code=404, detail="diagnostics file not found")
+
+    return resolved
 
 
 def _sample_datasets() -> list[DatasetItem]:
@@ -247,9 +262,7 @@ async def review_queue() -> ReviewListResponse:
 async def diagnose(request: DiagnosticsRequest) -> DiagnosticsSummaryResponse:
     messages = request.messages
     if request.file_path:
-        file_path = Path(request.file_path)
-        if not file_path.exists():
-            raise HTTPException(status_code=404, detail="diagnostics file not found")
+        file_path = _resolve_diagnostics_file_path(request.file_path)
         messages = parse_mcap_file(file_path)
     result = detect_anomalies(messages)
     return DiagnosticsSummaryResponse(**result)
