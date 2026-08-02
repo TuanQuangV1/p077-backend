@@ -57,8 +57,8 @@ describe("resolveApiUrl", () => {
         expect(resolveApiUrl("/api/v1/analysis/thresholds")).toBe("/api/v1/analysis/thresholds")
     })
 
-    it("passes through rosbag parse route", () => {
-        expect(resolveApiUrl("/api/rosbags/bag_01/parse")).toBe("/api/rosbags/bag_01/parse")
+    it("maps rosbag delete to dataset endpoint", () => {
+        expect(resolveApiUrl("/api/rosbags/bag_01")).toBe(`${BASE}/datasets/bag_01`)
     })
 
     it("passes through non-api urls untouched", () => {

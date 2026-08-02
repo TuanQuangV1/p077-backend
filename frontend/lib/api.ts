@@ -1,4 +1,4 @@
-import type { Severity } from "./types"
+import type { Rosbag, Severity } from "./types"
 
 const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 const API_V1_BASE = `${DEFAULT_API_BASE}/api/v1`
@@ -11,6 +11,10 @@ export function resolveApiUrl(url: string): string {
 
     if (route === "overview") return `${API_V1_BASE}/dashboard/overview`
     if (route === "rosbags") return `${API_V1_BASE}/datasets`
+    if (route.startsWith("rosbags/")) {
+        const [id] = route.slice("rosbags/".length).split("/")
+        return `${API_V1_BASE}/datasets/${id}`
+    }
     if (route === "runs") return `${API_V1_BASE}/analysis`
     if (route.startsWith("runs/")) {
         const suffix = route.slice("runs/".length)
@@ -46,6 +50,22 @@ export async function post<T>(url: string, body?: unknown): Promise<T> {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body ?? {}),
     })
+}
+
+export async function del<T>(url: string): Promise<T> {
+    return requestJson<T>(url, { method: "DELETE" })
+}
+
+/** Uploads a rosbag file (or rosbag2 zip) to the backend via multipart. */
+export async function uploadRosbag(file: File): Promise<Rosbag> {
+    const form = new FormData()
+    form.append("file", file)
+    const res = await fetch(`${API_V1_BASE}/datasets/upload`, {
+        method: "POST",
+        body: form,
+    })
+    if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
+    return res.json() as Promise<Rosbag>
 }
 
 /* ---------- formatting ---------- */

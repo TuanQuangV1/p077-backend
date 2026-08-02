@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,44 @@ import numpy as np
 from src.services.diagnostics_config import merge_diagnostics_thresholds
 
 logger = logging.getLogger(__name__)
+
+
+def parse_rosbag2_db3(path: str | Path) -> list[dict[str, Any]]:
+    """Read a rosbag2 SQLite bag (`*.db3`) into a standard message stream.
+
+    Only the `topics`/`messages` tables are read (message payloads are never
+    decoded), which is enough for timing-based diagnostics. Timestamps are
+    converted from nanoseconds to seconds.
+
+    Args:
+        path: Path to the `.db3` rosbag2 database.
+
+    Returns:
+        List of message dicts (`timestamp` in seconds, `topic`, `node`,
+        `message_type`).
+
+    Raises:
+        sqlite3.DatabaseError: The file is not a readable rosbag2 database.
+    """
+    file_path = Path(path)
+    conn = sqlite3.connect(f"file:{file_path}?mode=ro", uri=True)
+    try:
+        rows = conn.execute(
+            "SELECT t.name, t.type, m.timestamp "
+            "FROM messages m JOIN topics t ON m.topic_id = t.id "
+            "ORDER BY m.timestamp"
+        ).fetchall()
+    finally:
+        conn.close()
+    return [
+        {
+            "timestamp": timestamp / 1_000_000_000,
+            "topic": topic,
+            "node": "",
+            "message_type": message_type,
+        }
+        for topic, message_type, timestamp in rows
+    ]
 
 
 def parse_mcap_file(path: str | Path) -> list[dict[str, Any]]:
@@ -162,6 +201,7 @@ def detect_anomalies(
             intervals = np.diff(timestamps_arr)
             median_interval = float(np.median(intervals)) if intervals.size else 0.0
             max_interval = float(np.max(intervals)) if intervals.size else 0.0
+            gap_index = int(np.argmax(intervals)) if intervals.size else 0
             minimum_threshold = resolved_thresholds["frequency_gap_min_threshold_sec"]
             multiplier = resolved_thresholds["frequency_gap_multiplier"]
             threshold = max(minimum_threshold, median_interval * multiplier)
@@ -188,6 +228,8 @@ def detect_anomalies(
                     "topic": topic,
                     "severity": "medium",
                     "confidence": 0.81,
+                    "tSec": float(timestamps_arr[gap_index]),
+                    "endSec": float(timestamps_arr[gap_index + 1]),
                     "evidence": {
                         "interval_sec": round(max_interval, 4),
                         "threshold_sec": round(threshold, 4),
@@ -225,6 +267,8 @@ def detect_anomalies(
                     "topic": "/unknown",
                     "severity": "low",
                     "confidence": 0.72,
+                    "tSec": float(timestamps_arr[0]),
+                    "endSec": float(timestamps_arr[-1]),
                     "evidence": {
                         "node": node,
                         "active_span_sec": round(span, 4),

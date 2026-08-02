@@ -17,7 +17,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(
     title="AI20K Agent",
-    description="AI Agent built with LangGraph",
+    description="RAV-13 rosbag diagnostics API (manual tool-calling over OpenAI-compatible endpoints)",
     version="1.0.0",
     lifespan=lifespan,
 )

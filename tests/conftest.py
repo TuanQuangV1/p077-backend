@@ -1,7 +1,6 @@
 import os
 import shutil
 from pathlib import Path
-from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -34,11 +33,3 @@ def diagnostics_sample_file():
     yield "sample.jsonl"
     if target.exists():
         target.unlink()
-
-
-@pytest.fixture
-def mock_llm():
-    """Mock LLM to avoid calling OpenAI during tests."""
-    mock = AsyncMock()
-    mock.ainvoke.return_value = AsyncMock(content="Mocked LLM response")
-    return mock
