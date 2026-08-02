@@ -176,6 +176,13 @@ class DiagnosticsDetection(BaseModel):
     evidence: dict[str, object]
 
 
+class DiagnosticsLogEntry(BaseModel):
+    event: str
+    level: str
+    message: str
+    details: dict[str, object]
+
+
 class DiagnosticsSummary(BaseModel):
     total_messages: int
     total_detections: int
@@ -185,11 +192,22 @@ class DiagnosticsSummary(BaseModel):
 class DiagnosticsSummaryResponse(BaseModel):
     summary: DiagnosticsSummary
     detections: list[DiagnosticsDetection]
+    thresholds: dict[str, float]
+    logs: list[DiagnosticsLogEntry] = Field(default_factory=list)
 
 
 class DiagnosticsRequest(BaseModel):
     messages: list[dict[str, object]] = Field(default_factory=list)
     file_path: str | None = Field(default=None, description="Optional path to a `.mcap`-style JSONL artifact for file-backed diagnostics")
+    thresholds: dict[str, float] | None = Field(default=None, description="Optional runtime overrides for diagnostics thresholds")
+
+
+class DiagnosticsThresholdsResponse(BaseModel):
+    thresholds: dict[str, float]
+
+
+class DiagnosticsThresholdsUpdateRequest(BaseModel):
+    thresholds: dict[str, float]
 
 
 class DiagnosticsExplanationRequest(BaseModel):
