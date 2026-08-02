@@ -60,3 +60,6 @@ out/
 .ai-log/archive/
 
 .codegraph/
+.kiro/
+.kilo/
+.next-builds/

@@ -19,10 +19,10 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
+    "python-multipart>=0.0.9",
+    "httpx>=0.27.0",
+    "numpy>=1.26.0",
     # AI / LLM stack
-    "langgraph>=0.2.0",
-    "langchain-core>=0.2.0",
-    "langchain-openai>=0.1.0",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
 ]
@@ -135,7 +135,7 @@ disallow_incomplete_defs = false
 testpaths = ["tests"]
 pythonpath = ["src"]
 asyncio_mode = "auto"
-addopts = "-v --cov=src --cov-report=term-missing"
+addopts = "-v --cov=src --cov-report=term-missing --cov-report=xml"
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]
@@ -145,6 +145,8 @@ source = ["src"]
 omit = ["tests/*", "*/__init__.py"]
 
 [tool.coverage.report]
+fail_under = 75
+show_missing = true
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",

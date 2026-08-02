@@ -8,7 +8,7 @@ from src.config import get_settings
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     settings = get_settings()
     print(f"Starting {settings.app_name} in {settings.app_env} mode")
     yield
@@ -17,7 +17,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="AI20K Agent",
-    description="AI Agent built with LangGraph",
+    description="RAV-13 rosbag diagnostics API (manual tool-calling over OpenAI-compatible endpoints)",
     version="1.0.0",
     lifespan=lifespan,
 )
