@@ -7,6 +7,7 @@ import pytest
 
 from src.services.diagnostics import denormalize_message_stream, detect_anomalies, parse_mcap_file
 from src.services.llm import explain_diagnostics, get_llm
+from src.services.diagnostics_config import get_diagnostics_thresholds, save_diagnostics_thresholds
 
 
 DATA = [
@@ -53,6 +54,25 @@ def test_parse_mcap_file_supports_disk_input(tmp_path) -> None:
     messages = parse_mcap_file(bag_path)
     assert len(messages) >= 3
     assert messages[0]["topic"] == "/scan"
+
+
+def test_detect_anomalies_accepts_runtime_threshold_overrides(tmp_path) -> None:
+    thresholds = {
+        "frequency_gap_min_threshold_sec": 0.01,
+        "frequency_gap_multiplier": 1.0,
+        "silent_node_min_span_sec": 0.01,
+    }
+    summary = detect_anomalies(DATA, thresholds=thresholds)
+
+    assert summary["thresholds"]["frequency_gap_min_threshold_sec"] == pytest.approx(0.01)
+    assert summary["thresholds"]["silent_node_min_span_sec"] == pytest.approx(0.01)
+
+    saved_path = tmp_path / "thresholds.json"
+    persisted = save_diagnostics_thresholds(thresholds, file_path=saved_path)
+    loaded = get_diagnostics_thresholds(file_path=saved_path)
+
+    assert persisted["frequency_gap_min_threshold_sec"] == pytest.approx(0.01)
+    assert loaded["frequency_gap_min_threshold_sec"] == pytest.approx(0.01)
 
 
 def test_get_llm_requires_openai_key(monkeypatch) -> None:

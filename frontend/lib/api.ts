@@ -3,7 +3,7 @@ import type { Severity } from "./types"
 const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 const API_V1_BASE = `${DEFAULT_API_BASE}/api/v1`
 
-function resolveApiUrl(url: string): string {
+export function resolveApiUrl(url: string): string {
     if (!url.startsWith("/api/")) return url
 
     const path = url.slice("/api/".length)
