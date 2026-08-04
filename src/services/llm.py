@@ -1,9 +1,23 @@
+"""LLM client helpers over OpenAI-compatible chat completions endpoints.
+
+Provides configuration validation, a retrying chat completion call and a
+diagnostics explainer. All upstream calls are logged with URL, latency and
+token usage for observability.
+"""
+
 import json
+import logging
+import time
 from typing import Any
 
 import httpx
 
 from src.config import Settings, get_settings
+
+logger = logging.getLogger(__name__)
+
+_LLM_MAX_RETRIES = 2
+_LLM_RETRY_BACKOFF_SEC = 1.0
 
 
 def validate_llm_config() -> Settings:
@@ -56,7 +70,7 @@ def chat_completion(
 
     Raises:
         ValueError: LLM provider is not configured.
-        httpx.HTTPError: The upstream endpoint failed.
+        httpx.HTTPError: The upstream endpoint failed after retries.
     """
     settings = validate_llm_config()
     if settings.llm_provider == "openai":
@@ -76,9 +90,62 @@ def chat_completion(
     if tools:
         payload["tools"] = tools
 
-    response = httpx.post(url, headers=headers, json=payload, timeout=60)
-    response.raise_for_status()
-    return response.json()["choices"][0]["message"]
+    started = time.perf_counter()
+    last_error: httpx.HTTPError | None = None
+    for attempt in range(_LLM_MAX_RETRIES + 1):
+        if attempt > 0:
+            time.sleep(_LLM_RETRY_BACKOFF_SEC * attempt)
+        try:
+            response = httpx.post(url, headers=headers, json=payload, timeout=60)
+            response.raise_for_status()
+            body = response.json()
+            usage = body.get("usage") or {}
+            logger.info(
+                "llm.chat_completion",
+                extra={
+                    "diagnostics": {
+                        "event": "llm.chat_completion",
+                        "level": "info",
+                        "details": {
+                            "url": url,
+                            "model": model,
+                            "latency_ms": int((time.perf_counter() - started) * 1000),
+                            "prompt_tokens": usage.get("prompt_tokens", 0),
+                            "completion_tokens": usage.get("completion_tokens", 0),
+                            "attempt": attempt + 1,
+                        },
+                    }
+                },
+            )
+            return _message_from_completion(body)
+        except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError) as e:
+            last_error = e
+            logger.warning(
+                "llm.chat_completion_retry",
+                extra={
+                    "diagnostics": {
+                        "event": "llm.chat_completion_retry",
+                        "level": "warning",
+                        "details": {
+                            "url": url,
+                            "attempt": attempt + 1,
+                            "error": str(e),
+                        },
+                    }
+                },
+            )
+    raise last_error if last_error is not None else httpx.HTTPError("llm request failed")
+
+
+def _message_from_completion(body: Any) -> dict[str, Any]:
+    """Extract and validate the message dict from an OpenAI completion body."""
+    try:
+        message = body["choices"][0]["message"]
+    except (KeyError, IndexError, TypeError) as e:
+        raise httpx.HTTPError("llm response missing message dict") from e
+    if not isinstance(message, dict):
+        raise httpx.HTTPError("llm response message is not a dict")
+    return message
 
 
 def explain_diagnostics(summary: dict[str, Any]) -> dict[str, str | list[str]]:
@@ -113,6 +180,9 @@ def explain_diagnostics(summary: dict[str, Any]) -> dict[str, str | list[str]]:
     content = message.get("content") or ""
     return {
         "root_cause": content[:200],
-        "recommended_actions": ["Inspect the identified node/topic path first.", "Verify recorder-to-bus timing and message queue health."],
+        "recommended_actions": [
+            "Inspect the identified node/topic path first.",
+            "Verify recorder-to-bus timing and message queue health.",
+        ],
         "explanation": content[:350],
     }
