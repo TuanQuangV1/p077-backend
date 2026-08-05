@@ -1,38 +1,39 @@
-# Architecture Diagram
+# Architecture Diagram (Concise)
 
-## System Overview
+## Data Flow
 
 ```mermaid
 graph TB
-    User([User]) --> UI[Frontend<br/>React/Next.js]
-    UI -->|REST API| API[FastAPI Backend]
-    API --> Agent[LangGraph Agent]
-    Agent --> LLM[LLM Service<br/>GPT-4o / Gemini]
-    Agent --> Tools[Agent Tools]
-    Tools --> DB[(Database)]
-    Agent --> VS[Vector Store<br/>ChromaDB]
+    BAG[Rosbag .db3/.mcap] --> ITER[iter_bag_messages<br/>bag_stream.py]
+    ITER --> DETECT[detect_anomalies<br/>diagnostics.py · numpy]
+    DETECT -->|JSON summary| STORE[run_store.py<br/>SQLite]
+    DETECT --> WINDOW[iter_window_summaries<br/>window_export.py]
+    WINDOW -->|NDJSON| EXPORT[GET .../export/windows]
+    STORE --> API[FastAPI routes.py]
+    DETECT --> LLM[explain_diagnostics<br/>llm.py · httpx]
+    LLM -->|root_cause + actions| STORE
+    API --> FE[Next.js 16 / React 19]
 ```
 
-## Agent Flow
+## Service Layers
 
-```mermaid
-graph LR
-    START((Start)) --> Input[Parse Input]
-    Input --> Analyze[Analyze Query]
-    Analyze --> Decide{Need Tool?}
-    Decide -->|Yes| CallTool[Call Tool]
-    CallTool --> Analyze
-    Decide -->|No| Generate[Generate Response]
-    Generate --> END((End))
+```
+Frontend (Next.js 16 / React 19 / shadcn/ui)
+    │ HTTP REST
+    ▼
+FastAPI ─── Auth (optional token) ─── Rate Limiter (in-memory, 120 req/min)
+    │
+    ├── diagnostics.py    — rule engine (5 detection kinds, numpy)
+    ├── window_export.py  — NDJSON summarizer (~100x compress)
+    ├── llm.py            — raw httpx → OpenAI-compatible endpoint
+    ├── experiments.py    — upload/delete/scan datasets
+    ├── run_store.py      — SQLite persistence (runs/anomalies/ai_results/review)
+    └── diagnostics_config.py — thresholds (defaults → file → runtime overrides)
+    │
+    ▼
+Storage: SQLite (runs.db) + data/<id>/*.db3/.mcap + data/diagnostics/thresholds.json
 ```
 
-## Component Details
+## No LangGraph / ChromaDB / PostgreSQL
 
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| Frontend | React/Next.js | User interface |
-| Backend | FastAPI | API server |
-| Agent | LangGraph | AI agent orchestration |
-| LLM | OpenAI/Gemini | Language model |
-| Database | PostgreSQL/SQLite | Data persistence |
-| Vector Store | ChromaDB | RAG / embeddings |
+This system uses a straight function-call chain, not a graph; SQLite, not a vector store or RDBMS cluster. See [ARCHITECTURE.md](../ARCHITECTURE.md) for the reasoning.

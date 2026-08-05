@@ -1,3 +1,4 @@
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -8,7 +9,7 @@ from src.config import get_settings
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI):
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     print(f"Starting {settings.app_name} in {settings.app_env} mode")
     yield
@@ -35,5 +36,5 @@ app.include_router(router, prefix="/api/v1")
 
 
 @app.get("/health")
-async def health():
+async def health() -> dict[str, str]:
     return {"status": "ok", "env": settings.app_env}

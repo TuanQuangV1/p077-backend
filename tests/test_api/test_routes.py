@@ -1,37 +1,98 @@
 import io
+import json
 import sqlite3
+import tempfile
 import zipfile
+from pathlib import Path
 
 import pytest
+import yaml  # type: ignore[import-untyped]
 
-METADATA_YAML = """\
-rosbag2_bagfile_information:
-  version: 4
-  duration:
-    nanoseconds: 5000000000
-  starting_time:
-    nanoseconds_since_epoch: 1700000000000000000
-  message_count: 5
-  topics_with_message_count: []
-"""
+from src.services.analysis import _ai_result_from_explanation, _canned_ai_results
+from src.services import run_store
+
+
+def _seed_review_item(
+    client, review_id: str = "review_001", run_id: str = "run_9f21", anomaly_id: str = "anomaly_001"
+) -> None:
+    run_store.save_review_items(
+        [
+            {
+                "id": review_id,
+                "runId": run_id,
+                "anomalyId": anomaly_id,
+                "reviewStatus": "pending",
+                "rootCause": "Network path on the sensor VLAN dropped packet windows during the turn.",
+                "explanation": "The /scan queue stalled while /odom and /imu stayed healthy, pointing to a driver-level transport issue rather than a Nav2 controller stall.",
+            }
+        ]
+    )
+
+
+def _metadata_yaml(stamps_ns: list[int], topic: str = "/scan", msg_type: str = "sensor_msgs/msg/LaserScan") -> str:
+    """Build a metadata.yaml that matches a bag created with the same inputs."""
+    start_ns = min(stamps_ns) if stamps_ns else 0
+    duration_ns = max(stamps_ns) - start_ns if stamps_ns else 0
+    meta = {
+        "rosbag2_bagfile_information": {
+            "version": 4,
+            "duration": {"nanoseconds": duration_ns},
+            "starting_time": {"nanoseconds_since_epoch": start_ns},
+            "message_count": len(stamps_ns),
+            "topics_with_message_count": [
+                {
+                    "topic_metadata": {
+                        "name": topic,
+                        "type": msg_type,
+                        "serialization_format": "cdr",
+                        "offered_qos_profiles": {},
+                    },
+                    "message_count": len(stamps_ns),
+                }
+            ],
+        }
+    }
+    return str(yaml.safe_dump(meta, sort_keys=False))
+
+
+MINIMAL_METADATA_YAML = _metadata_yaml([])
 
 
 @pytest.fixture
 def experiments_dir(tmp_path, monkeypatch):
-    """Point experiments storage at a temp dir so tests never touch data/."""
-    monkeypatch.setattr("src.services.experiments.EXPERIMENTS_DIR", tmp_path)
+    """Point dataset storage at a temp dir so tests never touch data/."""
+    monkeypatch.setattr("src.services.experiments.DATA_DIR", tmp_path)
     return tmp_path
 
 
-def _create_sqlite_bag(folder, stamps_ns, topic="/scan", msg_type="sensor_msgs/msg/LaserScan"):
+def _create_sqlite_bag(
+    folder: Path,
+    stamps_ns: list[int],
+    topic: str = "/scan",
+    msg_type: str = "sensor_msgs/msg/LaserScan",
+) -> None:
     """Create a minimal rosbag2-style SQLite bag under `folder`."""
     conn = sqlite3.connect(folder / "bag.db3")
-    conn.execute("CREATE TABLE topics(id INTEGER PRIMARY KEY, name TEXT, type TEXT, serialization_format TEXT, offered_qos_profiles TEXT)")
+    conn.execute(
+        "CREATE TABLE topics(id INTEGER PRIMARY KEY, name TEXT, type TEXT, serialization_format TEXT, offered_qos_profiles TEXT)"
+    )
     conn.execute("CREATE TABLE messages(id INTEGER PRIMARY KEY, topic_id INTEGER, timestamp INTEGER, data BLOB)")
     conn.execute("INSERT INTO topics VALUES (1, ?, ?, 'cdr', '{}')", (topic, msg_type))
     conn.executemany("INSERT INTO messages(topic_id, timestamp) VALUES (1, ?)", [(t,) for t in stamps_ns])
     conn.commit()
     conn.close()
+
+
+def _write_dataset(
+    folder: Path,
+    stamps_ns: list[int],
+    topic: str = "/scan",
+    msg_type: str = "sensor_msgs/msg/LaserScan",
+) -> None:
+    """Create a dataset folder with a SQLite bag and matching metadata.yaml."""
+    folder.mkdir()
+    _create_sqlite_bag(folder, stamps_ns, topic=topic, msg_type=msg_type)
+    (folder / "metadata.yaml").write_text(_metadata_yaml(stamps_ns, topic, msg_type))
 
 
 @pytest.mark.asyncio
@@ -73,8 +134,18 @@ async def test_diagnose_accepts_inline_messages(client):
         "/api/v1/analysis/diagnose",
         json={
             "messages": [
-                {"timestamp": 0.0, "topic": "/scan", "node": "scanner", "message_type": "LaserScan"},
-                {"timestamp": 0.5, "topic": "/scan", "node": "scanner", "message_type": "LaserScan"},
+                {
+                    "timestamp": 0.0,
+                    "topic": "/scan",
+                    "node": "scanner",
+                    "message_type": "LaserScan",
+                },
+                {
+                    "timestamp": 0.5,
+                    "topic": "/scan",
+                    "node": "scanner",
+                    "message_type": "LaserScan",
+                },
             ]
         },
     )
@@ -222,7 +293,10 @@ async def test_agent_status(client):
 
 
 @pytest.mark.asyncio
-async def test_datasets_contract(client):
+async def test_datasets_contract(client, experiments_dir):
+    folder = experiments_dir / "E1-1"
+    _write_dataset(folder, stamps_ns=[1_000_000_000])
+
     response = await client.get("/api/v1/datasets")
     assert response.status_code == 200
     data = response.json()
@@ -231,14 +305,44 @@ async def test_datasets_contract(client):
     assert data["total"] == len(data["items"])
     for item in data["items"]:
         assert {"id", "name", "status"} <= set(item)
+    item = next(item for item in data["items"] if item["id"] == "E1-1")
+    assert item["messageCount"] == 1
+    assert item["durationSec"] == 0
+    assert item["topics"][0]["name"] == "/scan"
+
+
+@pytest.mark.asyncio
+async def test_datasets_derived_from_db3_without_metadata(client, experiments_dir):
+    folder = experiments_dir / "raw-bag"
+    folder.mkdir()
+    _create_sqlite_bag(folder, stamps_ns=[1_000_000_000, 2_000_000_000])
+
+    response = await client.get("/api/v1/datasets")
+    assert response.status_code == 200
+    items = response.json()["items"]
+    item = next(item for item in items if item["id"] == "raw-bag")
+    assert item["messageCount"] == 2
+    assert item["durationSec"] == 1
+    assert item["topics"][0]["name"] == "/scan"
+    assert item["topics"][0]["type"] == "sensor_msgs/msg/LaserScan"
+
+
+@pytest.mark.asyncio
+async def test_datasets_skips_folder_without_bag_files(client, experiments_dir):
+    folder = experiments_dir / "diagnostics"
+    folder.mkdir()
+    (folder / "thresholds.json").write_text("{}")
+
+    response = await client.get("/api/v1/datasets")
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert all(item["id"] != "diagnostics" for item in items)
 
 
 @pytest.mark.asyncio
 async def test_dashboard_and_analysis_contracts(client, experiments_dir):
     folder = experiments_dir / "E1-1"
-    folder.mkdir()
-    (folder / "metadata.yaml").write_text(METADATA_YAML)
-    _create_sqlite_bag(folder, stamps_ns=[1_000_000_000, 1_100_000_000, 1_200_000_000])
+    _write_dataset(folder, stamps_ns=[1_000_000_000, 1_100_000_000, 1_200_000_000])
 
     overview = await client.get("/api/v1/dashboard/overview")
     assert overview.status_code == 200
@@ -270,9 +374,7 @@ async def test_dashboard_and_analysis_contracts(client, experiments_dir):
 @pytest.mark.asyncio
 async def test_create_analysis_detects_frequency_gap_on_real_db3(client, experiments_dir):
     folder = experiments_dir / "E1-1"
-    folder.mkdir()
-    (folder / "metadata.yaml").write_text(METADATA_YAML)
-    _create_sqlite_bag(
+    _write_dataset(
         folder,
         stamps_ns=[1_000_000_000, 1_100_000_000, 1_200_000_000, 3_200_000_000, 3_300_000_000],
     )
@@ -282,14 +384,14 @@ async def test_create_analysis_detects_frequency_gap_on_real_db3(client, experim
     run = response.json()["run"]
     assert run["status"] == "succeeded"
     assert run["stage"] == "done"
-    assert run["anomalyCount"] == 2
+    assert run["anomalyCount"] == 4
     assert run["worstSeverity"] == "medium"
 
     detail = await client.get(f"/api/v1/analysis/{run['id']}")
     assert detail.status_code == 200
     body = detail.json()
     anomalies = body["anomalies"]
-    assert len(anomalies) == 2
+    assert len(anomalies) == 4
     gap = next(a for a in anomalies if a["kind"] == "frequency_gap")
     assert gap["topics"] == ["/scan"]
     assert gap["tSec"] == pytest.approx(1.2)
@@ -300,17 +402,48 @@ async def test_create_analysis_detects_frequency_gap_on_real_db3(client, experim
     assert silent["tSec"] == pytest.approx(1.0)
 
     ai_results = body["aiResults"]
-    assert len(ai_results) == 2
+    assert len(ai_results) == 4
     assert [r["anomalyId"] for r in ai_results] == [a["id"] for a in anomalies]
     assert all(r["reviewStatus"] == "pending" for r in ai_results)
-    assert "/scan" in next(r for r in ai_results if r["anomalyId"] == gap["id"])["issue"]
+    gap_ai = next(r for r in ai_results if r["anomalyId"] == gap["id"])
+    assert "/scan" in gap_ai["explanation"]
+    assert gap_ai["issue"] == gap_ai["rootCause"]
+    assert gap_ai["model"] == "canned-fallback"
+
+
+@pytest.mark.asyncio
+async def test_create_analysis_reads_all_db3_shards(client, experiments_dir):
+    folder = experiments_dir / "E1-1"
+    folder.mkdir()
+    for name, stamps in (
+        ("bag_0.db3", [1_000_000_000, 1_200_000_000]),
+        ("bag_1.db3", [5_000_000_000, 5_200_000_000]),
+    ):
+        conn = sqlite3.connect(folder / name)
+        conn.execute("CREATE TABLE topics(id INTEGER PRIMARY KEY, name TEXT, type TEXT)")
+        conn.execute("CREATE TABLE messages(id INTEGER PRIMARY KEY, topic_id INTEGER, timestamp INTEGER, data BLOB)")
+        conn.execute("INSERT INTO topics VALUES (1, '/scan', 'sensor_msgs/msg/LaserScan')")
+        conn.executemany("INSERT INTO messages(topic_id, timestamp) VALUES (1, ?)", [(t,) for t in stamps])
+        conn.commit()
+        conn.close()
+
+    response = await client.post("/api/v1/analysis", json={"rosbag_id": "E1-1"})
+    assert response.status_code == 202
+    run = response.json()["run"]
+    assert run["status"] == "succeeded"
+
+    detail = await client.get(f"/api/v1/analysis/{run['id']}")
+    body = detail.json()
+    silent = next(a for a in body["anomalies"] if a["kind"] == "silent_node")
+    assert silent["tSec"] == pytest.approx(1.0)
+    assert silent["endSec"] == pytest.approx(5.2)
 
 
 @pytest.mark.asyncio
 async def test_create_analysis_reports_failed_run_for_bad_bag(client, experiments_dir):
     folder = experiments_dir / "E1-1"
     folder.mkdir()
-    (folder / "metadata.yaml").write_text(METADATA_YAML)
+    (folder / "metadata.yaml").write_text(MINIMAL_METADATA_YAML)
     (folder / "bag.db3").write_bytes(b"not-a-database")
 
     response = await client.post("/api/v1/analysis", json={"rosbag_id": "E1-1"})
@@ -348,7 +481,10 @@ async def test_update_thresholds_route(client, monkeypatch):
 
     monkeypatch.setattr("src.api.routes.save_diagnostics_thresholds", fake_save)
 
-    response = await client.post("/api/v1/analysis/thresholds", json={"thresholds": {"frequency_gap_min_threshold_sec": 0.05}})
+    response = await client.post(
+        "/api/v1/analysis/thresholds",
+        json={"thresholds": {"frequency_gap_min_threshold_sec": 0.05}},
+    )
     assert response.status_code == 200
     body = response.json()
     assert body["thresholds"]["frequency_gap_min_threshold_sec"] == 0.05
@@ -361,8 +497,18 @@ async def test_diagnose_returns_logs_and_thresholds(client):
         "/api/v1/analysis/diagnose",
         json={
             "messages": [
-                {"timestamp": 0.0, "topic": "/scan", "node": "scanner", "message_type": "LaserScan"},
-                {"timestamp": 0.50, "topic": "/scan", "node": "scanner", "message_type": "LaserScan"},
+                {
+                    "timestamp": 0.0,
+                    "topic": "/scan",
+                    "node": "scanner",
+                    "message_type": "LaserScan",
+                },
+                {
+                    "timestamp": 0.50,
+                    "topic": "/scan",
+                    "node": "scanner",
+                    "message_type": "LaserScan",
+                },
             ],
         },
     )
@@ -385,7 +531,25 @@ async def test_review_contract(client):
 
 
 @pytest.mark.asyncio
+async def test_review_queue_returns_persisted_pending_items(client):
+    _seed_review_item(client)
+
+    response = await client.get("/api/v1/review")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    item = data["items"][0]
+    assert item["id"] == "review_001"
+    assert item["runId"] == "run_9f21"
+    assert item["anomalyId"] == "anomaly_001"
+    assert item["reviewStatus"] == "pending"
+
+
+@pytest.mark.asyncio
 async def test_review_decision_approve_contract(client):
+    _seed_review_item(client)
+
     response = await client.post(
         "/api/v1/review/review_001/decision",
         json={"verdict": "approved", "reviewer": "alice", "notes": "looks right"},
@@ -397,10 +561,15 @@ async def test_review_decision_approve_contract(client):
         "reviewer": "alice",
         "notes": "looks right",
     }
+    updated = run_store.get_review_item("review_001")
+    assert updated is not None
+    assert updated["reviewStatus"] == "approved"
 
 
 @pytest.mark.asyncio
 async def test_review_decision_reject_contract(client):
+    _seed_review_item(client)
+
     response = await client.post(
         "/api/v1/review/review_001/decision",
         json={"verdict": "rejected", "reviewer": "bob"},
@@ -411,13 +580,44 @@ async def test_review_decision_reject_contract(client):
     assert body["verdict"] == "rejected"
     assert body["reviewer"] == "bob"
     assert body["notes"] is None
+    decided = run_store.get_review_item("review_001")
+    assert decided is not None
+    assert decided["reviewStatus"] == "rejected"
+    assert decided["verdict"] == "rejected"
+
+
+@pytest.mark.asyncio
+async def test_review_decision_unknown_item_returns_404(client):
+    response = await client.post(
+        "/api/v1/review/missing_review/decision",
+        json={"verdict": "approved", "reviewer": "alice"},
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"] == "review item not found"
 
 
 @pytest.mark.asyncio
 async def test_upload_single_db3_creates_dataset(client, experiments_dir):
+    with tempfile.NamedTemporaryFile(suffix=".db3", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        conn = sqlite3.connect(tmp_path)
+        conn.execute("CREATE TABLE topics(id INTEGER PRIMARY KEY, name TEXT, type TEXT)")
+        conn.execute("CREATE TABLE messages(id INTEGER PRIMARY KEY, topic_id INTEGER, timestamp INTEGER, data BLOB)")
+        conn.execute("INSERT INTO topics VALUES (1, '/scan', 'sensor_msgs/msg/LaserScan')")
+        conn.executemany(
+            "INSERT INTO messages(topic_id, timestamp) VALUES (1, ?)",
+            [(t,) for t in (1_000_000_000, 2_000_000_000)],
+        )
+        conn.commit()
+        conn.close()
+        payload = tmp_path.read_bytes()
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
     response = await client.post(
         "/api/v1/datasets/upload",
-        files={"file": ("robot_trip_01.db3", b"sqlite-content", "application/octet-stream")},
+        files={"file": ("robot_trip_01.db3", payload, "application/octet-stream")},
     )
 
     assert response.status_code == 201
@@ -425,10 +625,15 @@ async def test_upload_single_db3_creates_dataset(client, experiments_dir):
     assert body["id"] == "robot_trip_01"
     assert body["name"] == "robot_trip_01.db3"
     assert body["status"] == "uploaded"
-    assert (experiments_dir / "robot_trip_01" / "metadata.yaml").exists()
+    assert body["messageCount"] == 2
+    # Info is derived from the .db3, not hidden behind an empty metadata.yaml.
+    assert not (experiments_dir / "robot_trip_01" / "metadata.yaml").exists()
 
     listing = await client.get("/api/v1/datasets")
-    assert any(item["id"] == "robot_trip_01" for item in listing.json()["items"])
+    listed = next(item for item in listing.json()["items"] if item["id"] == "robot_trip_01")
+    assert listed["messageCount"] == 2
+    assert listed["topics"][0]["name"] == "/scan"
+    assert listed["topics"][0]["type"] == "sensor_msgs/msg/LaserScan"
 
 
 @pytest.mark.asyncio
@@ -479,7 +684,7 @@ async def test_upload_rejects_unsupported_extension(client, experiments_dir):
 async def test_delete_dataset_removes_folder(client, experiments_dir):
     folder = experiments_dir / "E9-9"
     folder.mkdir()
-    (folder / "metadata.yaml").write_text(METADATA_YAML)
+    (folder / "metadata.yaml").write_text(MINIMAL_METADATA_YAML)
     (folder / "bag.db3").write_bytes(b"x")
 
     response = await client.delete("/api/v1/datasets/E9-9")
@@ -502,3 +707,198 @@ async def test_create_analysis_404_for_unknown_dataset(client, experiments_dir):
     response = await client.post("/api/v1/analysis", json={"rosbag_id": "missing"})
     assert response.status_code == 404
     assert response.json()["detail"] == "dataset not found"
+
+
+class _SettingsStub:
+    api_auth_token = "secret-token"
+
+
+@pytest.mark.asyncio
+async def test_api_token_required_when_configured(client, monkeypatch):
+    monkeypatch.setattr("src.api.routes.get_settings", _SettingsStub)
+
+    denied = await client.get("/api/v1/status")
+    assert denied.status_code == 401
+
+    allowed = await client.get("/api/v1/status", headers={"Authorization": "Bearer secret-token"})
+    assert allowed.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_upload_rejects_oversized_file(client, experiments_dir, monkeypatch):
+    monkeypatch.setattr("src.services.experiments.MAX_UPLOAD_BYTES", 10)
+
+    response = await client.post(
+        "/api/v1/datasets/upload",
+        files={"file": ("big.db3", b"x" * 100, "application/octet-stream")},
+    )
+    assert response.status_code == 413
+    assert "size limit" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_upload_zip_rejects_oversized_uncompressed_content(client, experiments_dir, monkeypatch):
+    monkeypatch.setattr("src.services.experiments.MAX_UPLOAD_BYTES", 10)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("big.db3", b"x" * 100)
+    response = await client.post(
+        "/api/v1/datasets/upload",
+        files={"file": ("big.zip", buf.getvalue(), "application/zip")},
+    )
+    assert response.status_code == 413
+    assert "size limit" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_datasets_pagination(client, experiments_dir):
+    for i in range(3):
+        folder = experiments_dir / f"E1-{i}"
+        _write_dataset(folder, stamps_ns=[1_000_000_000])
+
+    response = await client.get("/api/v1/datasets?limit=2&offset=1")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 3
+    assert len(data["items"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_export_windows_streams_ndjson(client, experiments_dir):
+    folder = experiments_dir / "E1-1"
+    _write_dataset(
+        folder,
+        stamps_ns=[1_000_000_000, 1_100_000_000, 1_200_000_000, 3_200_000_000, 3_300_000_000],
+    )
+    run = await client.post("/api/v1/analysis", json={"rosbag_id": "E1-1"})
+    run_id = run.json()["run"]["id"]
+
+    response = await client.get(f"/api/v1/analysis/{run_id}/export/windows")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/x-ndjson")
+    lines = response.text.strip().splitlines()
+    assert len(lines) == 1
+    row = json.loads(lines[0])
+    assert row["topic"] == "/scan"
+    assert row["count"] == 5
+    assert row["max_gap_ms"] == pytest.approx(2000.0)
+    assert row["jitter_ms"] is not None
+    assert row["drift_ms"] is None
+
+    response = await client.get(f"/api/v1/analysis/{run_id}/export/windows?window_sec=1")
+    assert response.status_code == 200
+    rows = [json.loads(line) for line in response.text.strip().splitlines()]
+    assert len(rows) == 2
+    assert [row["count"] for row in rows] == [3, 2]
+
+
+@pytest.mark.asyncio
+async def test_export_windows_missing_run_returns_404(client):
+    response = await client.get("/api/v1/analysis/nope/export/windows")
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_dashboard_totals_reflect_real_data(client, experiments_dir):
+    folder = experiments_dir / "E1-1"
+    _write_dataset(
+        folder,
+        stamps_ns=[1_000_000_000, 1_100_000_000, 1_200_000_000, 3_200_000_000, 3_300_000_000],
+    )
+
+    run = await client.post("/api/v1/analysis", json={"rosbag_id": "E1-1"})
+    assert run.status_code == 202
+
+    overview = await client.get("/api/v1/dashboard/overview")
+    assert overview.status_code == 200
+    body = overview.json()
+    totals = body["totals"]
+    assert totals["rosbags"] == 1
+    assert totals["analyzed"] == 1
+    assert totals["messages"] == 5
+    assert totals["anomalies"] == 4
+    assert totals["criticalOpen"] == 0
+    assert totals["reviewPending"] == 4
+    assert body["recentRuns"][0]["id"] == run.json()["run"]["id"]
+    assert body["severity"] == [
+        {"severity": "critical", "count": 0},
+        {"severity": "high", "count": 0},
+        {"severity": "medium", "count": 2},
+        {"severity": "low", "count": 2},
+    ]
+    assert len(body["topIssues"]) == 4
+    assert len(body["trend"]) == 1
+    assert body["trend"][0]["anomalies"] == 4
+
+
+@pytest.mark.asyncio
+async def test_analysis_results_persist_across_requests(client, experiments_dir):
+    folder = experiments_dir / "E1-1"
+    _write_dataset(
+        folder,
+        stamps_ns=[1_000_000_000, 1_100_000_000, 1_200_000_000, 3_200_000_000, 3_300_000_000],
+    )
+
+    created = await client.post("/api/v1/analysis", json={"rosbag_id": "E1-1"})
+    run_id = created.json()["run"]["id"]
+
+    detail = await client.get(f"/api/v1/analysis/{run_id}")
+    assert detail.status_code == 200
+    body = detail.json()
+    assert body["run"]["anomalyCount"] == 4
+    assert len(body["anomalies"]) == 4
+    assert len(body["aiResults"]) == 4
+
+    review = await client.get("/api/v1/review")
+    assert review.status_code == 200
+    pending = review.json()["items"]
+    assert len(pending) == 4
+    assert {item["runId"] for item in pending} == {run_id}
+
+
+@pytest.mark.asyncio
+async def test_silent_node_reports_dominant_topic(client, experiments_dir):
+    folder = experiments_dir / "E1-1"
+    _write_dataset(
+        folder,
+        stamps_ns=[1_000_000_000, 1_100_000_000, 1_200_000_000, 1_400_000_000, 3_200_000_000],
+        topic="/imu",
+    )
+
+    created = await client.post("/api/v1/analysis", json={"rosbag_id": "E1-1"})
+    assert created.status_code == 202
+    run_id = created.json()["run"]["id"]
+
+    detail = await client.get(f"/api/v1/analysis/{run_id}")
+    assert detail.status_code == 200
+    body = detail.json()
+    silent = next(a for a in body["anomalies"] if a["kind"] == "silent_node")
+    assert silent["topics"] == ["/imu"]
+
+
+def test_canned_and_llm_ai_results_share_shape() -> None:
+    detection = {
+        "kind": "frequency_gap",
+        "topic": "/scan",
+        "severity": "medium",
+        "confidence": 0.81,
+        "tSec": 1.0,
+        "endSec": 2.0,
+        "evidence": {"interval_sec": 2.0, "threshold_sec": 0.5},
+    }
+    canned = _canned_ai_results("run_1", [detection])[0].model_dump()
+    llm = _ai_result_from_explanation(
+        "run_1",
+        1,
+        detection,
+        {
+            "root_cause": "Producer stall",
+            "recommended_actions": ["Check node"],
+            "explanation": "Details",
+        },
+    ).model_dump()
+    assert set(canned) == set(llm)
+    assert canned["model"] == "canned-fallback"
+    assert llm["model"] == "llm-explain"
+    assert canned["runId"] == llm["runId"] == "run_1"
+    assert canned["anomalyId"] == llm["anomalyId"] == "anomaly_001"

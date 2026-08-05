@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     cors_origins: str = "http://localhost:3000"
 
+    # Security
+    api_auth_token: str = ""
+
     # LLM
     openai_api_key: str = ""
     model_name: str = "gpt-4o-mini"

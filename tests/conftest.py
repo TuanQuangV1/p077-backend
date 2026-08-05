@@ -10,10 +10,24 @@ from httpx import ASGITransport, AsyncClient
 # when a local .env file overrides APP_ENV.
 os.environ.setdefault("APP_ENV", "test")
 
+from src.api import routes
 from src.main import app
+from src.services.rate_limit import SlidingWindowRateLimiter
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "diagnostics"
 DIAGNOSTICS_DATA_DIR = Path.cwd() / "data" / "diagnostics"
+
+
+@pytest.fixture(autouse=True)
+def _isolate_state(tmp_path, monkeypatch):
+    """Isolate per-test persistence and module-level caches."""
+    monkeypatch.setenv("RUN_DB_PATH", str(tmp_path / "runs.db"))
+    monkeypatch.setattr(routes, "_datasets_cache", routes._DatasetsCache(routes._DATASETS_CACHE_TTL_SEC))
+    monkeypatch.setattr(
+        routes,
+        "_rate_limiter",
+        SlidingWindowRateLimiter(routes._RATE_LIMIT_MAX_REQUESTS, routes._RATE_LIMIT_WINDOW_SEC),
+    )
 
 
 @pytest_asyncio.fixture

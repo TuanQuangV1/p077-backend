@@ -26,7 +26,7 @@ Tài liệu này là bằng chứng kiểm thử và đánh giá cho toàn bộ 
 - ✅ Upload extension không hỗ trợ → **400**
 - ✅ Zip chứa path traversal (`../evil.db3`) → **400 "unsafe"**
 - ✅ Delete dataset → xoá folder, xoá lại → **404**; dataset id traversal (`..%2F..`) → **404**
-- ✅ Danh sách dataset scan từ `data/experiments` đúng contract
+- ✅ Danh sách dataset scan từ `data/` đúng contract (metadata.yaml hoặc suy ra từ `.db3`, bỏ qua folder không có bag)
 
 ### 2.2 Phân tích thật — `tests/test_api/test_routes.py` + `tests/test_services/test_diagnostics.py`
 - ✅ `parse_rosbag2_db3`: đọc bảng `topics`/`messages` từ sqlite rosbag2, timestamp **ns → s**, sắp xếp theo thời gian

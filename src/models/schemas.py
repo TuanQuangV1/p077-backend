@@ -198,8 +198,13 @@ class DiagnosticsSummaryResponse(BaseModel):
 
 class DiagnosticsRequest(BaseModel):
     messages: list[dict[str, object]] = Field(default_factory=list)
-    file_path: str | None = Field(default=None, description="Optional path to a `.mcap`-style JSONL artifact for file-backed diagnostics")
-    thresholds: dict[str, float] | None = Field(default=None, description="Optional runtime overrides for diagnostics thresholds")
+    file_path: str | None = Field(
+        default=None,
+        description="Optional path to a `.mcap`-style JSONL artifact for file-backed diagnostics",
+    )
+    thresholds: dict[str, float] | None = Field(
+        default=None, description="Optional runtime overrides for diagnostics thresholds"
+    )
 
 
 class DiagnosticsThresholdsResponse(BaseModel):
@@ -218,4 +223,3 @@ class DiagnosticsExplanationResponse(BaseModel):
     root_cause: str
     recommended_actions: list[str]
     explanation: str
-

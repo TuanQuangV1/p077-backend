@@ -42,7 +42,7 @@ Robot ghi lại dữ liệu cảm biến dưới dạng rosbag, nhưng việc t�
 ├── src/
 │   ├── api/routes.py            # REST API (datasets, analysis, chat, review, diagnostics)
 │   ├── services/
-│   │   ├── experiments.py       # Upload/delete/scan datasets từ data/experiments
+│   │   ├── experiments.py       # Upload/delete/scan datasets từ data/
 │   │   ├── diagnostics.py       # parse_rosbag2_db3, parse_mcap_file, detect_anomalies
 │   │   ├── diagnostics_config.py# Ngưỡng phát hiện (defaults + persist)
 │   │   └── llm.py               # chat_completion qua httpx (tool-calling thủ công)
@@ -54,7 +54,7 @@ Robot ghi lại dữ liệu cảm biến dưới dạng rosbag, nhưng việc t�
 │   ├── components/              # RAV Console, analysis UI, shadcn/ui
 │   └── lib/                     # api client, types, mock store
 ├── data/
-│   ├── experiments/             # Dataset thật: <id>/metadata.yaml + *.db3
+│   ├── rosbag-vllm-explainability/  # Dataset mẫu: metadata.yaml + *.db3
 │   └── diagnostics/             # thresholds.json
 ├── tests/                       # pytest (API + services)
 ├── docs/                        # Tài liệu kiến trúc, hướng dẫn, evaluation
@@ -120,7 +120,7 @@ docker compose down
 Lưu ý: volume `./data:/app/data` chia sẻ dữ liệu rosbag giữa host và container; healthcheck cho phép frontend chỉ start sau khi backend sẵn sàng.
 
 ### Dữ liệu mẫu
-Đặt rosbag thật vào `data/experiments/<dataset_id>/` kèm `metadata.yaml`, hoặc upload trực tiếp từ UI. Dataset mẫu: `data/experiments/E1-1/` (rosbag2 2024-03-11, 2 bag).
+Đặt rosbag thật vào `data/<dataset_id>/` (kèm `metadata.yaml` hoặc chỉ cần file `.db3`/`.mcap`/`.bag`), hoặc upload trực tiếp từ UI. Dataset mẫu: `data/rosbag-vllm-explainability/` (rosbag2 2024-03-26, 1 bag).
 
 ## 🧪 Testing
 
@@ -161,6 +161,51 @@ Chi tiết kết quả kiểm thử và bằng chứng chạy thật trên dữ 
 | `POST` | `/api/v1/chat` | Chat với LLM (vLLM/OpenAI) |
 | `GET` | `/api/v1/dashboard/overview` | Số liệu dashboard + recent runs |
 | `POST` | `/api/v1/review/{id}/decision` | Approve/reject kết quả AI |
+
+## 💻 CLI (raV13)
+
+CLI gọi thẳng service layer (không qua HTTP), kết quả y hệt web API. Mặc định output **JSON** (dễ parse cho script), dùng `-o table` cho người đọc.
+
+```bash
+# Cài entrypoint (nếu chưa): pip install -e .
+# Hoặc chạy trực tiếp: python -m src.cli <command>
+
+# Datasets
+rav13 datasets list                    # JSON
+rav13 datasets list -o table           # Bảng
+rav13 datasets upload path/to/bag.db3  # Upload .db3/.mcap/.bag/.zip
+rav13 datasets delete <id>
+
+# Chạy phân tích thật trên dataset đã upload (persist run vào SQLite)
+rav13 analyze <dataset_id> [--model MODEL]
+
+# Diagnostics nhanh trên file (không persist)
+rav13 diagnose path/to/file.jsonl [--threshold KEY=VALUE ...]
+
+# Thresholds
+rav13 thresholds show
+rav13 thresholds set frequency_gap_min_threshold_sec=0.1
+
+# Xem run / review queue
+rav13 runs list
+rav13 runs show <run_id>
+rav13 review list
+rav13 review decide <review_id> approved --reviewer alice --notes "ok"
+
+# Export windowed JSONL (cho LLM context nhỏ gọn)
+rav13 export windows <dataset_id> --window 10 --out windows.jsonl
+
+# Human-in-the-loop: review dự đoán AI
+rav13 hilt review <run_id>                     # Tương tác (prompt 1/2/3)
+rav13 hilt review <run_id> --label correct     # Non-interactive
+rav13 hilt list <run_id>
+
+# Chat / explain (cần LLM config trong .env)
+rav13 chat "Tại sao /scan bị drop?"
+rav13 explain summary.json
+```
+
+Mặc định exit code: `0` thành công, `1` runtime error, `2` sai argument. Errors ra stderr, JSON ra stdout.
 
 ## ⚠️ Giới hạn hiện tại
 
