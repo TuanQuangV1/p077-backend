@@ -1,201 +1,221 @@
-# 🤖 AI20K Agent Template
+# 🤖 RAV-13 — Rosbag Diagnostics Platform
 
-Template chính thức cho học viên **VinUni AI20K Build Phase** — cung cấp sẵn cấu trúc dự án, code mẫu, và hướng dẫn kỹ thuật chi tiết để xây dựng AI Agent đạt điểm cao (35+/50).
+Nền tảng phân tích và chẩn đoán sự cố cho robot thông qua dữ liệu rosbag: tải lên dataset, chạy phát hiện anomaly thật trên file `*.db3` (rosbag2 SQLite), xem kết quả trên web console và trao đổi với LLM.
 
-> 📖 **Technical Guidebook:** [phoenix.note.transformerlabs.ai/technical-book](https://phoenix.note.transformerlabs.ai/technical-book)
+## 🎯 Problem Statement
 
-## 🎯 Template này dùng để làm gì?
+Robot ghi lại dữ liệu cảm biến dưới dạng rosbag, nhưng việc tìm ra **tại sao robot gặp trục trặc** (topic chết, node im lặng, publish bị gián đoạn) vẫn là việc thủ công: phải mở công cụ nặng, kéo timeline, đo tần suất từng topic. RAV-13 tự động hoá quy trình đó:
 
-Khi tham gia AI20K Build Phase, mỗi đội cần xây dựng một AI Agent hoàn chỉnh — từ kiến trúc, code, test, đến deploy. Thay vì bắt đầu từ con số không, template này cung cấp:
+- Phân tích **thật** dữ liệu trong bag (không dùng dữ liệu giả) ngay khi bấm **Analyze**
+- Phát hiện các dạng anomaly theo thời gian: khoảng cách publish bất thường, node ngừng hoạt động
+- AI hỗ trợ giải thích root cause và gợi ý cách khắc phục
+- Giao diện web: quản lý dataset, xem kết quả, review đề xuất của AI
 
-- **Cấu trúc thư mục chuẩn** — đã được thiết kế theo best practices (separation of concerns)
-- **Code mẫu** cho các phần cốt lõi: LangGraph agent, FastAPI API, config, schemas
-- **Docker + CI/CD sẵn** — Dockerfile multi-stage, GitHub Actions workflow
-- **Hướng dẫn kỹ thuật 10 chương** — từ clone template đến nộp bài Demo Day
-- **Checklist 10 deliverables** — đảm bảo không bỏ sót yêu cầu BTC
-- **AI Usage Logging tự động** — Pre-configured hooks cho Claude Code, Cursor, Codex, Gemini CLI, Antigravity, và GitHub Copilot
+## ✨ Features
 
-## ⚡ Quick Start
+**Backend (FastAPI)**
+- Upload dataset: file đơn `.db3` / `.mcap` / `.bag` hoặc zip rosbag2 (giải nén an toàn, chống zip-slip); xoá dataset
+- Phân tích thật: đọc trực tiếp sqlite rosbag2 (`topics`/`messages`, timestamp ns → s) → `detect_anomalies` → run với `anomalyCount`, `worstSeverity`, cửa sổ `tSec`/`endSec`
+- Quy tắc phát hiện: `frequency_gap` (gap publish), `silent_node` (node im lặng); ngưỡng cấu hình được qua API và persist tại `data/diagnostics/thresholds.json`
+- API diagnostics: `POST /analysis/diagnose` (inline hoặc file), `POST /analysis/explain` (LLM, chống prompt injection)
+- Chat: gọi endpoint OpenAI-compatible (vLLM / OpenAI) qua `httpx` thuần, có tham số `tools` làm nền tảng cho tool-calling thủ công — **không dùng LangGraph/LangChain**
+- Tài liệu API tự động: `http://localhost:8000/docs`
 
-### Bước 1: Fork hoặc Clone
+**Frontend (Next.js/React)**
+- RAV Console: registry dataset (upload/delete, chọn nhiều, "Analyze selected")
+- Run detail: danh sách anomaly, timeline, log stream, kết quả AI + review
+- Dashboard overview: tổng quan metrics, top issues, severity, xu hướng, recent runs
 
-```bash
-# Clone template
-git clone https://github.com/AI20K-Build-Cohort-2/starter-code-template.git team-YOUR_TEAM_NAME
-cd team-YOUR_TEAM_NAME
+## 🏗️ Tech Stack
 
-# Xóa git history cũ và khởi tạo lại
-rm -rf .git
-git init
-git add .
-git commit -m "feat: khởi tạo dự án từ template"
-```
-
-### Bước 2: Setup môi trường
-
-```bash
-# Tạo virtual environment
-python3.11 -m venv .venv
-source .venv/bin/activate
-
-# Cài dependencies
-pip install -e ".[dev]"
-
-# Cấu hình API keys
-cp .env.example .env
-# Mở .env và thêm OPENAI_API_KEY của bạn
-# Đồng thời cập nhật AI_LOG_API_KEY bằng key riêng từ link mời của BTC
-# (giá trị trong .env.example chỉ là placeholder)
-```
-
-### Bước 3: Cài AI Logging Hooks
-
-```bash
-# Linux / macOS / Git Bash
-bash scripts/setup_hooks.sh
-
-# Windows PowerShell
-# powershell -ExecutionPolicy Bypass -File scripts\setup_hooks.ps1
-```
-
-Hooks tự động log mọi AI prompt khi dùng Claude Code, Cursor, Codex, Gemini CLI, Antigravity, hoặc GitHub Copilot. Không cần thao tác thủ công.
-
-### Bước 4: Chạy server
-
-```bash
-# Chạy FastAPI backend
-uvicorn src.main:app --reload --port 8000
-
-# Mở Swagger UI
-# http://localhost:8000/docs
-```
-
-### Bước 5: Đọc hướng dẫn
-
-📖 Mở **[Technical Guidebook](https://phoenix.note.transformerlabs.ai/technical-book)** và làm theo từng chương.
+| Layer | Công nghệ |
+|-------|-----------|
+| Backend | Python 3.11+, FastAPI, Pydantic v2, uvicorn, httpx, numpy |
+| Frontend | Next.js 16 (App Router), React 19, TypeScript, shadcn/ui, Tailwind CSS v4, Recharts, SWR |
+| Testing | pytest + pytest-asyncio + pytest-cov, Vitest, Playwright |
+| Code quality | Ruff, mypy, black |
+| CI/CD | GitHub Actions (backend lint/test/coverage, frontend lint/test, Playwright e2e) |
 
 ## 📁 Cấu trúc dự án
 
 ```
 ├── src/
-│   ├── agents/           # 🧠 LangGraph Agent
-│   │   ├── graph.py      #    State graph (nodes + edges)
-│   │   ├── state.py      #    State schema (TypedDict)
-│   │   ├── nodes/        #    Node functions
-│   │   └── tools/        #    Agent tools (@tool)
-│   ├── api/              # 🌐 FastAPI Backend
-│   │   └── routes.py     #    API endpoints
-│   ├── models/           # 📋 Pydantic schemas
-│   ├── services/         # 🔧 Business logic (LLM, etc.)
-│   ├── config.py         # ⚙️ Pydantic Settings
-│   └── main.py           # 🚀 App entry point
-├── tests/                # 🧪 pytest suite
-│   ├── test_agents/      #    Agent/graph tests
-│   └── test_api/         #    API endpoint tests
-├── scripts/              # 🔌 AI Logging Hooks
-│   ├── log_hook.py       #    Auto-log cho Claude/Cursor/Codex/Gemini/Copilot
-│   ├── log_antigravity.py#    Antigravity IDE prompt scanner
-│   ├── log_manual.py     #    Manual log cho ChatGPT / web tools
-│   ├── submit_log.py     #    Submit logs on git push
-│   └── setup_hooks.sh    #    One-time hook installer
-├── .claude/ .codex/ .cursor/ .gemini/  # Per-tool hook configs
-├── .agents/              # Antigravity rules + workflows
-├── .ai-log/              # 📊 AI usage logs (auto-generated)
-├── docs/
-│   ├── guide/            # 📖 Technical Guidebook (10 chapters)
-│   └── architecture_diagram.md
-├── eval/                 # 📊 Evaluation results
-├── presentation/         # 🎤 Demo Day slides
-├── .github/workflows/    # ⚡ CI/CD (GitHub Actions)
-├── .github/hooks/        # 🪝 Copilot hook config
-├── Dockerfile            # 🐳 Multi-stage build
-├── docker-compose.yml    # 🐙 Full stack orchestration
-└── README_boilerplate.md # 📝 README template cho đội của bạn
+│   ├── api/routes.py            # REST API (datasets, analysis, chat, review, diagnostics)
+│   ├── services/
+│   │   ├── experiments.py       # Upload/delete/scan datasets từ data/
+│   │   ├── diagnostics.py       # parse_rosbag2_db3, parse_mcap_file, detect_anomalies
+│   │   ├── diagnostics_config.py# Ngưỡng phát hiện (defaults + persist)
+│   │   └── llm.py               # chat_completion qua httpx (tool-calling thủ công)
+│   ├── models/schemas.py        # Pydantic models
+│   ├── config.py                # Settings từ .env (pydantic-settings)
+│   └── main.py                  # FastAPI app
+├── frontend/
+│   ├── app/                     # Next.js App Router (console, runs, dashboard...)
+│   ├── components/              # RAV Console, analysis UI, shadcn/ui
+│   └── lib/                     # api client, types, mock store
+├── data/
+│   ├── rosbag-vllm-explainability/  # Dataset mẫu: metadata.yaml + *.db3
+│   └── diagnostics/             # thresholds.json
+├── tests/                       # pytest (API + services)
+├── docs/                        # Tài liệu kiến trúc, hướng dẫn, evaluation
+└── .github/workflows/ci.yml     # CI/CD
 ```
 
-## 📚 Technical Guidebook — 10 Chương
+## 🚀 Setup & Chạy
 
-| Chương | Nội dung | Thời gian |
-|---------|----------|-----------|
-| 1 | Lời mở đầu — Mục tiêu, cách sử dụng | 15 phút |
-| 2 | Khởi tạo dự án — Clone, setup, git workflow | 4 giờ |
-| 3 | Thiết kế kiến trúc — 3-tier, diagrams, ADR | 6 giờ |
-| 4 | **LangGraph Agent** — State, nodes, edges, tools, RAG | 8 giờ |
-| 5 | FastAPI — Routes, validation, error handling, streaming | 6 giờ |
-| 6 | Giao diện — Next.js + Streamlit quickstart | 6 giờ |
-| 7 | DevOps — Docker, CI/CD, deploy, logging | 6 giờ |
-| 8 | Kiểm thử — Unit test, integration test, RAGAS | 4 giờ |
-| 9 | Demo Day — 10 deliverables, checklist, tips | 2 giờ |
-| 10 | Tài nguyên — Khóa học, docs, BMAD method | tham khảo |
+### Yêu cầu
+- Python 3.11+ (khuyến nghị cài bằng [uv](https://docs.astral.sh/uv/) hoặc venv chuẩn)
+- Node.js 20+ và pnpm (bắt buộc — script root `npm run frontend:dev` gọi `pnpm` nội bộ)
 
-📖 **Đọc online:** [phoenix.note.transformerlabs.ai/technical-book](https://phoenix.note.transformerlabs.ai/technical-book)
+### Backend
 
-## 📋 10 Deliverables cho Demo Day
+**Cách 1 — venv + uvicorn (khuyến nghị):**
 
-| # | Deliverable | File vị trí | Template có sẵn |
-|---|-------------|-------------|:---:|
-| 1 | Source Code | `src/` | ✅ |
-| 2 | README.md | `README_boilerplate.md` → copy thành `README.md` | ✅ |
-| 3 | Architecture Diagram | `docs/architecture_diagram.md` | ✅ |
-| 4 | AI Logs | LangSmith (3 env vars) + Auto AI Usage Logging | ✅ |
-| 5 | Live URL | Deploy lên Render/Vercel | ⚡ CI/CD sẵn |
-| 6 | Video Demo | `presentation/` | 📝 |
-| 7 | Pitch Deck | `presentation/` | 📝 |
-| 8 | Development Journal | `JOURNAL.md` | ✅ |
-| 9 | Worklog | `WORKLOG.md` | ✅ |
-| 10 | Evaluation Evidence | `eval/` | 📝 |
+```powershell
+# 1. Cài dependencies lần đầu (tạo .venv)
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
 
-## 🛠 Tech Stack
+# 2. Cấu hình .env (xem .env.example)
+Copy-Item .env.example .env
+#    - LLM_PROVIDER: "vllm" (mặc định kèm VLLM_BASE_URL/VLLM_API_KEY) hoặc "openai"
+#    - OPENAI_API_KEY: dùng khi LLM_PROVIDER=openai
 
-| Layer | Technology | Version |
-|-------|-----------|---------|
-| AI Agent | LangGraph + LangChain | Latest |
-| Backend | FastAPI + Uvicorn | 0.100+ |
-| LLM | OpenAI GPT-4o-mini | API |
-| Frontend | Next.js / Streamlit | 14+ / 1.30+ |
-| Database | SQLite (dev) / PostgreSQL (prod) | — |
-| DevOps | Docker + GitHub Actions | — |
-| Testing | pytest + pytest-asyncio | 8+ |
+# 3. Chạy server
+uvicorn src.main:app --reload --port 8000
+```
 
-## 📊 AI Usage Logging
+**Cách 2 — uv:**
 
-Template đã tích hợp sẵn auto-logging hooks cho 6 AI tools:
-
-| Tool | Cơ chế | Config |
-|------|--------|--------|
-| Claude Code | `.claude/settings.json` hooks | Tự động |
-| Cursor | `.cursor/hooks.json` | Tự động |
-| OpenAI Codex CLI | `.codex/hooks.json` | Tự động |
-| Gemini CLI | `.gemini/settings.json` | Tự động |
-| GitHub Copilot | `.github/hooks/hooks.json` | Tự động |
-| Antigravity IDE | Pre-push scan transcript | Tự động trên `git push` |
-
-Tất cả prompts và tool calls được log vào `.ai-log/session.jsonl` và tự động submit lên grading server mỗi khi `git push`.
-
-**ChatGPT / web tools khác** — log thủ công:
 ```bash
-bash scripts/_pyrun.sh scripts/log_manual.py --tool chatgpt --prompt "What you asked"
+uv sync --extra dev
+uv run --extra dev --with python-multipart uvicorn src.main:app --port 8000
 ```
 
-> ⚠️ Chạy `bash scripts/setup_hooks.sh` một lần sau khi clone để cài pre-push hook.
+### Frontend
 
-## 📖 Đọc Technical Guidebook
+```bash
+npm install   # cài dependencies root lần đầu
+npm run frontend:dev
+```
 
-**Online (khuyến nghị):** [phoenix.note.transformerlabs.ai/technical-book](https://phoenix.note.transformerlabs.ai/technical-book)
+Mở `http://localhost:3000` — frontend rewrite mọi request `/api/v1/*` về backend tại `127.0.0.1:8000`. Tương đương: `cd frontend && pnpm install && pnpm dev`.
 
-Đăng nhập bằng GitHub (cùng account đã được BTC mời vào org `AI20K-Build-Cohort-2`)
-→ chọn tab **Technical Book** ở sidebar trái → đọc 10 chương + topic sections,
-có table of contents bên phải, hỗ trợ light/dark/cyberpunk theme.
+### 🐳 Chạy bằng Docker
 
-**Offline:** mọi chương đều ở thư mục `docs/guide/` trong template này — mở bằng
-bất kỳ markdown viewer/editor nào (VS Code, Obsidian, GitHub UI, …).
+Cần có Docker + file `.env` (xem `.env.example`) trước khi chạy:
 
-## 🔗 Liên kết
+```bash
+# Production: backend :8000 + frontend :3000
+docker compose up --build
 
-- 📖 **Technical Guidebook:** [phoenix.note.transformerlabs.ai/technical-book](https://phoenix.note.transformerlabs.ai/technical-book)
-- 🏫 **AI20K Program:** VinUni AI20K Build Phase
-- 👨‍🏫 **Mentor:** Đặng Hải Lộc
+# Development (hot-reload, mount src/ và frontend/)
+docker compose --profile dev up --build
 
-## 📄 License
+# Dừng
+docker compose down
+```
 
-MIT — Sử dụng tự do cho mục đích giáo dục.
+Lưu ý: volume `./data:/app/data` chia sẻ dữ liệu rosbag giữa host và container; healthcheck cho phép frontend chỉ start sau khi backend sẵn sàng.
+
+### Dữ liệu mẫu
+Đặt rosbag thật vào `data/<dataset_id>/` (kèm `metadata.yaml` hoặc chỉ cần file `.db3`/`.mcap`/`.bag`), hoặc upload trực tiếp từ UI. Dataset mẫu: `data/rosbag-vllm-explainability/` (rosbag2 2024-03-26, 1 bag).
+
+## 🧪 Testing
+
+```powershell
+# Backend (venv): 52 tests, coverage ≥ 75%
+.\.venv\Scripts\Activate.ps1
+pytest tests -q
+
+# Lint
+ruff check src tests
+
+# Backend (uv)
+uv run --extra dev --with python-multipart pytest tests -q
+uv run --extra dev --with python-multipart ruff check src tests
+
+# Frontend: unit (Vitest) + typecheck + build
+npm run frontend:lint
+npm run frontend:build
+
+# E2E (cần backend @8000 + frontend @3000 đang chạy)
+pnpm test:e2e
+```
+
+Chi tiết kết quả kiểm thử và bằng chứng chạy thật trên dữ liệu rosbag: [docs/evaluation.md](docs/evaluation.md).
+
+## 🔌 API chính
+
+| Method | Endpoint | Mô tả |
+|--------|----------|-------|
+| `GET` | `/api/v1/datasets` | Danh sách dataset |
+| `POST` | `/api/v1/datasets/upload` | Upload rosbag (.db3/.mcap/.bag/zip) |
+| `DELETE` | `/api/v1/datasets/{id}` | Xoá dataset |
+| `POST` | `/api/v1/analysis` | Chạy phân tích thật (`{"rosbag_id": "..."}`) |
+| `GET` | `/api/v1/analysis/{run_id}` | Chi tiết run: anomalies + AI results |
+| `GET/POST` | `/api/v1/analysis/thresholds` | Đọc/cập nhật ngưỡng phát hiện |
+| `POST` | `/api/v1/analysis/diagnose` | Chạy diagnostics trên inline/file input |
+| `POST` | `/api/v1/analysis/explain` | LLM giải thích kết quả diagnostics |
+| `POST` | `/api/v1/chat` | Chat với LLM (vLLM/OpenAI) |
+| `GET` | `/api/v1/dashboard/overview` | Số liệu dashboard + recent runs |
+| `POST` | `/api/v1/review/{id}/decision` | Approve/reject kết quả AI |
+
+## 💻 CLI (raV13)
+
+CLI gọi thẳng service layer (không qua HTTP), kết quả y hệt web API. Mặc định output **JSON** (dễ parse cho script), dùng `-o table` cho người đọc.
+
+```bash
+# Cài entrypoint (nếu chưa): pip install -e .
+# Hoặc chạy trực tiếp: python -m src.cli <command>
+
+# Datasets
+rav13 datasets list                    # JSON
+rav13 datasets list -o table           # Bảng
+rav13 datasets upload path/to/bag.db3  # Upload .db3/.mcap/.bag/.zip
+rav13 datasets delete <id>
+
+# Chạy phân tích thật trên dataset đã upload (persist run vào SQLite)
+rav13 analyze <dataset_id> [--model MODEL]
+
+# Diagnostics nhanh trên file (không persist)
+rav13 diagnose path/to/file.jsonl [--threshold KEY=VALUE ...]
+
+# Thresholds
+rav13 thresholds show
+rav13 thresholds set frequency_gap_min_threshold_sec=0.1
+
+# Xem run / review queue
+rav13 runs list
+rav13 runs show <run_id>
+rav13 review list
+rav13 review decide <review_id> approved --reviewer alice --notes "ok"
+
+# Export windowed JSONL (cho LLM context nhỏ gọn)
+rav13 export windows <dataset_id> --window 10 --out windows.jsonl
+
+# Human-in-the-loop: review dự đoán AI
+rav13 hilt review <run_id>                     # Tương tác (prompt 1/2/3)
+rav13 hilt review <run_id> --label correct     # Non-interactive
+rav13 hilt list <run_id>
+
+# Chat / explain (cần LLM config trong .env)
+rav13 chat "Tại sao /scan bị drop?"
+rav13 explain summary.json
+```
+
+Mặc định exit code: `0` thành công, `1` runtime error, `2` sai argument. Errors ra stderr, JSON ra stdout.
+
+## ⚠️ Giới hạn hiện tại
+
+- Run lưu **in-memory** — mất khi restart backend (chưa có database)
+- AI results cho run là **canned** theo loại anomaly (chưa gọi LLM live cho phân tích)
+- Timeline/simulation trên frontend vẫn dùng mock server (`frontend/lib/server/store.ts`)
+- Dataset có `metadata.yaml` lồng trong folder con (E2-*) chưa được scan
+
+## 📚 Tài liệu
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) — kiến trúc hệ thống
+- [docs/evaluation.md](docs/evaluation.md) — bằng chứng kiểm thử & đánh giá
+- [docs/guide/](docs/guide/) — tài liệu kỹ thuật tham khảo

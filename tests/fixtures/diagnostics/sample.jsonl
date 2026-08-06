@@ -1,0 +1,2 @@
+{"timestamp": 0.0, "topic": "/scan", "node": "scanner", "message_type": "LaserScan"}
+{"timestamp": 0.2, "topic": "/scan", "node": "scanner", "message_type": "LaserScan"}

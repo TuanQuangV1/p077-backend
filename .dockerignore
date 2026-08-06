@@ -6,11 +6,16 @@ __pycache__
 *.pyc
 .pytest_cache
 .ruff_cache
+node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/tsconfig.tsbuildinfo
+*.log
 docs/
 presentation/
 eval/
 *.md
-!requirements.txt
+!README.md
 .dockerignore
 Dockerfile
 docker-compose.yml

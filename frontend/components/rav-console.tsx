@@ -1,0 +1,216 @@
+"use client"
+
+import { useEffect, useRef, useState } from "react"
+import { usePathname, useRouter } from "next/navigation"
+import {
+    ActivityIcon, ArrowRightIcon, BotIcon, CircleAlertIcon,
+    CpuIcon, DatabaseIcon, DownloadIcon, FileTextIcon, GaugeIcon,
+    PlayIcon, RefreshCwIcon, SearchIcon, ServerIcon, ShieldCheckIcon, SquareIcon, Trash2Icon, UploadIcon,
+} from "lucide-react"
+import { toast } from "sonner"
+
+import { AIConclusion } from "@/components/ai-conclusion"
+import { AnomalyList } from "@/components/analysis/anomaly-list"
+import { TimelineCanvas, type Lane } from "@/components/analysis/timeline-canvas"
+import { MetaRow, PageHeader, SectionCard, SeverityBadge, StatTile, StatusLabel } from "@/components/telemetry"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import { Progress } from "@/components/ui/progress"
+import { Separator } from "@/components/ui/separator"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { bytes, clock, compact, del, fetcher, ms, post, uploadRosbag } from "@/lib/api"
+import type { AIResult, Anomaly, AnalysisRun, Rosbag, SimulationData, VllmRequest } from "@/lib/types"
+
+type Overview = { totals: Record<string, number>; topIssues: { label: string; count: number }[]; severity: { severity: string; count: number }[]; trend: { date: string; bags: number; anomalies: number; p95Ms: number; costUsd: number }[]; recentRuns: AnalysisRun[] }
+
+const json = (value: unknown) => JSON.stringify(value, null, 2)
+
+export function RavConsole() {
+    const pathname = usePathname()
+    const router = useRouter()
+    const rawSection = pathname === "/" ? "dashboard" : pathname.split("/")[1] || "dashboard"
+    const section = rawSection === "vllm-monitoring" ? "vllm" : rawSection
+    const [overview, setOverview] = useState<Overview | null>(null)
+    const [bags, setBags] = useState<Rosbag[]>([])
+    const [activeRun, setActiveRun] = useState<AnalysisRun | null>(null)
+    const [anomalies, setAnomalies] = useState<Anomaly[]>([])
+    const [aiResults, setAiResults] = useState<AIResult[]>([])
+    const [simulation, setSimulation] = useState<SimulationData | null>(null)
+    const [metrics, setMetrics] = useState<any>(null)
+    const [requests, setRequests] = useState<VllmRequest[]>([])
+    const [selected, setSelected] = useState<string | null>(null)
+    const [playhead, setPlayhead] = useState(42.8)
+    const [thresholds, setThresholds] = useState<Record<string, number>>({})
+    const [savingThresholds, setSavingThresholds] = useState(false)
+    const [playing, setPlaying] = useState(false)
+    const [timelineView, setTimelineView] = useState({ from: 0, to: 120 })
+    const [timelineLanes, setTimelineLanes] = useState<Lane[]>([])
+    const [topicFilter, setTopicFilter] = useState("all")
+    const [timeRange, setTimeRange] = useState("all")
+
+    const refreshBags = () => { fetcher<{ items: Rosbag[] }>("/api/rosbags").then((x) => setBags(x.items)).catch(() => toast.error("Cannot load datasets")) }
+
+    useEffect(() => { fetcher<Overview>("/api/overview").then(setOverview).catch(() => toast.error("Overview unavailable")); refreshBags() }, [])
+    useEffect(() => {
+        const run = overview?.recentRuns?.find((x) => x.status === "succeeded") ?? overview?.recentRuns?.[0]
+        if (!run || activeRun?.id === run.id) return
+        setActiveRun(run)
+        Promise.all([fetcher<{ anomalies: Anomaly[]; aiResults: AIResult[] }>(`/api/runs/${run.id}`), fetcher<{ simulation: SimulationData }>(`/api/runs/${run.id}/simulation`)]).then(([detail, sim]) => { setAnomalies(detail.anomalies); setAiResults(detail.aiResults); setSimulation(sim.simulation); setSelected(detail.anomalies[0]?.id ?? null) })
+    }, [overview, activeRun])
+    useEffect(() => {
+        if (section !== "analysis" || !activeRun) return
+        const params = new URLSearchParams({ from: String(timelineView.from), to: String(timelineView.to) })
+        if (topicFilter !== "all") params.set("topics", topicFilter)
+        fetcher<{ lanes: Lane[]; anomalies: Anomaly[]; durationSec: number }>(`/api/runs/${activeRun.id}/timeline?${params}`).then((payload) => {
+            setTimelineLanes(payload.lanes)
+            setAnomalies(payload.anomalies)
+            setTimelineView((view) => ({ from: view.from, to: Math.min(view.to, payload.durationSec) }))
+        })
+    }, [section, activeRun, timelineView.from, timelineView.to, topicFilter])
+    useEffect(() => { if (section === "vllm") { fetcher<any>("/api/vllm/metrics?windowMin=60").then(setMetrics); fetcher<{ items: VllmRequest[] }>('/api/vllm/requests').then((x) => setRequests(x.items)) } }, [section])
+    useEffect(() => { if (section === "analysis") { fetcher<{ thresholds: Record<string, number> }>('/api/v1/analysis/thresholds').then((payload) => setThresholds(payload.thresholds)).catch(() => toast.error('Thresholds unavailable')) } }, [section])
+    useEffect(() => { if (!playing || !simulation) return; const id = window.setInterval(() => setPlayhead((t) => t >= simulation.frames.at(-1)!.t ? 0 : t + 0.1), 100); return () => window.clearInterval(id) }, [playing, simulation])
+
+    const selectedAnomaly = anomalies.find((a) => a.id === selected) ?? anomalies[0]
+    const selectedResult = aiResults.find((r) => r.anomalyId === selectedAnomaly?.id) ?? aiResults[0]
+    const navigate = (href: string) => router.push(href)
+    const title = ({ dashboard: "Fleet overview", datasets: "Rosbag datasets", analysis: "Analysis workspace", simulation: "Simulation replay", review: "Human review queue", reports: "Diagnostic reports", vllm: "VLLM observability", architecture: "System architecture" } as Record<string, string>)[section] ?? "RAV-13"
+
+    return <main className="min-h-[calc(100vh-3rem)] bg-background p-4 md:p-6"><div className="mx-auto flex max-w-[1800px] flex-col gap-5">
+        <PageHeader title={title} description={section === "analysis" ? `${activeRun?.rosbagName ?? "Select a run"} · synchronized diagnosis surface` : "ROS2 Doctor + Agent + VLLM diagnostic console"} actions={<div className="flex gap-2"><Button variant="outline" size="sm" onClick={() => window.location.reload()}><RefreshCwIcon data-icon="inline-start" />Refresh</Button>{section === "datasets" ? <Button size="sm" onClick={refreshBags}><UploadIcon data-icon="inline-start" />Refresh datasets</Button> : null}</div>} />
+        {section === "dashboard" && <DashboardEnhanced overview={overview} navigate={navigate} />}
+        {section === "datasets" && <DatasetRegistry bags={bags} onRefresh={refreshBags} navigate={navigate} />}
+        {section === "analysis" && <AnalysisWorkspace activeRun={activeRun} anomalies={anomalies} selected={selected} setSelected={setSelected} lanes={timelineLanes} playhead={playhead} setPlayhead={setPlayhead} selectedResult={selectedResult} view={timelineView} setView={setTimelineView} topicFilter={topicFilter} setTopicFilter={setTopicFilter} timeRange={timeRange} setTimeRange={setTimeRange} thresholds={thresholds} setThresholds={setThresholds} savingThresholds={savingThresholds} setSavingThresholds={setSavingThresholds} />}
+        {section === "simulation" && <Simulation simulation={simulation} anomalies={anomalies} playhead={playhead} setPlayhead={setPlayhead} playing={playing} setPlaying={setPlaying} />}
+        {section === "review" && <Review results={aiResults} anomalies={anomalies} />}
+        {section === "reports" && <ReportsEnhanced overview={overview} activeRun={activeRun} />}
+        {section === "vllm" && <Vllm metrics={metrics} requests={requests} />}
+        {section === "architecture" && <Architecture />}
+    </div></main>
+}
+
+function Dashboard({ overview, navigate }: { overview: Overview | null; navigate: (href: string) => void }) { const t = overview?.totals ?? {}; return <><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><StatTile label="Rosbags processed" value={t.analyzed ?? "--"} hint={`${t.rosbags ?? 0} registered · ${t.hoursOfData ?? 0}h captured`} icon={<DatabaseIcon className="size-4" />} /><StatTile label="Runs with errors" value={t.runsWithIssuesPct ? `${t.runsWithIssuesPct}%` : "--"} tone="critical" hint={`${t.anomalies ?? 0} anomalies detected`} icon={<CircleAlertIcon className="size-4" />} /><StatTile label="Mean diagnosis" value={t.meanTimeToDiagnoseSec ?? "--"} unit="sec" hint="parse through agent conclusion" icon={<ActivityIcon className="size-4" />} /><StatTile label="Inference cost" value={t.inferenceCostUsd ? `$${t.inferenceCostUsd}` : "--"} hint={`${compact(t.tokens ?? 0)} tokens consumed`} icon={<CpuIcon className="size-4" />} /></div><div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]"><SectionCard title="Recent runs" description="Most recent rosbag analysis jobs" actions={<Button variant="ghost" size="sm" onClick={() => navigate("/analysis")}>Open workspace <ArrowRightIcon data-icon="inline-end" /></Button>}><div className="divide-y divide-border">{overview?.recentRuns.map((run) => <button key={run.id} onClick={() => navigate("/analysis")} className="flex w-full items-center gap-3 py-3 text-left hover:bg-accent/30"><StatusLabel status={run.status} /><span className="min-w-0 flex-1 truncate text-sm">{run.rosbagName}</span><span className="font-mono text-xs text-muted-foreground">{run.anomalyCount} issues</span><span className="hidden font-mono text-xs text-muted-foreground sm:block">{ms(run.totalLatencyMs)}</span></button>) ?? <p className="text-sm text-muted-foreground">Loading telemetry...</p>}</div></SectionCard><SectionCard title="Issue profile" description="Detected anomaly classes across analyzed runs"><div className="flex flex-col gap-3">{overview?.topIssues.slice(0, 5).map((i) => <div key={i.label} className="flex items-center gap-3"><span className="w-40 truncate text-xs text-muted-foreground">{i.label}</span><div className="h-2 flex-1 rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, i.count * 16)}%` }} /></div><span className="w-6 text-right font-mono text-xs">{i.count}</span></div>)}</div></SectionCard></div></> }
+
+function Analysis({ activeRun, anomalies, selected, setSelected, lanes, playhead, setPlayhead, selectedResult }: { activeRun: AnalysisRun | null; anomalies: Anomaly[]; selected: string | null; setSelected: (s: string) => void; lanes: Lane[]; playhead: number; setPlayhead: (n: number) => void; selectedResult?: AIResult }) { return <div className="grid min-h-[680px] gap-4 xl:grid-cols-[230px_minmax(0,1fr)_380px]"><Card className="min-h-0 overflow-hidden"><CardHeader className="border-b border-border py-3"><CardTitle className="text-sm">Detections</CardTitle></CardHeader><AnomalyList anomalies={anomalies} selectedId={selected} severities={[]} onSeveritiesChange={() => { }} onSelect={(a) => { setSelected(a.id); setPlayhead(a.tSec) }} /></Card><Card className="min-w-0 overflow-hidden"><CardHeader className="flex-row items-center justify-between border-b border-border py-3"><div><CardTitle className="text-sm">Message timeline</CardTitle><p className="font-mono text-[10px] text-muted-foreground">{activeRun?.rosbagName ?? "Loading run"} · drag to scrub</p></div><Badge variant="outline" className="font-mono text-[10px]">{clock(playhead)}</Badge></CardHeader><CardContent className="p-0 pt-3"><TimelineCanvas durationSec={120} lanes={lanes} anomalies={anomalies} playhead={playhead} view={{ from: 0, to: 120 }} selectedAnomalyId={selected} onScrub={setPlayhead} onViewChange={() => { }} onSelectAnomaly={setSelected} /></CardContent></Card><div className="min-h-0 overflow-auto">{selectedResult ? <AIConclusion result={selectedResult} anomaly={anomalies.find((a) => a.id === selectedResult.anomalyId)} onSeek={setPlayhead} /> : <Card><CardContent className="p-5 text-sm text-muted-foreground">Select a detection to inspect the agent conclusion.</CardContent></Card>}</div></div> }
+
+function Simulation({ simulation, anomalies, playhead, setPlayhead, playing, setPlaying }: { simulation: SimulationData | null; anomalies: Anomaly[]; playhead: number; setPlayhead: (n: number) => void; playing: boolean; setPlaying: (b: boolean) => void }) { const frame = simulation?.frames.reduce((a, b) => Math.abs(b.t - playhead) < Math.abs(a.t - playhead) ? b : a, simulation.frames[0]); return <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_310px]"><Card><CardHeader className="flex-row items-center justify-between border-b border-border py-3"><div><CardTitle className="text-sm">Replay viewport</CardTitle><p className="font-mono text-[10px] text-muted-foreground">occupancy grid · lidar · planned path</p></div><Button size="sm" onClick={() => setPlaying(!playing)}>{playing ? <SquareIcon data-icon="inline-start" /> : <PlayIcon data-icon="inline-start" />}{playing ? "Pause" : "Play"}</Button></CardHeader><CardContent className="p-3"><SimCanvas simulation={simulation} frame={frame} /><input className="mt-4 w-full accent-cyan-300" type="range" min="0" max={simulation?.frames.at(-1)?.t ?? 120} step="0.1" value={playhead} onChange={(e) => setPlayhead(Number(e.target.value))} /><div className="flex justify-between font-mono text-[10px] text-muted-foreground"><span>00:00.000</span><span>{clock(playhead)}</span><span>{clock(simulation?.frames.at(-1)?.t ?? 120)}</span></div></CardContent></Card><SectionCard title="Event sync" description="Selecting an issue jumps the replay to its frame"><div className="flex flex-col gap-2">{anomalies.map((a) => <button key={a.id} onClick={() => setPlayhead(a.tSec)} className="flex items-center gap-2 rounded border border-border p-2 text-left hover:bg-accent/50"><SeverityBadge severity={a.severity} /><span className="min-w-0 flex-1 truncate text-xs">{a.title}</span><span className="font-mono text-[10px] text-muted-foreground">{clock(a.tSec, false)}</span></button>)}</div>{frame ? <div className="mt-4 border-t border-border pt-3"><MetaRow label="pose" value={`${frame.x.toFixed(2)}, ${frame.y.toFixed(2)}`} /><MetaRow label="velocity" value={`${frame.v.toFixed(2)} m/s`} /><MetaRow label="cpu" value={`${frame.cpu.toFixed(0)}%`} /></div> : null}</SectionCard></div> }
+
+function SimCanvas({ simulation, frame }: { simulation: SimulationData | null; frame: any }) { if (!simulation || !frame) return <div className="grid aspect-video place-items-center bg-muted/20 text-sm text-muted-foreground">Loading replay payload...</div>; return <div className="relative aspect-video overflow-hidden border border-border bg-[#0b1116]"><svg viewBox={`0 0 ${simulation.map.width} ${simulation.map.height}`} className="h-full w-full"><rect width="100%" height="100%" fill="#0b1116" />{simulation.map.rows.map((row, y) => [...row].map((cell, x) => cell === "1" ? <rect key={`${x}-${y}`} x={x} y={y} width="1" height="1" fill="#33414a" /> : null))}<polyline points={simulation.plannedPath.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke="#e6b85b" strokeDasharray="1 1" strokeWidth="0.25" />{simulation.frames.filter((_, i) => i % 12 === 0).map((p) => <circle key={p.t} cx={p.x} cy={p.y} r="0.32" fill="#4fd1e0" opacity=".45" />)}<circle cx={frame.x} cy={frame.y} r="0.8" fill="#fff" stroke="#4fd1e0" strokeWidth=".3" /><line x1={frame.x} y1={frame.y} x2={frame.x + Math.cos(frame.theta) * 2} y2={frame.y + Math.sin(frame.theta) * 2} stroke="#4fd1e0" strokeWidth=".35" /></svg><div className="absolute left-3 top-3 flex gap-2"><Badge variant="outline" className="bg-background/80 font-mono text-[10px]">t {clock(frame.t)}</Badge>{frame.degraded ? <SeverityBadge severity="high" /> : <Badge className="bg-ok/15 text-ok">nominal</Badge>}</div></div> }
+
+function Review({ results, anomalies }: { results: AIResult[]; anomalies: Anomaly[] }) { return <div className="grid gap-4 lg:grid-cols-2">{results.map((r) => <AIConclusion key={r.id} result={r} anomaly={anomalies.find((a) => a.id === r.anomalyId)} compact />)}</div> }
+function Reports({ overview }: { overview: Overview | null }) { return <SectionCard title="Report ledger" description="Auditable outputs generated from reviewed diagnosis"><div className="flex flex-col gap-3"><div className="flex items-center justify-between border-b border-border pb-3"><div><p className="text-sm font-medium">Warehouse navigation incident review</p><p className="font-mono text-[10px] text-muted-foreground">RPT-2026-071 · 3 key issues · 2 approvals</p></div><div className="flex gap-2"><Button variant="outline" size="sm"><DownloadIcon data-icon="inline-start" />JSON</Button><Button size="sm">Publish</Button></div></div><pre className="max-h-72 overflow-auto border border-border bg-muted/20 p-4 font-mono text-xs text-muted-foreground">{json({ generatedAt: "2026-07-31T09:00:00Z", anomalies: overview?.totals.anomalies ?? 0, recommendations: ["Isolate sensor VLAN", "Reserve controller CPU"] })}</pre></div></SectionCard> }
+function Vllm({ metrics, requests }: { metrics: any; requests: VllmRequest[] }) {
+    const [tab, setTab] = useState("metrics")
+    const [selectedRequest, setSelectedRequest] = useState<VllmRequest | null>(null)
+    const a = metrics?.aggregates
+    const errors = requests.filter((request) => request.status !== "ok")
+    return <>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><StatTile label="GPU utilization" value={a ? `${a.gpuUtil}%` : "--"} tone="primary" icon={<GaugeIcon className="size-4" />} /><StatTile label="VRAM" value={metrics?.current ? `${metrics.current.vramUsedGb.toFixed(1)}` : "--"} unit="/ 80 GB" /><StatTile label="Decode rate" value={a?.tokensPerSec ?? "--"} unit="tok/s" /><StatTile label="P95 latency" value={a?.p95 ?? "--"} unit="ms" /><StatTile label="Queue" value={a?.queueLen ?? "--"} unit="req" /></div>
+        <Tabs value={tab} onValueChange={setTab} className="w-full"><TabsList><TabsTrigger value="metrics">System metrics</TabsTrigger><TabsTrigger value="requests">Request logs</TabsTrigger><TabsTrigger value="errors">Errors <span className="ml-1 font-mono text-[10px]">{errors.length}</span></TabsTrigger></TabsList>
+            <TabsContent value="metrics"><div className="grid gap-4 xl:grid-cols-[1.1fr_1fr]"><SectionCard title="Inference health" description="Live performance window"><div className="grid grid-cols-2 gap-4 sm:grid-cols-4">{[["p50", a?.p50], ["p95", a?.p95], ["p99", a?.p99], ["requests/s", a?.rps]].map(([label, value]) => <div key={label as string} className="border-l-2 border-primary/50 pl-3"><p className="font-mono text-[10px] uppercase text-muted-foreground">{label}</p><p className="mt-1 font-mono text-xl">{value ?? "--"}</p></div>)}</div><div className="mt-5 h-24 border-b border-border"><div className="flex h-full items-end gap-1 px-1">{(metrics?.points ?? []).slice(-40).map((point: any, index: number) => <div key={index} className="flex-1 bg-primary/60" style={{ height: `${Math.max(8, point.gpuUtil)}%` }} />)}</div></div></SectionCard><SectionCard title="GPU runtime" description="vLLM engine capacity"><MetaRow label="engine" value={metrics?.gpu?.engine ?? "--"} /><MetaRow label="device" value={metrics?.gpu?.name ?? "--"} /><MetaRow label="max model length" value={metrics?.gpu?.maxModelLen ?? "--"} /><MetaRow label="KV cache" value={metrics?.gpu?.kvCacheUtil ? `${(metrics.gpu.kvCacheUtil * 100).toFixed(1)}%` : "--"} /><Progress className="mt-3" value={(metrics?.gpu?.kvCacheUtil ?? 0) * 100} /></SectionCard></div></TabsContent>
+            <TabsContent value="requests"><RequestLog requests={requests} onSelect={setSelectedRequest} /></TabsContent>
+            <TabsContent value="errors"><RequestLog requests={errors} onSelect={setSelectedRequest} empty="No VLLM errors in this window." /></TabsContent>
+        </Tabs>{selectedRequest ? <Card className="border-primary/40"><CardHeader className="flex-row items-center justify-between py-3"><CardTitle className="text-sm">Trace {selectedRequest.id}</CardTitle><Button variant="ghost" size="sm" onClick={() => setSelectedRequest(null)}>Close</Button></CardHeader><CardContent><div className="grid gap-2 sm:grid-cols-5">{[["input", selectedRequest.promptTokens], ["tokenizer", selectedRequest.tokenizeMs], ["prefill", selectedRequest.prefillMs], ["decode", selectedRequest.decodeMs], ["output", selectedRequest.completionTokens]].map(([label, value]) => <div key={label as string} className="border border-border p-3"><p className="font-mono text-[10px] uppercase text-muted-foreground">{label}</p><p className="mt-1 font-mono text-sm">{value}{label === "input" || label === "output" ? " tok" : " ms"}</p></div>)}</div><p className="mt-3 font-mono text-xs text-muted-foreground">{selectedRequest.promptPreview}</p></CardContent></Card> : null}
+    </>
+}
+
+function RequestLog({ requests, onSelect, empty = "No request logs." }: { requests: VllmRequest[]; onSelect: (request: VllmRequest) => void; empty?: string }) { return <SectionCard title="Request trace log" description="Select a request to inspect input → tokenizer → model → output"><div className="flex flex-col divide-y divide-border">{requests.slice(0, 40).map((request) => <button key={request.id} onClick={() => onSelect(request)} className="py-2 text-left hover:bg-accent/40"><div className="flex items-center gap-2"><StatusLabel status={request.status} /><span className="min-w-0 flex-1 truncate font-mono text-[11px]">{request.promptPreview}</span><span className="font-mono text-[10px] text-muted-foreground">{ms(request.latencyMs)}</span></div><div className="mt-1 flex gap-2 pl-16 font-mono text-[10px] text-muted-foreground"><span>queue {request.queueMs}ms</span><span>prefill {request.prefillMs}ms</span><span>decode {request.decodeMs}ms</span></div></button>)}{requests.length === 0 ? <p className="py-8 text-sm text-muted-foreground">{empty}</p> : null}</div></SectionCard> }
+function Architecture() { return <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr]"><SectionCard title="Pipeline topology" description="Production boundary between capture, diagnosis, review, and observability"><div className="grid gap-3 sm:grid-cols-2">{[[DatabaseIcon, "Object storage", "rosbag2 / MCAP files"], [ServerIcon, "FastAPI worker", "parse → index → detect"], [BotIcon, "Agent + VLLM", "evidence-grounded diagnosis"], [ShieldCheckIcon, "Human review", "labelled feedback loop"]].map(([Icon, label, detail]) => <div key={label as string} className="flex items-start gap-3 border border-border p-3"><div className="grid size-8 shrink-0 place-items-center bg-primary/10 text-primary"><Icon className="size-4" /></div><div><p className="text-sm font-medium">{label as string}</p><p className="text-xs text-muted-foreground">{detail as string}</p></div></div>)}</div><div className="mt-4 flex flex-wrap items-center gap-2 font-mono text-[10px] text-muted-foreground"><Badge variant="outline">REST</Badge><ArrowRightIcon className="size-3" /><Badge variant="outline">WebSocket /stream</Badge><ArrowRightIcon className="size-3" /><Badge variant="outline">Next.js console</Badge></div></SectionCard><SectionCard title="Contract reference" description="Core API surfaces for the Python service"><pre className="overflow-auto font-mono text-xs leading-6 text-muted-foreground">{`POST /api/rosbags\nPOST /api/rosbags/:id/parse\nPOST /api/runs\nGET  /api/runs/:id/timeline\nGET  /api/runs/:id/ai\nPOST /api/feedback\nGET  /api/reports\nGET  /api/vllm/metrics\nWS   /api/stream`}</pre><Separator className="my-4" /><div className="flex flex-col gap-2 text-xs"><p><span className="text-primary">job.progress</span> parsing / analyzing stage updates</p><p><span className="text-primary">log</span> structured ROS2 log events</p><p><span className="text-primary">simulation.sync</span> timestamp and anomaly selection</p></div></SectionCard></div> }
+
+function DashboardEnhanced({ overview, navigate }: { overview: Overview | null; navigate: (href: string) => void }) {
+    const totals = overview?.totals ?? {}
+    return <>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><StatTile label="Rosbags processed" value={totals.analyzed ?? "--"} hint={`${totals.rosbags ?? 0} registered · ${totals.hoursOfData ?? 0}h captured`} icon={<DatabaseIcon className="size-4" />} /><StatTile label="Runs with errors" value={totals.runsWithIssuesPct ? `${totals.runsWithIssuesPct}%` : "--"} tone="critical" hint={`${totals.anomalies ?? 0} anomalies detected`} icon={<CircleAlertIcon className="size-4" />} /><StatTile label="Mean diagnosis" value={totals.meanTimeToDiagnoseSec ?? "--"} unit="sec" hint="parse through agent conclusion" icon={<ActivityIcon className="size-4" />} /><StatTile label="Inference cost" value={totals.inferenceCostUsd ? `$${totals.inferenceCostUsd}` : "--"} hint={`${compact(totals.tokens ?? 0)} tokens consumed`} icon={<CpuIcon className="size-4" />} /></div>
+        <div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]"><SectionCard title="14-day operating trend" description="Capture volume, anomaly volume, and p95 diagnosis latency"><div className="flex h-44 items-end gap-1 border-b border-border px-1">{(overview?.trend ?? []).map((point) => <div key={point.date} className="group relative flex h-full flex-1 items-end gap-0.5"><div className="w-1/2 bg-primary/70" style={{ height: `${Math.max(8, (point.bags / 20) * 100)}%` }} /><div className="w-1/2 bg-critical/70" style={{ height: `${Math.max(5, (point.anomalies / 24) * 100)}%` }} /><span className="pointer-events-none absolute bottom-full left-1/2 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded border border-border bg-popover px-1.5 py-1 font-mono text-[10px] group-hover:block">{point.date} · {point.p95Ms}ms</span></div>)}</div><div className="mt-2 flex gap-4 font-mono text-[10px] text-muted-foreground"><span><i className="mr-1 inline-block size-2 bg-primary/70" />bags</span><span><i className="mr-1 inline-block size-2 bg-critical/70" />anomalies</span><span className="ml-auto">p95 / cost tracked in API</span></div></SectionCard><SectionCard title="Recent runs" description="Most recent analysis jobs" actions={<Button variant="ghost" size="sm" onClick={() => navigate("/analysis")}>Open workspace <ArrowRightIcon data-icon="inline-end" /></Button>}><div className="divide-y divide-border">{overview?.recentRuns.map((run) => <button key={run.id} onClick={() => navigate("/analysis")} className="flex w-full items-center gap-3 py-3 text-left hover:bg-accent/30"><StatusLabel status={run.status} /><span className="min-w-0 flex-1 truncate text-sm">{run.rosbagName}</span><span className="font-mono text-xs text-muted-foreground">{run.anomalyCount} issues</span></button>)}</div></SectionCard></div>
+    </>
+}
+
+function DatasetRegistry({ bags, onRefresh, navigate }: { bags: Rosbag[]; onRefresh: () => void; navigate: (href: string) => void }) {
+    const [query, setQuery] = useState("")
+    const [busy, setBusy] = useState<string | null>(null)
+    const [uploading, setUploading] = useState(false)
+    const [selected, setSelected] = useState<Set<string>>(new Set())
+    const fileRef = useRef<HTMLInputElement | null>(null)
+    const filtered = bags.filter((bag) => `${bag.name} ${bag.site} ${bag.robotType}`.toLowerCase().includes(query.toLowerCase()))
+
+    const toggle = (id: string) => setSelected((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next })
+    const toggleAll = () => setSelected((prev) => (filtered.length > 0 && filtered.every((bag) => prev.has(bag.id)) ? new Set() : new Set(filtered.map((bag) => bag.id))))
+    const allSelected = filtered.length > 0 && filtered.every((bag) => selected.has(bag.id))
+
+    const upload = async (file: File | undefined) => {
+        if (!file) return
+        setUploading(true)
+        try {
+            await uploadRosbag(file)
+            toast.success("Rosbag uploaded", { description: file.name })
+            onRefresh()
+        } catch {
+            toast.error("Upload failed — unsupported file type")
+        } finally {
+            setUploading(false)
+            if (fileRef.current) fileRef.current.value = ""
+        }
+    }
+
+    const remove = async (bag: Rosbag) => {
+        if (!window.confirm(`Delete ${bag.name}?`)) return
+        setBusy(bag.id)
+        try {
+            await del(`/api/rosbags/${bag.id}`)
+            toast.success("Dataset deleted")
+            setSelected((prev) => { const next = new Set(prev); next.delete(bag.id); return next })
+            onRefresh()
+        } catch {
+            toast.error("Unable to delete dataset")
+        } finally {
+            setBusy(null)
+        }
+    }
+
+    const analyze = async (bag: Rosbag) => { setBusy(bag.id); try { const result = await post<{ run: AnalysisRun }>("/api/runs", { rosbag_id: bag.id }); toast.success("Analysis queued", { description: result.run.id }); navigate("/analysis") } finally { setBusy(null) } }
+    const analyzeSelected = async () => {
+        const ids = filtered.filter((bag) => selected.has(bag.id)).map((bag) => bag.id)
+        if (ids.length === 0) return
+        setBusy("batch")
+        try {
+            const results = await Promise.all(ids.map((id) => post<{ run: AnalysisRun }>("/api/runs", { rosbag_id: id })))
+            toast.success(`${results.length} analysis run${results.length > 1 ? "s" : ""} queued`)
+            navigate("/analysis")
+        } catch {
+            toast.error("Unable to queue analysis")
+        } finally {
+            setBusy(null)
+        }
+    }
+
+    return <SectionCard title="Capture registry" description="Upload, delete, and launch diagnosis from stored rosbag files" actions={<div className="flex items-center gap-2"><Button size="sm" variant="outline" disabled={uploading || selected.size === 0} onClick={analyzeSelected}><PlayIcon data-icon="inline-start" />Analyze selected{selected.size ? ` (${selected.size})` : ""}</Button><Button size="sm" disabled={uploading} onClick={() => fileRef.current?.click()}><UploadIcon data-icon="inline-start" />{uploading ? "Uploading..." : "Upload rosbag"}</Button><input ref={fileRef} type="file" accept=".db3,.mcap,.bag,.zip" className="hidden" onChange={(e) => upload(e.target.files?.[0])} /></div>}><div className="mb-4 flex max-w-xl items-center gap-2"><SearchIcon className="size-4 text-muted-foreground" /><Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter file, site, or robot type" /></div><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b border-border font-mono text-[10px] uppercase text-muted-foreground"><tr><th className="pb-2"><Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all" /></th><th className="pb-2">Capture</th><th className="pb-2">Robot / site</th><th className="pb-2">Size / duration</th><th className="pb-2">Status</th><th className="pb-2 text-right">Action</th></tr></thead><tbody className="divide-y divide-border">{filtered.map((bag) => <tr key={bag.id} className={selected.has(bag.id) ? "bg-accent/30" : undefined}><td className="py-3"><Checkbox checked={selected.has(bag.id)} onCheckedChange={() => toggle(bag.id)} aria-label={`Select ${bag.name}`} /></td><td className="py-3 font-mono text-xs">{bag.name}<div className="text-[10px] text-muted-foreground">{bag.messageCount.toLocaleString()} messages</div></td><td className="py-3 text-xs">{bag.robotType}<div className="text-muted-foreground">{bag.site}</div></td><td className="py-3 font-mono text-xs">{bytes(bag.sizeBytes)}<div className="text-muted-foreground">{clock(bag.durationSec, false)}</div></td><td className="py-3"><StatusLabel status={bag.status} /></td><td className="py-3 text-right"><div className="flex justify-end gap-1"><Button size="sm" variant="ghost" disabled={busy === bag.id} onClick={() => analyze(bag)}>Analyze</Button><Button size="sm" variant="ghost" disabled={busy === bag.id} onClick={() => remove(bag)}><Trash2Icon data-icon="inline-start" />Delete</Button></div></td></tr>)}</tbody></table></div></SectionCard>
+}
+
+function AnalysisWorkspace({ activeRun, anomalies, selected, setSelected, lanes, playhead, setPlayhead, selectedResult, view, setView, topicFilter, setTopicFilter, timeRange, setTimeRange, thresholds, setThresholds, savingThresholds, setSavingThresholds }: { activeRun: AnalysisRun | null; anomalies: Anomaly[]; selected: string | null; setSelected: (id: string) => void; lanes: Lane[]; playhead: number; setPlayhead: (time: number) => void; selectedResult?: AIResult; view: { from: number; to: number }; setView: (view: { from: number; to: number }) => void; topicFilter: string; setTopicFilter: (topic: string) => void; timeRange: string; setTimeRange: (range: string) => void; thresholds: Record<string, number>; setThresholds: (thresholds: Record<string, number>) => void; savingThresholds: boolean; setSavingThresholds: (saving: boolean) => void }) {
+    const duration = activeRun ? 120 : 0
+    const visibleAnomalies = timeRange === "all" ? anomalies : anomalies.filter((item) => item.tSec <= Number(timeRange))
+    const saveThresholds = async () => {
+        setSavingThresholds(true)
+        try {
+            const payload = await post<{ thresholds: Record<string, number> }>('/api/v1/analysis/thresholds', { thresholds })
+            setThresholds(payload.thresholds)
+            toast.success('Thresholds updated')
+        } catch {
+            toast.error('Unable to save thresholds')
+        } finally {
+            setSavingThresholds(false)
+        }
+    }
+    return <div className="flex min-h-[680px] flex-col gap-3"><div className="flex flex-wrap items-center gap-2 border border-border bg-card p-2"><select value={topicFilter} onChange={(e) => setTopicFilter(e.target.value)} className="h-8 border border-input bg-background px-2 font-mono text-xs"><option value="all">All topics</option>{lanes.map((lane) => <option key={lane.topic} value={lane.topic}>{lane.topic}</option>)}</select><select value={timeRange} onChange={(e) => { const value = e.target.value; setTimeRange(value); setView({ from: 0, to: value === "all" ? duration : Number(value) }) }} className="h-8 border border-input bg-background px-2 font-mono text-xs"><option value="all">Full run</option><option value="30">First 30 sec</option><option value="60">First 60 sec</option></select><span className="ml-auto font-mono text-[10px] text-muted-foreground">{activeRun?.stage ?? "loading"} · {activeRun?.progress ?? 0}% · {lanes.length} lanes</span></div><Card data-testid="thresholds-panel"><CardHeader className="flex-row items-center justify-between border-b border-border py-3"><div><CardTitle className="text-sm">Diagnostics thresholds</CardTitle><p className="font-mono text-[10px] text-muted-foreground">frequency gap · multiplier · silent node span</p></div><Button size="sm" data-testid="save-thresholds" disabled={savingThresholds} onClick={saveThresholds}>{savingThresholds ? "Saving..." : "Save thresholds"}</Button></CardHeader><CardContent className="grid gap-3 p-3 sm:grid-cols-3"><label className="flex flex-col gap-1 text-xs"><span className="font-mono text-[10px] uppercase text-muted-foreground">Frequency gap (sec)</span><input data-testid="threshold-frequency-gap" type="number" step="0.01" value={thresholds["frequency_gap_min_threshold_sec"] ?? 0.08} onChange={(e) => setThresholds({ ...thresholds, frequency_gap_min_threshold_sec: Number(e.target.value) })} className="h-8 border border-input bg-background px-2 font-mono text-xs" /></label><label className="flex flex-col gap-1 text-xs"><span className="font-mono text-[10px] uppercase text-muted-foreground">Multiplier</span><input data-testid="threshold-multiplier" type="number" step="0.1" value={thresholds["frequency_gap_multiplier"] ?? 1.5} onChange={(e) => setThresholds({ ...thresholds, frequency_gap_multiplier: Number(e.target.value) })} className="h-8 border border-input bg-background px-2 font-mono text-xs" /></label><label className="flex flex-col gap-1 text-xs"><span className="font-mono text-[10px] uppercase text-muted-foreground">Silent node span (sec)</span><input data-testid="threshold-silent-span" type="number" step="0.05" value={thresholds["silent_node_min_span_sec"] ?? 0.3} onChange={(e) => setThresholds({ ...thresholds, silent_node_min_span_sec: Number(e.target.value) })} className="h-8 border border-input bg-background px-2 font-mono text-xs" /></label></CardContent></Card><div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[230px_minmax(0,1fr)_380px]"><Card className="min-h-0 overflow-hidden"><CardHeader className="border-b border-border py-3"><CardTitle className="text-sm">Detections <span className="font-mono text-[10px] text-muted-foreground">{visibleAnomalies.length}</span></CardTitle></CardHeader><AnomalyList anomalies={visibleAnomalies} selectedId={selected} severities={[]} onSeveritiesChange={() => { }} onSelect={(anomaly) => { setSelected(anomaly.id); setPlayhead(anomaly.tSec) }} /></Card><Card className="min-w-0 overflow-hidden"><CardHeader className="flex-row items-center justify-between border-b border-border py-3"><div><CardTitle className="text-sm">Message timeline</CardTitle><p className="font-mono text-[10px] text-muted-foreground">{activeRun?.rosbagName ?? "Loading run"} · drag scrub · shift-drag pan</p></div><Badge variant="outline" data-testid="timeline-playhead" className="font-mono text-[10px]">{clock(playhead)}</Badge></CardHeader><CardContent className="p-0 pt-3"><TimelineCanvas durationSec={duration} lanes={lanes} anomalies={visibleAnomalies} playhead={playhead} view={view} selectedAnomalyId={selected} onScrub={setPlayhead} onViewChange={setView} onSelectAnomaly={setSelected} /></CardContent></Card><div className="min-h-0 overflow-auto space-y-3">{selectedResult ? <AIConclusion result={selectedResult} anomaly={visibleAnomalies.find((item) => item.id === selectedResult.anomalyId)} onSeek={setPlayhead} /> : <Card><CardContent className="p-5 text-sm text-muted-foreground">Select a detection to inspect the agent conclusion.</CardContent></Card>}</div></div></div>
+}
+
+function ReportsEnhanced({ overview, activeRun }: { overview: Overview | null; activeRun: AnalysisRun | null }) {
+    const [reports, setReports] = useState<any[]>([])
+    const [busy, setBusy] = useState(false)
+    useEffect(() => { fetcher<{ items: any[] }>("/api/reports").then((payload) => setReports(payload.items)) }, [])
+    const generate = async () => { if (!activeRun) return; setBusy(true); try { const payload = await post<{ report: any }>("/api/reports", { runId: activeRun.id }); setReports([payload.report, ...reports]); toast.success("Report generated") } finally { setBusy(false) } }
+    return <SectionCard title="Report ledger" description="Auditable outputs generated from reviewed diagnosis" actions={<Button size="sm" disabled={busy || !activeRun} onClick={generate}><FileTextIcon data-icon="inline-start" />Generate report</Button>}><div className="flex flex-col divide-y divide-border">{reports.map((report) => <div key={report.id} className="flex flex-wrap items-center gap-3 py-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{report.title}</p><p className="font-mono text-[10px] text-muted-foreground">{report.id} · {report.rosbagName}</p></div><StatusLabel status={report.status} /><Button variant="outline" size="sm" onClick={() => { navigator.clipboard?.writeText(json(report)); toast.success("JSON copied") }}><DownloadIcon data-icon="inline-start" />JSON</Button></div>)}{reports.length === 0 ? <p className="py-8 text-sm text-muted-foreground">No reports yet. Finish a reviewed run to generate the first report.</p> : null}<div className="mt-4 border-t border-border pt-4"><p className="mb-2 font-mono text-[10px] uppercase text-muted-foreground">Current scope</p><pre className="overflow-auto bg-muted/20 p-3 font-mono text-xs text-muted-foreground">{json({ analyzed: overview?.totals.analyzed ?? 0, anomalies: overview?.totals.anomalies ?? 0, activeRun: activeRun?.id ?? null })}</pre></div></div></SectionCard>
+}

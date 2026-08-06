@@ -1,0 +1,9 @@
+/node_modules/
+/.next/
+/.vercel/
+/.snowflake/
+/.v0-trash/
+/test-results/
+/playwright-report/
+/blob-report/
+.env*.local

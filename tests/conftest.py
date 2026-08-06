@@ -1,10 +1,33 @@
-from unittest.mock import AsyncMock
+import os
+import shutil
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
+# Must be set before importing the app so /health reports the test env even
+# when a local .env file overrides APP_ENV.
+os.environ.setdefault("APP_ENV", "test")
+
+from src.api import routes
 from src.main import app
+from src.services.rate_limit import SlidingWindowRateLimiter
+
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "diagnostics"
+DIAGNOSTICS_DATA_DIR = Path.cwd() / "data" / "diagnostics"
+
+
+@pytest.fixture(autouse=True)
+def _isolate_state(tmp_path, monkeypatch):
+    """Isolate per-test persistence and module-level caches."""
+    monkeypatch.setenv("RUN_DB_PATH", str(tmp_path / "runs.db"))
+    monkeypatch.setattr(routes, "_datasets_cache", routes._DatasetsCache(routes._DATASETS_CACHE_TTL_SEC))
+    monkeypatch.setattr(
+        routes,
+        "_rate_limiter",
+        SlidingWindowRateLimiter(routes._RATE_LIMIT_MAX_REQUESTS, routes._RATE_LIMIT_WINDOW_SEC),
+    )
 
 
 @pytest_asyncio.fixture
@@ -16,14 +39,11 @@ async def client():
 
 
 @pytest.fixture
-def mock_llm():
-    """Mock LLM to avoid calling OpenAI during tests.
-
-    Usage in test:
-        def test_something(mock_llm):
-            # LLM calls will return mock response instead of hitting OpenAI
-            ...
-    """
-    mock = AsyncMock()
-    mock.ainvoke.return_value = AsyncMock(content="Mocked LLM response")
-    return mock
+def diagnostics_sample_file():
+    """Copy sample JSONL fixture into data/diagnostics for file-backed tests."""
+    DIAGNOSTICS_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    target = DIAGNOSTICS_DATA_DIR / "sample.jsonl"
+    shutil.copy(FIXTURES_DIR / "sample.jsonl", target)
+    yield "sample.jsonl"
+    if target.exists():
+        target.unlink()
