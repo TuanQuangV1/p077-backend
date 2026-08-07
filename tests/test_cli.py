@@ -119,6 +119,48 @@ def _seed_run(run_id: str = "run_cli_1") -> None:
     )
 
 
+def _seed_debug_run(run_id: str = "run_cli_1") -> None:
+    _seed_run(run_id)
+    run_store.save_run_anomalies(
+        run_id,
+        [
+            {
+                "id": "001",
+                "kind": "frequency_gap",
+                "topic": "/scan",
+                "severity": "medium",
+                "confidence": 0.4,
+                "tSec": 1.0,
+                "endSec": 2.0,
+                "evidence": {"interval_sec": 2.0, "threshold_sec": 0.5},
+            }
+        ],
+    )
+
+
+def _seed_clean_run(run_id: str = "run_cli_clean") -> None:
+    run_store.save_run(
+        {
+            "id": run_id,
+            "rosbagId": "E1-1",
+            "rosbagName": "bag.db3",
+            "robotType": "amr-delivery",
+            "status": "succeeded",
+            "progress": 100,
+            "stage": "done",
+            "startedAt": "2026-08-04T00:00:00+00:00",
+            "finishedAt": "2026-08-04T00:00:01+00:00",
+            "anomalyCount": 0,
+            "worstSeverity": None,
+            "model": "vllm/qwen2.5-coder-32b",
+            "totalLatencyMs": 12,
+            "promptTokens": 0,
+            "completionTokens": 0,
+            "costUsd": 0.0,
+        }
+    )
+
+
 def test_datasets_list_json(experiments_dir: Path, capsys: pytest.CaptureFixture) -> None:
     _make_bag_folder(experiments_dir)
     code, out, _ = _run(capsys, "datasets", "list")
@@ -399,6 +441,179 @@ def test_explain(tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pyt
     code, out, _ = _run(capsys, "explain", str(summary_file))
     assert code == 0
     assert json.loads(out)["root_cause"] == "rc"
+
+
+def test_analyze_model_label(experiments_dir: Path, capsys: pytest.CaptureFixture) -> None:
+    _make_bag_folder(experiments_dir)
+    code, out, _ = _run(capsys, "analyze", "E1-1", "--model", "custom-model")
+    assert code == 0
+    assert json.loads(out)["run"]["model"] == "custom-model"
+
+
+def test_diagnose_threshold_override(capsys: pytest.CaptureFixture) -> None:
+    code, out, _ = _run(
+        capsys,
+        "diagnose",
+        str(FIXTURES_DIR / "sample.jsonl"),
+        "--threshold",
+        "frequency_gap_min_threshold_sec=0.5",
+    )
+    assert code == 0
+    assert json.loads(out)["summary"]["total_messages"] == 2
+
+
+def test_diagnose_table(experiments_dir: Path, capsys: pytest.CaptureFixture) -> None:
+    folder = _make_bag_folder(experiments_dir)
+    code, out, _ = _run(capsys, "-o", "table", "diagnose", str(folder / "bag.db3"))
+    assert code == 0
+    assert "messages=" in out
+    assert "detections=" in out
+
+
+def test_runs_show_table(capsys: pytest.CaptureFixture) -> None:
+    _seed_run()
+    code, out, _ = _run(capsys, "-o", "table", "runs", "show", "run_cli_1")
+    assert code == 0
+    assert "run run_cli_1" in out
+    assert "frequency_gap" in out
+
+
+def test_review_list_filters_pending(capsys: pytest.CaptureFixture) -> None:
+    _seed_run()
+    run_store.save_review_items(
+        [
+            {
+                "id": "review_cli_approved",
+                "runId": "run_cli_1",
+                "anomalyId": "anomaly_001",
+                "reviewStatus": "approved",
+                "rootCause": "Producer thread starvation paused publishing.",
+                "explanation": "Frequent publish gap detected on /scan.",
+            }
+        ]
+    )
+    code, out, _ = _run(capsys, "review", "list")
+    assert code == 0
+    ids = [item["id"] for item in json.loads(out)]
+    assert ids == ["review_cli_1"]
+    assert "review_cli_approved" not in ids
+
+
+def test_explain_missing_file(capsys: pytest.CaptureFixture) -> None:
+    code, _, err = _run(capsys, "explain", "does-not-exist.json")
+    assert code == 1
+    assert "error" in err
+
+
+def test_explain_invalid_json(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not valid json", encoding="utf-8")
+    code, _, err = _run(capsys, "explain", str(bad))
+    assert code == 1
+    assert "error" in err
+
+
+def test_chat_llm_error(capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("src.cli.is_llm_configured", lambda: True)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("upstream unavailable")
+
+    monkeypatch.setattr("src.cli.chat_completion", boom)
+    code, _, err = _run(capsys, "chat", "hello")
+    assert code == 1
+    assert "upstream unavailable" in err
+
+
+def test_hilt_iterate_test_pass(hilt_dir: Path, capsys: pytest.CaptureFixture) -> None:
+    _seed_debug_run()
+    code, out, _ = _run(capsys, "hilt", "iterate", "run_cli_1", "--test-pass", "--test-comment", "ok")
+    assert code == 0
+    iterations = run_store.list_hilt_iterations("run_cli_1", "anomaly_001")
+    assert len(iterations) == 1
+    assert iterations[0]["test_pass"] is True
+    assert iterations[0]["test_comment"] == "ok"
+    assert "Root Cause" in out
+
+
+def test_hilt_iterate_missing_run(hilt_dir: Path, capsys: pytest.CaptureFixture) -> None:
+    code, _, err = _run(capsys, "hilt", "iterate", "ghost")
+    assert code == 1
+    assert "not found" in err
+
+
+def test_hilt_iterate_no_anomalies(hilt_dir: Path, capsys: pytest.CaptureFixture) -> None:
+    _seed_clean_run()
+    code, _, err = _run(capsys, "hilt", "iterate", "run_cli_clean")
+    assert code == 1
+    assert "no anomalies" in err
+
+
+def test_hilt_iterate_anomaly_not_found(hilt_dir: Path, capsys: pytest.CaptureFixture) -> None:
+    _seed_debug_run()
+    code, _, err = _run(capsys, "hilt", "iterate", "run_cli_1", "--anomaly-id", "anomaly_999")
+    assert code == 1
+    assert "anomaly not found" in err
+
+
+def test_hilt_triggers_no_iterations(hilt_dir: Path, capsys: pytest.CaptureFixture) -> None:
+    _seed_debug_run()
+    code, out, _ = _run(capsys, "hilt", "triggers", "run_cli_1")
+    assert code == 0
+    body = json.loads(out)
+    assert body["triggers"] == []
+    assert "No iterations yet" in body["message"]
+
+
+def test_hilt_triggers_missing_run(hilt_dir: Path, capsys: pytest.CaptureFixture) -> None:
+    code, _, err = _run(capsys, "hilt", "triggers", "ghost")
+    assert code == 1
+    assert "not found" in err
+
+
+def test_hilt_triggers_no_anomalies(hilt_dir: Path, capsys: pytest.CaptureFixture) -> None:
+    _seed_clean_run()
+    code, _, err = _run(capsys, "hilt", "triggers", "run_cli_clean")
+    assert code == 1
+    assert "no anomalies" in err
+
+
+def test_hilt_summary(hilt_dir: Path, capsys: pytest.CaptureFixture) -> None:
+    _seed_debug_run()
+    _run(capsys, "hilt", "iterate", "run_cli_1", "--test-pass", "--test-comment", "saw nothing")
+    code, out, _ = _run(capsys, "hilt", "summary", "run_cli_1")
+    assert code == 0
+    body = json.loads(out)
+    assert body["run_id"] == "run_cli_1"
+    assert body["anomaly_id"] == "anomaly_001"
+    assert len(body["iterations"]) == 1
+
+
+def test_hilt_summary_missing_run(hilt_dir: Path, capsys: pytest.CaptureFixture) -> None:
+    code, _, err = _run(capsys, "hilt", "summary", "ghost")
+    assert code == 1
+    assert "not found" in err
+
+
+def test_hilt_review_no_ai_results(hilt_dir: Path, capsys: pytest.CaptureFixture) -> None:
+    _seed_clean_run()
+    code, _, err = _run(capsys, "hilt", "review", "run_cli_clean")
+    assert code == 1
+    assert "no AI results" in err
+
+
+def test_export_windows_out_error(experiments_dir: Path, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    _make_bag_folder(experiments_dir)
+    missing_dir = tmp_path / "no" / "such" / "dir.jsonl"
+    code, _, err = _run(capsys, "export", "windows", "E1-1", "--out", str(missing_dir))
+    assert code == 1
+    assert "error" in err
+
+
+def test_hilt_unknown_subcommand_exits_2() -> None:
+    with pytest.raises(SystemExit) as exc:
+        main(["hilt", "bogus", "run_cli_1"])
+    assert exc.value.code == 2
 
 
 def test_no_command_exits_2() -> None:

@@ -303,6 +303,8 @@ def _write_minimal_metadata(folder: Path, file_name: str) -> None:
 
 
 def _extract_zip_safely(archive: Path, target: Path) -> None:
+    written = 0
+    target = target.resolve()
     with zipfile.ZipFile(archive) as zf:
         for member in zf.infolist():
             member_path = Path(member.filename)
@@ -310,8 +312,21 @@ def _extract_zip_safely(archive: Path, target: Path) -> None:
                 raise ValueError("zip contains unsafe path")
         total_uncompressed = sum(member.file_size for member in zf.infolist())
         if total_uncompressed > MAX_UPLOAD_BYTES:
-            raise ValueError("zip uncompressed size exceeds upload limit")
-        zf.extractall(target)
+            raise ValueError("zip uncompressed size exceeds upload size limit")
+        for member in zf.infolist():
+            dest = (target / member.filename).resolve()
+            if dest != target and target not in dest.parents:
+                raise ValueError("zip contains unsafe path")
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(member) as src, dest.open("wb") as out:
+                while True:
+                    chunk = src.read(_COPY_CHUNK_BYTES)
+                    if not chunk:
+                        break
+                    written += len(chunk)
+                    if written > MAX_UPLOAD_BYTES:
+                        raise ValueError("zip uncompressed size exceeds upload size limit")
+                    out.write(chunk)
     metadata = target / "metadata.yaml"
     if metadata.exists():
         return

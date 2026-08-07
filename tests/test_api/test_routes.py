@@ -1,3 +1,4 @@
+import asyncio
 import io
 import json
 import sqlite3
@@ -8,8 +9,10 @@ from pathlib import Path
 import pytest
 import yaml  # type: ignore[import-untyped]
 
+from src.api import routes
 from src.services.analysis import _ai_result_from_explanation, _canned_ai_results
 from src.services import run_store
+from src.services.rate_limit import SlidingWindowRateLimiter
 
 
 def _seed_review_item(
@@ -209,6 +212,38 @@ async def test_health(client):
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_returns_429_over_threshold(client, monkeypatch):
+    """The router's real rate-limit dependency returns 429 past the boundary."""
+    monkeypatch.setattr("src.api.routes._RATE_LIMIT_MAX_REQUESTS", 3)
+    monkeypatch.setattr(
+        "src.api.routes._rate_limiter",
+        SlidingWindowRateLimiter(3, routes._RATE_LIMIT_WINDOW_SEC),
+    )
+    for _ in range(3):
+        ok = await client.post("/api/v1/analysis", json={"rosbag_id": "nope"})
+        assert ok.status_code == 404  # dependency ran before handler
+    blocked = await client.post("/api/v1/analysis", json={"rosbag_id": "nope"})
+    assert blocked.status_code == 429
+    assert blocked.json()["detail"] == "rate limit exceeded"
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_resets_after_window(client, monkeypatch):
+    """A short window lets the same client retry after it expires."""
+    monkeypatch.setattr("src.api.routes._RATE_LIMIT_MAX_REQUESTS", 1)
+    monkeypatch.setattr("src.api.routes._rate_limiter", SlidingWindowRateLimiter(1, 0.05))
+    monkeypatch.setattr("src.api.routes.is_llm_configured", lambda: False)
+
+    first = await client.post("/api/v1/chat", json={"message": "hi"})
+    assert first.status_code == 200
+    blocked = await client.post("/api/v1/chat", json={"message": "hi"})
+    assert blocked.status_code == 429
+    await asyncio.sleep(0.1)
+    retried = await client.post("/api/v1/chat", json={"message": "hi"})
+    assert retried.status_code == 200
 
 
 @pytest.mark.asyncio
@@ -440,6 +475,39 @@ async def test_create_analysis_reads_all_db3_shards(client, experiments_dir):
 
 
 @pytest.mark.asyncio
+async def test_create_analysis_reports_failed_run_when_shard_broken(client, experiments_dir):
+    """A healthy first shard that later hits a corrupt shard fails the run."""
+    folder = experiments_dir / "E-shard"
+    folder.mkdir()
+    for name, stamps in (
+        ("bag_0.db3", [1_000_000_000, 1_200_000_000]),
+        ("bag_1.db3", [5_000_000_000, 5_200_000_000]),
+    ):
+        conn = sqlite3.connect(folder / name)
+        conn.execute("CREATE TABLE topics(id INTEGER PRIMARY KEY, name TEXT, type TEXT)")
+        conn.execute("CREATE TABLE messages(id INTEGER PRIMARY KEY, topic_id INTEGER, timestamp INTEGER, data BLOB)")
+        conn.execute("INSERT INTO topics VALUES (1, '/scan', 'sensor_msgs/msg/LaserScan')")
+        conn.executemany("INSERT INTO messages(topic_id, timestamp) VALUES (1, ?)", [(t,) for t in stamps])
+        conn.commit()
+        conn.close()
+    # Corrupt the second shard so reading it mid-stream fails.
+    (folder / "bag_1.db3").write_bytes(b"not-a-database")
+
+    response = await client.post("/api/v1/analysis", json={"rosbag_id": "E-shard"})
+    assert response.status_code == 202
+    run = response.json()["run"]
+    assert run["status"] == "failed"
+    assert run["stage"] == "parse"
+    assert run["anomalyCount"] == 0
+
+    detail = await client.get(f"/api/v1/analysis/{run['id']}")
+    assert detail.status_code == 200
+    body = detail.json()
+    assert body["run"]["status"] == "failed"
+    assert body["anomalies"] == []
+
+
+@pytest.mark.asyncio
 async def test_create_analysis_reports_failed_run_for_bad_bag(client, experiments_dir):
     folder = experiments_dir / "E1-1"
     folder.mkdir()
@@ -584,6 +652,78 @@ async def test_review_decision_reject_contract(client):
     assert decided is not None
     assert decided["reviewStatus"] == "rejected"
     assert decided["verdict"] == "rejected"
+
+
+@pytest.mark.asyncio
+async def test_hitl_flow_queue_then_approve_from_real_analysis(client, experiments_dir):
+    """Human-in-the-loop through the real backend: analysis -> pending review
+    queue -> approve/reject -> persisted verdict."""
+    folder = experiments_dir / "E-hilt"
+    _write_dataset(
+        folder,
+        stamps_ns=[1_000_000_000, 1_100_000_000, 1_200_000_000, 3_200_000_000, 3_300_000_000],
+    )
+
+    # Running a real analysis generates pending review items.
+    created = await client.post("/api/v1/analysis", json={"rosbag_id": "E-hilt"})
+    assert created.status_code == 202
+    run = created.json()["run"]
+    assert run["status"] == "succeeded"
+    assert run["anomalyCount"] > 0
+
+    # The queue seeds from those pending items.
+    queue = await client.get("/api/v1/review")
+    assert queue.status_code == 200
+    pending = [i for i in queue.json()["items"] if i["reviewStatus"] == "pending" and i["runId"] == run["id"]]
+    assert pending, "analysis should produce at least one pending review item"
+
+    review_id = pending[0]["id"]
+    detail = await client.get(f"/api/v1/analysis/{run['id']}")
+    assert detail.status_code == 200
+    ai = next(r for r in detail.json()["aiResults"] if r["anomalyId"] == pending[0]["anomalyId"])
+    assert ai["reviewStatus"] == "pending"
+
+    # Approve through the real decision endpoint.
+    approved = await client.post(
+        f"/api/v1/review/{review_id}/decision",
+        json={"verdict": "approved", "reviewer": "alice", "notes": "confirmed"},
+    )
+    assert approved.status_code == 200
+    assert approved.json()["verdict"] == "approved"
+
+    # The approved item is removed from the pending queue...
+    after = await client.get("/api/v1/review")
+    assert after.status_code == 200
+    assert all(i["id"] != review_id for i in after.json()["items"])
+    # ...and persisted as approved in the store.
+    stored = run_store.get_review_item(review_id)
+    assert stored is not None
+    assert stored["reviewStatus"] == "approved"
+    assert stored["verdict"] == "approved"
+
+
+@pytest.mark.asyncio
+async def test_hitl_queue_rejects_a_real_item(client, experiments_dir):
+    folder = experiments_dir / "E002"
+    _write_dataset(folder, stamps_ns=[1_000_000_000, 1_100_000_000, 1_200_000_000, 3_200_000_000, 3_300_000_000])
+
+    created = await client.post("/api/v1/analysis", json={"rosbag_id": "E002"})
+    assert created.status_code == 202
+    run = created.json()["run"]
+
+    queue = await client.get("/api/v1/review")
+    pending = [i for i in queue.json()["items"] if i["reviewStatus"] == "pending" and i["runId"] == run["id"]]
+    assert pending
+
+    rejected = await client.post(
+        f"/api/v1/review/{pending[0]['id']}/decision",
+        json={"verdict": "rejected", "reviewer": "bob"},
+    )
+    assert rejected.status_code == 200
+    assert rejected.json()["verdict"] == "rejected"
+    decided = run_store.get_review_item(pending[0]["id"])
+    assert decided is not None
+    assert decided["reviewStatus"] == "rejected"
 
 
 @pytest.mark.asyncio
@@ -748,6 +888,55 @@ async def test_upload_zip_rejects_oversized_uncompressed_content(client, experim
     )
     assert response.status_code == 413
     assert "size limit" in response.json()["detail"]
+
+
+def _make_lying_zip(data: bytes) -> bytes:
+    """Build a zip whose member announces a tiny uncompressed size while its
+    decompressed content is `data` bytes (a header-lie zip bomb)."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("bomb.db3", data)
+    raw = bytearray(buf.getvalue())
+    offset = 0
+    while offset + 4 <= len(raw):
+        sig = int.from_bytes(raw[offset : offset + 4], "little")
+        if sig == 0x04034B50:
+            raw[offset + 22 : offset + 26] = (5).to_bytes(4, "little")
+            name_len = int.from_bytes(raw[offset + 26 : offset + 28], "little")
+            extra_len = int.from_bytes(raw[offset + 28 : offset + 30], "little")
+            offset += 30 + name_len + extra_len
+        elif sig == 0x02014B50:
+            raw[offset + 24 : offset + 28] = (5).to_bytes(4, "little")
+            name_len = int.from_bytes(raw[offset + 28 : offset + 30], "little")
+            extra_len = int.from_bytes(raw[offset + 30 : offset + 32], "little")
+            comment_len = int.from_bytes(raw[offset + 32 : offset + 34], "little")
+            offset += 46 + name_len + extra_len + comment_len
+        elif sig == 0x06054B50:
+            break
+        else:
+            break
+    return bytes(raw)
+
+
+@pytest.mark.asyncio
+async def test_upload_zip_bomb_returns_413_and_cleans_up(client, experiments_dir, monkeypatch):
+    # Declared header sum (~5 bytes) passes MAX, compressed payload fits under
+    # the limit, but decompression expands far beyond it — a real zip bomb.
+    monkeypatch.setattr("src.services.experiments.MAX_UPLOAD_BYTES", 1000)
+    bomb = _make_lying_zip(b"x" * 20480)
+    assert len(bomb) < 900  # compressed form is small enough to be stored;
+    if not (len(bomb) < 900):
+        pytest.skip("compressed bomb too large for test limit")
+    buf = io.BytesIO()
+    buf.write(bomb)
+    response = await client.post(
+        "/api/v1/datasets/upload",
+        files={"file": ("boom.zip", buf.getvalue(), "application/zip")},
+    )
+    assert response.status_code == 413
+    assert "size limit" in response.json()["detail"]
+    # No leftover dataset folder from the failed bomb upload.
+    assert list(experiments_dir.iterdir()) == []
 
 
 @pytest.mark.asyncio

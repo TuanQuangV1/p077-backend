@@ -54,30 +54,9 @@ export function RavConsole() {
     const [timeRange, setTimeRange] = useState("all")
 
     const refreshBags = () => {
-        // #region agent debug log
-        fetch('http://127.0.0.1:7428/ingest/0de14040-a27b-427b-9e1d-d3337aaee23b', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '83b68f' },
-            body: JSON.stringify({ sessionId: '83b68f', location: 'rav-console.tsx:refreshBags:start', message: 'refreshBags called', data: {}, timestamp: Date.now(), hypothesisId: 'H1,H2' })
-        }).catch(() => {});
-        // #endregion
         fetcher<{ items: Rosbag[] }>("/api/rosbags").then((x) => {
-            // #region agent debug log
-            fetch('http://127.0.0.1:7428/ingest/0de14040-a27b-427b-9e1d-d3337aaee23b', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '83b68f' },
-                body: JSON.stringify({ sessionId: '83b68f', location: 'rav-console.tsx:refreshBags:success', message: 'refreshBags success', data: { count: x.items.length }, timestamp: Date.now(), hypothesisId: 'H1,H2' })
-            }).catch(() => {});
-            // #endregion
             setBags(x.items)
-        }).catch((err) => {
-            // #region agent debug log
-            fetch('http://127.0.0.1:7428/ingest/0de14040-a27b-427b-9e1d-d3337aaee23b', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '83b68f' },
-                body: JSON.stringify({ sessionId: '83b68f', location: 'rav-console.tsx:refreshBags:error', message: 'refreshBags error', data: { error: String(err) }, timestamp: Date.now(), hypothesisId: 'H1,H2' })
-            }).catch(() => {});
-            // #endregion
+        }).catch(() => {
             toast.error("Cannot load datasets")
         })
     }
@@ -185,35 +164,13 @@ function DatasetRegistry({ bags, onRefresh, navigate }: { bags: Rosbag[]; onRefr
 
     const upload = async (file: File | undefined) => {
         if (!file) return
-        // #region agent debug log
-        fetch('http://127.0.0.1:7428/ingest/0de14040-a27b-427b-9e1d-d3337aaee23b', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '83b68f' },
-            body: JSON.stringify({ sessionId: '83b68f', location: 'rav-console.tsx:upload:start', message: 'upload called', data: { fileName: file.name, fileSize: file.size }, timestamp: Date.now(), hypothesisId: 'H1,H3' })
-        }).catch(() => {});
-        // #endregion
         setUploading(true)
         try {
             await uploadRosbag(file)
-            // #region agent debug log
-            fetch('http://127.0.0.1:7428/ingest/0de14040-a27b-427b-9e1d-d3337aaee23b', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '83b68f' },
-                body: JSON.stringify({ sessionId: '83b68f', location: 'rav-console.tsx:upload:success', message: 'uploadRosbag success', data: {}, timestamp: Date.now(), hypothesisId: 'H1,H3' })
-            }).catch(() => {});
-            // #endregion
             toast.success("Rosbag uploaded", { description: file.name })
             onRefresh()
         } catch (err) {
             const _err = err as Error;
-            // #region agent debug log
-            fetch('http://127.0.0.1:7428/ingest/0de14040-a27b-427b-9e1d-d3337aaee23b', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '83b68f' },
-                body: JSON.stringify({ sessionId: '83b68f', location: 'rav-console.tsx:upload:error', message: 'uploadRosbag error', data: { error: _err?.message }, timestamp: Date.now(), hypothesisId: 'H1,H3' })
-            }).catch(() => {});
-            // #endregion
-            console.error('[DEBUG upload] Error:', _err?.message);
             toast.error("Upload failed: " + (_err?.message ?? "unsupported file type"))
         } finally {
             setUploading(false)
