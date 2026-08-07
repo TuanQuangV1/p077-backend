@@ -33,7 +33,7 @@ function LogStatCard({
     <div
       className="flex flex-col items-center justify-center rounded-lg border p-3"
       style={{
-        borderColor: isAlert ? color : "hsl(var(--border))",
+        borderColor: isAlert ? color : "var(--border)",
         backgroundColor: isAlert ? `${color}10` : "transparent",
       }}
     >
@@ -45,7 +45,7 @@ function LogStatCard({
       </span>
       <span
         className="text-[10px] uppercase tracking-wider"
-        style={{ color: isAlert ? color : "hsl(var(--muted-foreground))" }}
+        style={{ color: isAlert ? color : "var(--muted-foreground)" }}
       >
         {label}
       </span>

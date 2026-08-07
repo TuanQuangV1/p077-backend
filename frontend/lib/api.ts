@@ -21,6 +21,8 @@ export function resolveApiUrl(url: string): string {
         if (suffix.includes("/simulation")) return url
         if (suffix.includes("/timeline")) return url
         if (suffix.includes("/ai")) return url
+        if (suffix.includes("/logs")) return url
+        if (suffix.includes("/health")) return `${API_V1_BASE}/analysis/${suffix}`
         const [runId] = suffix.split("/")
         return `${API_V1_BASE}/analysis/${runId}`
     }
