@@ -48,3 +48,38 @@ The LLM layer (`src/services/llm.py:151`, `explain_diagnostics`):
 - `src/services/llm.py:151` — `explain_diagnostics` system prompt + deterministic fallback
 - `docs/evaluation.md` §4 — real E1-1 output (6 anomalies, 268 ms parse time)
 - `tests/test_diagnostics.py::test_explain_diagnostics_serializes_summary_for_prompt` — prompt-injection assertion
+
+## Implementation Notes
+
+Three runtime helpers keep the pipeline fast and format-correct without
+requiring a separate metadata step from the user:
+
+### Upload-time SQLite indexes
+
+`save_uploaded_rosbag` calls `_ensure_timestamp_index()` on every `.db3` shard
+(`experiments.py:381-382`). Two indexes are created:
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_messages_topic_time ON messages(topic_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_messages_time ON messages(timestamp);
+```
+
+Index creation is **best-effort**: a failed attempt (e.g. a file with no
+`messages` table) logs a `bag_stream.decode_fallback` warning and does not block
+the upload. When indexes are absent, `iter_rosbag2_messages` falls back to a
+Python-side sort.
+
+### Python-side stable sort in `iter_rosbag2_messages`
+
+`iter_rosbag2_messages` (`bag_stream.py:134-141`) omits `ORDER BY` from the SQL
+query and instead sorts the fetched rows with `numpy.argsort(kind="stable")`.
+The SQL planner therefore uses the upload-time indexes (or a table scan if
+they are absent); it never performs an unindexed external sort.
+
+### `.mcap` uploads do not need a fabricated `metadata.yaml`
+
+`_read_bagfile_info_from_mcap()` (`experiments.py:178-228`) walks the `.mcap`
+file index via `rosbags.highlevel.AnyReader` to derive `message_count`,
+`duration`, and `topics_with_message_count`. The returned dict matches the shape
+produced by `_read_bagfile_info_from_db3()` and the YAML reader, so callers
+receive a uniform shape regardless of upload format.

@@ -38,6 +38,13 @@ class Settings(BaseSettings):
     # Vector Store
     chroma_persist_dir: str = "./data/chroma"
 
+    # HILT (human-in-the-loop) iterative debug triggers
+    hilt_max_iterations: int = 5
+    hilt_uncertainty_threshold: float = 0.5
+    hilt_loop_similarity_threshold: float = 0.85
+    hilt_max_failures: int = 3
+    hilt_expert_email: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:
