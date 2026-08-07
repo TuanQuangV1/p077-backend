@@ -93,6 +93,11 @@ class AnalysisDetailResponse(BaseModel):
     rosbag: DatasetItem | None = None
     anomalies: list[AnomalySummary]
     aiResults: list[AIResultSummary]
+    health: dict[str, object] = Field(default_factory=dict)
+
+
+class HealthSummaryResponse(BaseModel):
+    health: dict[str, object]
 
 
 class AnalysisCreateRequest(BaseModel):
@@ -223,3 +228,35 @@ class DiagnosticsExplanationResponse(BaseModel):
     root_cause: str
     recommended_actions: list[str]
     explanation: str
+
+
+class HiltIteration(BaseModel):
+    iteration: int
+    timestamp: str
+    llm_output: dict[str, object]
+    engineer_feedback: dict[str, object]
+
+
+class HiltSummary(BaseModel):
+    run_id: str
+    anomaly_id: str
+    triggered_at: str
+    trigger_reasons: list[str]
+    iterations: list[HiltIteration]
+    diagnostic_summary: dict[str, object]
+    failure_count: int
+
+
+class HiltFixRequest(BaseModel):
+    corrected_root_cause: str
+    corrected_actions: list[str]
+    notes: str | None = None
+
+
+class HiltFixResponse(BaseModel):
+    ok: bool
+    message: str
+
+
+class HiltTriggerReason(BaseModel):
+    reason: str

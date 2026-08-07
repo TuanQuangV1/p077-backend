@@ -64,6 +64,28 @@ CREATE TABLE IF NOT EXISTS review_items (
     decided_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_review_status ON review_items(review_status);
+CREATE TABLE IF NOT EXISTS hilt_iterations (
+    run_id TEXT NOT NULL,
+    anomaly_id TEXT NOT NULL,
+    iteration INTEGER NOT NULL,
+    llm_root_cause TEXT NOT NULL,
+    llm_actions TEXT NOT NULL,
+    llm_explanation TEXT NOT NULL,
+    llm_confidence REAL NOT NULL,
+    test_pass INTEGER NOT NULL,
+    test_comment TEXT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (run_id, anomaly_id, iteration)
+);
+CREATE TABLE IF NOT EXISTS expert_fixes (
+    run_id TEXT NOT NULL,
+    anomaly_id TEXT NOT NULL,
+    root_cause TEXT NOT NULL,
+    actions TEXT NOT NULL,
+    notes TEXT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (run_id, anomaly_id)
+);
 """
 
 
@@ -276,3 +298,135 @@ def _review_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
+
+
+@_with_conn
+def save_hilt_iteration(
+    conn: sqlite3.Connection,
+    run_id: str,
+    anomaly_id: str,
+    iteration: int,
+    llm_root_cause: str,
+    llm_actions: list[str],
+    llm_explanation: str,
+    llm_confidence: float,
+    test_pass: int,
+    test_comment: str | None,
+) -> None:
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO hilt_iterations (
+            run_id, anomaly_id, iteration, llm_root_cause, llm_actions,
+            llm_explanation, llm_confidence, test_pass, test_comment, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            run_id,
+            anomaly_id,
+            iteration,
+            llm_root_cause,
+            json.dumps(llm_actions),
+            llm_explanation,
+            llm_confidence,
+            test_pass,
+            test_comment,
+            _now_iso(),
+        ),
+    )
+    conn.commit()
+
+
+@_with_conn
+def list_hilt_iterations(conn: sqlite3.Connection, run_id: str, anomaly_id: str) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT run_id, anomaly_id, iteration, llm_root_cause, llm_actions,
+               llm_explanation, llm_confidence, test_pass, test_comment, created_at
+        FROM hilt_iterations
+        WHERE run_id = ? AND anomaly_id = ?
+        ORDER BY iteration
+        """,
+        (run_id, anomaly_id),
+    ).fetchall()
+    return [
+        {
+            "run_id": row["run_id"],
+            "anomaly_id": row["anomaly_id"],
+            "iteration": row["iteration"],
+            "llm_root_cause": row["llm_root_cause"],
+            "llm_actions": json.loads(row["llm_actions"]) if row["llm_actions"] else [],
+            "llm_explanation": row["llm_explanation"],
+            "llm_confidence": row["llm_confidence"],
+            "test_pass": bool(row["test_pass"]),
+            "test_comment": row["test_comment"],
+            "created_at": row["created_at"],
+        }
+        for row in rows
+    ]
+
+
+@_with_conn
+def get_hilt_iteration(
+    conn: sqlite3.Connection, run_id: str, anomaly_id: str, iteration: int
+) -> dict[str, Any] | None:
+    row = conn.execute(
+        """
+        SELECT run_id, anomaly_id, iteration, llm_root_cause, llm_actions,
+               llm_explanation, llm_confidence, test_pass, test_comment, created_at
+        FROM hilt_iterations
+        WHERE run_id = ? AND anomaly_id = ? AND iteration = ?
+        """,
+        (run_id, anomaly_id, iteration),
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "run_id": row["run_id"],
+        "anomaly_id": row["anomaly_id"],
+        "iteration": row["iteration"],
+        "llm_root_cause": row["llm_root_cause"],
+        "llm_actions": json.loads(row["llm_actions"]) if row["llm_actions"] else [],
+        "llm_explanation": row["llm_explanation"],
+        "llm_confidence": row["llm_confidence"],
+        "test_pass": bool(row["test_pass"]),
+        "test_comment": row["test_comment"],
+        "created_at": row["created_at"],
+    }
+
+
+@_with_conn
+def save_expert_fix(
+    conn: sqlite3.Connection,
+    run_id: str,
+    anomaly_id: str,
+    root_cause: str,
+    actions: list[str],
+    notes: str | None,
+) -> None:
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO expert_fixes (
+            run_id, anomaly_id, root_cause, actions, notes, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (run_id, anomaly_id, root_cause, json.dumps(actions), notes, _now_iso()),
+    )
+    conn.commit()
+
+
+@_with_conn
+def get_expert_fix(conn: sqlite3.Connection, run_id: str, anomaly_id: str) -> dict[str, Any] | None:
+    row = conn.execute(
+        "SELECT * FROM expert_fixes WHERE run_id = ? AND anomaly_id = ?",
+        (run_id, anomaly_id),
+    ).fetchone()
+    if row is None:
+        return None
+    return {
+        "run_id": row["run_id"],
+        "anomaly_id": row["anomaly_id"],
+        "root_cause": row["root_cause"],
+        "actions": json.loads(row["actions"]) if row["actions"] else [],
+        "notes": row["notes"],
+        "created_at": row["created_at"],
+    }

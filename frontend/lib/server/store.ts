@@ -302,6 +302,8 @@ export const KIND_LABEL: Record<AnomalyKind, string> = {
   nav_recovery: "Nav recovery",
   topic_hz_drop: "Rate drop",
   message_drop: "Message drop",
+  header_latency: "Header latency",
+  timestamp_jitter: "Timestamp jitter",
 }
 
 /* ------------------------------------------------------------------ */
@@ -632,7 +634,7 @@ function buildVllmRequests(runs: AnalysisRun[], count = 96): VllmRequest[] {
 /* reports                                                             */
 /* ------------------------------------------------------------------ */
 
-function buildReports(runs: AnalysisRun[], results: AIResult[]): Report[] {
+function buildReports(runs: AnalysisRun[], results: AIResult[], anomalies: Anomaly[]): Report[] {
   const done = runs.filter((r) => r.status === "succeeded").slice(0, 5)
   return done.map((run, i) => {
     const rs = results.filter((x) => x.runId === run.id)
@@ -646,13 +648,14 @@ function buildReports(runs: AnalysisRun[], results: AIResult[]): Report[] {
       author: pick(r, ["m.oyelaran", "s.kobayashi", "d.novak", "a.fernandes"]),
       status: i < 3 ? "published" : "draft",
       summary: `Run ${run.id} surfaced ${run.anomalyCount} anomalies across ${new Set(rs.flatMap((x) => x.evidence.map((e) => e.topic))).size} topics. The dominant failure chain starts with sensor/transport degradation and propagates into localization and control. ${rs.filter((x) => x.reviewStatus === "approved").length} conclusions were approved by a human reviewer.`,
-      keyIssues: rs.slice(0, 3).map((x) => ({
-        title: anomalyTemplate(
-          (data().anomalies.find((a) => a.id === x.anomalyId)?.kind ?? "tf_timeout") as AnomalyKind,
-        ).title,
-        severity: data().anomalies.find((a) => a.id === x.anomalyId)?.severity ?? "medium",
-        rootCause: x.rootCause,
-      })),
+      keyIssues: rs.slice(0, 3).map((x) => {
+        const anomaly = anomalies.find((a) => a.id === x.anomalyId)
+        return {
+          title: anomalyTemplate(anomaly?.kind ?? "tf_timeout").title,
+          severity: anomaly?.severity ?? "medium",
+          rootCause: x.rootCause,
+        }
+      }),
       recommendations: Array.from(new Set(rs.flatMap((x) => x.suggestedFix))).slice(0, 5),
       approvedCount: rs.filter((x) => x.reviewStatus === "approved").length,
       rejectedCount: rs.filter((x) => x.reviewStatus === "rejected").length,
@@ -676,10 +679,7 @@ interface Dataset {
   reports: Report[]
 }
 
-let cache: Dataset | null = null
-
-export function data(): Dataset {
-  if (cache) return cache
+function buildDataset(): Dataset {
   const rosbags = buildRosbags()
   const runs = buildRuns(rosbags)
   const anomalies: Anomaly[] = []
@@ -692,7 +692,7 @@ export function data(): Dataset {
     aiResults.push(...aiResultsForRun(run.id, anoms, run.model))
     logs.push(...logsForRun(run.id, bag.durationSec, anoms))
   }
-  cache = {
+  const dataset: Dataset = {
     rosbags,
     runs,
     anomalies,
@@ -703,8 +703,15 @@ export function data(): Dataset {
     feedback: [],
     reports: [],
   }
-  cache.reports = buildReports(runs, aiResults)
-  return cache
+  dataset.reports = buildReports(runs, aiResults, anomalies)
+  return dataset
+}
+
+// Eager initialization at module load - eliminates cold start on first request
+const datasetCache = buildDataset()
+
+export function data(): Dataset {
+  return datasetCache
 }
 
 /* ------------------------------------------------------------------ */
@@ -750,7 +757,7 @@ export function createReport(runId: string): Report {
   if (!run) throw new Error(`run ${runId} not found`)
   const existing = d.reports.find((r) => r.runId === runId)
   if (existing) return existing
-  const [report] = buildReports([run], d.aiResults)
+  const [report] = buildReports([run], d.aiResults, d.anomalies)
   d.reports.unshift(report)
   return report
 }

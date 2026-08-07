@@ -74,6 +74,17 @@ def test_iter_rosbag2_messages_orders_by_timestamp(tmp_path: Path) -> None:
     assert rows[0]["message_type"] == "sensor_msgs/msg/LaserScan"
 
 
+def test_iter_rosbag2_messages_returns_sorted_without_sql_order_by(tmp_path: Path) -> None:
+    bag_path = _make_minimal_bag(
+        tmp_path / "unsorted.db3", [3_000_000_000, 1_000_000_000, 2_000_000_000]
+    )
+    rows = list(iter_rosbag2_messages(bag_path))
+    assert [row["timestamp"] for row in rows] == [1.0, 2.0, 3.0]
+    assert all(row["topic"] == "/scan" for row in rows)
+    assert all(row["node"] == "" for row in rows)
+    assert all(row["message_type"] == "sensor_msgs/msg/LaserScan" for row in rows)
+
+
 def test_iter_rosbag2_decoded_reads_header_from_real_bag(rosbag2_bag_dir: Any) -> None:
     rows = list(iter_rosbag2_decoded(rosbag2_bag_dir))
     assert len(rows) == 2
@@ -97,6 +108,47 @@ def test_iter_bag_messages_falls_back_when_reader_is_unavailable(
 
     rows = list(iter_bag_messages(bag))
     assert len(rows) == 1
+    assert rows[0]["topic"] == "/scan"
+    assert rows[0]["node"] == ""
+    assert "header" not in rows[0]
+
+
+def test_iter_bag_messages_mcap_raises_clear_error_when_decode_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mcap = tmp_path / "bag.mcap"
+    mcap.write_bytes(b"not a real mcap")
+
+    class UnreadableBag:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            raise ValueError("decode exploded")
+
+    monkeypatch.setattr("rosbags.highlevel.AnyReader", UnreadableBag)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        list(iter_bag_messages(mcap))
+
+    message = str(excinfo.value)
+    assert "rosbags" in message
+    assert ".mcap" in message
+    assert "decode failed" in message
+    assert "not a readable rosbag2 database" in message
+    assert not isinstance(excinfo.value, sqlite3.DatabaseError)
+
+
+def test_iter_bag_messages_db3_still_falls_back_normally(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bag = _make_minimal_bag(tmp_path / "minimal.db3", [2_000_000_000, 1_000_000_000])
+
+    class UnreadableBag:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            raise ValueError("not a readable rosbag2 database")
+
+    monkeypatch.setattr("rosbags.highlevel.AnyReader", UnreadableBag)
+
+    rows = list(iter_bag_messages(bag))
+    assert [row["timestamp"] for row in rows] == [1.0, 2.0]
     assert rows[0]["topic"] == "/scan"
     assert rows[0]["node"] == ""
     assert "header" not in rows[0]

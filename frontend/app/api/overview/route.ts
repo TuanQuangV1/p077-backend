@@ -3,6 +3,8 @@ import { ok } from "@/lib/server/http"
 import type { AnomalyKind } from "@/lib/types"
 
 /** GET /api/overview — dashboard aggregate. */
+export const dynamic = "force-static"
+
 export async function GET() {
   const d = data()
   const analyzed = d.rosbags.filter((b) => b.status === "analyzed")

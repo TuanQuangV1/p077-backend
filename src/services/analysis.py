@@ -24,6 +24,7 @@ from src.services import run_store
 from src.services.bag_stream import iter_bag_messages
 from src.services.diagnostics import detect_anomalies
 from src.services.experiments import experiment_bag_files, list_experiments
+from src.services.health import compute_health_summary
 from src.services.llm import explain_diagnostics, is_llm_configured
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,15 @@ _KIND_TITLES = {
     "timestamp_jitter": "Timestamp jitter on {topic}",
     "silent_node": "Silent node {node}",
     "clock_drift": "Clock drift on {topic}",
+    "hz_drop": "Publish rate drop on {topic}",
+    "hz_drop_critical": "Severe publish rate drop on {topic}",
+    "header_latency": "Header latency on {topic}",
+    "log_fatal": "Fatal log on {topic}",
+    "log_error_burst": "Error burst on {topic}",
+    "log_warn_storm": "Warning storm on {topic}",
+    "payload_zero_byte": "Empty payload on {topic}",
+    "tf_missing_gap": "TF broadcast gap on {topic}",
+    "tf_drift_jump": "TF frame re-parenting on {topic}",
 }
 
 _KIND_LABELS = {
@@ -44,6 +54,15 @@ _KIND_LABELS = {
     "timestamp_jitter": "Timestamp jitter",
     "silent_node": "Silent node",
     "clock_drift": "Clock drift",
+    "hz_drop": "Publish rate drop",
+    "hz_drop_critical": "Severe rate drop",
+    "header_latency": "Header latency",
+    "log_fatal": "Fatal log",
+    "log_error_burst": "Log error burst",
+    "log_warn_storm": "Log warning storm",
+    "payload_zero_byte": "Empty sensor payload",
+    "tf_missing_gap": "TF broadcast gap",
+    "tf_drift_jump": "TF frame jump",
 }
 
 _DEFAULT_MODEL = "vllm/qwen2.5-coder-32b"
@@ -322,7 +341,8 @@ def run_analysis(dataset_id: str, model: str | None = None) -> dict[str, Any]:
 
     Returns:
         Dict with ``run`` (``AnalysisRun``), ``detections`` (raw detection
-        dicts) and ``ai_results`` (``AIResultSummary`` list).
+        dicts), ``ai_results`` (``AIResultSummary`` list) and ``health``
+        (the Health Summary JSON).
 
     Raises:
         ValueError: No dataset with the given id exists.
@@ -339,11 +359,13 @@ def run_analysis(dataset_id: str, model: str | None = None) -> dict[str, Any]:
     if not bag_files:
         run = _pending_run_from_dataset(ds, resolved_model)
         detections: list[dict[str, Any]] = []
+        total_messages = 0
     else:
         try:
             stream = chain.from_iterable(iter_bag_messages(bag_path) for bag_path in bag_files)
-            result = detect_anomalies(stream, None)
-            detections = result.get("detections", [])
+            analysis_result = detect_anomalies(stream, None)
+            detections = analysis_result.get("detections", [])
+            total_messages = int(analysis_result.get("summary", {}).get("total_messages", 0))
             run = _succeeded_run(ds, resolved_model, started_at, started, detections)
         except (sqlite3.DatabaseError, OSError, ValueError) as exc:
             logger.warning(
@@ -358,8 +380,10 @@ def run_analysis(dataset_id: str, model: str | None = None) -> dict[str, Any]:
             )
             run = _failed_run(ds, resolved_model, started_at, started)
             detections = []
+            total_messages = 0
 
     ai_results = _build_ai_results(run.id, detections)
+    report_health = compute_health_summary(detections, total_messages=total_messages)
     run_store.save_run(run.model_dump())
     run_store.save_run_anomalies(run.id, detections)
     run_store.save_run_ai_results(run.id, [result.model_dump() for result in ai_results])
@@ -375,4 +399,9 @@ def run_analysis(dataset_id: str, model: str | None = None) -> dict[str, Any]:
             }
         },
     )
-    return {"run": run, "detections": detections, "ai_results": ai_results}
+    return {
+        "run": run,
+        "detections": detections,
+        "ai_results": ai_results,
+        "health": report_health,
+    }

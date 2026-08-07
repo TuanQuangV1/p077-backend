@@ -41,7 +41,6 @@ const NAV = [
         label: "Diagnose",
         items: [
             { href: "/analysis", label: "Analysis", icon: ScanSearchIcon },
-            { href: "/simulation", label: "Simulation Replay", icon: RadarIcon },
             { href: "/review", label: "Human Review", icon: UserCheckIcon, badge: "pending" as const },
         ],
     },

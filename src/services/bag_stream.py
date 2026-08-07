@@ -27,6 +27,8 @@ import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
 
@@ -71,20 +73,52 @@ def _frame_id(message: object) -> str:
     return str(frame_id or "")
 
 
-def iter_rosbag2_messages(path: str | Path) -> Iterator[_Message]:
-    """Yield rosbag2 messages lazily, ordered by timestamp.
+def _child_frame_id(message: object) -> str:
+    header = getattr(message, "header", None)
+    child = getattr(header, "child_frame_id", "") if header is not None else ""
+    if child:
+        return str(child)
+    # tf2_msgs/msg/TFMessage carries a list of transforms; fall back to the
+    # first transform's child_frame_id so tf topics are readable without the
+    # full message being retained.
+    transforms = getattr(message, "transforms", None)
+    if transforms:
+        first = transforms[0]
+        child = getattr(getattr(first, "child_frame_id", ""), "frame_id", "") or getattr(first, "child_frame_id", "")
+        return str(child)
+    return ""
+
+
+def _log_level(message: object) -> str | None:
+    """Map a ``rosgraph_msgs/msg/Log`` level int to a severity label."""
+    level = getattr(message, "level", None)
+    if not isinstance(level, int):
+        return None
+    for flag, label in ((16, "fatal"), (8, "error"), (4, "warn"), (2, "info"), (1, "debug")):
+        if level & flag:
+            return label
+    return None
+
+
+def iter_rosbag2_messages(path: str | Path, include_size: bool = False) -> Iterator[_Message]:
+    """Yield rosbag2 messages in ascending timestamp order.
 
     Only the ``topics``/``messages`` tables are read and message payloads are
-    never decoded. Timestamps are converted from nanoseconds to seconds. The
-    ordering is delegated to SQLite's ``ORDER BY timestamp`` (external sort),
-    so no full copy of the rows is needed in Python memory.
+    never decoded. Timestamps are converted from nanoseconds to seconds. Rows
+    are materialized and sorted in Python with :mod:`numpy` (by timestamp),
+    rather than leaving SQLite to run an unindexed external sort on large
+    bags, which is substantially slower for medium/large datasets.
 
     Args:
         path: Path to the ``.db3`` rosbag2 database.
+        include_size: When True, also read ``LENGTH(data)`` (never the BLOB
+            itself) into a ``payload_bytes`` field for bandwidth/payload-size
+            diagnostics.
 
     Yields:
-        Dicts with ``timestamp`` (seconds), ``topic``, ``node`` (empty) and
-        ``message_type`` in timestamp order.
+        Dicts with ``timestamp`` (seconds), ``topic``, ``node`` (empty),
+        ``message_type`` and, when ``include_size`` is set, ``payload_bytes``
+        in timestamp order.
 
     Raises:
         sqlite3.DatabaseError: The file is not a readable rosbag2 database.
@@ -92,18 +126,25 @@ def iter_rosbag2_messages(path: str | Path) -> Iterator[_Message]:
     file_path = Path(path)
     conn = sqlite3.connect(f"file:{file_path.resolve()}?mode=ro", uri=True)
     try:
-        cursor = conn.execute(
-            "SELECT t.name, t.type, m.timestamp FROM messages m JOIN topics t ON m.topic_id = t.id ORDER BY m.timestamp"
-        )
-        for topic, message_type, timestamp in cursor:
-            yield {
-                "timestamp": timestamp / 1_000_000_000,
-                "topic": topic,
-                "node": "",
-                "message_type": message_type,
-            }
+        select = "SELECT t.name, t.type, m.timestamp"
+        if include_size:
+            select += ", LENGTH(m.data)"
+        rows = conn.execute(f"{select} FROM messages m JOIN topics t ON m.topic_id = t.id").fetchall()
     finally:
         conn.close()
+
+    order = np.argsort([row[2] for row in rows], kind="stable")
+    for row in np.asarray(rows)[order]:
+        topic, message_type, timestamp = row[:3]
+        message: dict[str, Any] = {
+            "timestamp": int(timestamp) / 1_000_000_000,
+            "topic": str(topic),
+            "node": "",
+            "message_type": str(message_type),
+        }
+        if include_size:
+            message["payload_bytes"] = int(row[3])
+        yield message
 
 
 def iter_rosbag2_decoded(
@@ -124,8 +165,9 @@ def iter_rosbag2_decoded(
 
     Yields:
         Dicts with ``timestamp`` (bag time, seconds), ``topic``, ``node``,
-        ``message_type``, ``header`` (``header.stamp`` in seconds or ``None``)
-        and ``frame_id``.
+        ``message_type``, ``header`` (``header.stamp`` in seconds or ``None``),
+        ``frame_id``, ``child_frame_id``, ``payload_bytes`` and ``level`` for
+        ``/rosout`` log messages. Payload bodies are never retained.
 
     Raises:
         ImportError: The ``rosbags`` package is not installed.
@@ -146,9 +188,38 @@ def iter_rosbag2_decoded(
                     "message_type": connection.msgtype,
                     "header": _header_stamp(message),
                     "frame_id": _frame_id(message),
+                    "child_frame_id": _child_frame_id(message),
+                    "payload_bytes": len(rawdata),
+                    "level": _log_level(message),
                 }
     except Exception as exc:
         raise ValueError(f"not a readable rosbag2 database: {file_path}") from exc
+
+
+def _is_db3_path(path: str | Path) -> bool:
+    """Return True when `path` denotes rosbag2 SQLite (`.db3`) storage.
+
+    A ``.db3`` file is SQLite; a directory is SQLite-backed when it contains a
+    ``.db3`` shard. Anything else (``.mcap`` files, ``.bag`` files, or
+    directories without a ``.db3`` shard) is treated as non-SQLite so the
+    SQLite fallback is never attempted against a format ``sqlite3`` cannot
+    open.
+    """
+    file_path = Path(path)
+    if file_path.is_dir():
+        return any(f.suffix.lower() == ".db3" for f in file_path.iterdir() if f.is_file())
+    return file_path.suffix.lower() == ".db3"
+
+
+def _bag_format(path: str | Path) -> str:
+    """Return a human-friendly storage format label for error reporting."""
+    file_path = Path(path)
+    if file_path.is_dir():
+        for f in file_path.iterdir():
+            if f.is_file() and f.suffix.lower() in {".db3", ".mcap", ".bag"}:
+                return f.suffix.lower()
+        return "bag directory"
+    return file_path.suffix.lower() or "bag"
 
 
 def iter_bag_messages(
@@ -162,6 +233,11 @@ def iter_bag_messages(
     (no ``rosbags`` package) or the bag is not a full rosbag2 database, so
     callers can always consume the stream without loading it into memory.
 
+    The SQLite fallback only applies to ``.db3`` storage. For other formats
+    (e.g. ``.mcap``) SQLite can never open the file, so a decode failure
+    raises a clear error instead of surfacing a confusing
+    ``sqlite3.DatabaseError``.
+
     Args:
         path: Path to a bag file or rosbag2 directory.
         node_map: Optional explicit ``topic -> node`` mapping for the decoded path.
@@ -172,7 +248,11 @@ def iter_bag_messages(
     try:
         yield from iter_rosbag2_decoded(path, node_map=node_map)
         return
-    except (ImportError, ValueError) as exc:
+    except (ImportError, ValueError, sqlite3.DatabaseError) as exc:
+        if not _is_db3_path(path):
+            raise RuntimeError(
+                f"rosbags package required to read {_bag_format(path)} files, but decode failed: {exc}"
+            ) from exc
         logger.warning(
             "bag_stream.decode_fallback",
             extra={

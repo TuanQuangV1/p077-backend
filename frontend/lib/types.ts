@@ -22,8 +22,45 @@ export type AnomalyKind =
   | "nav_recovery"
   | "topic_hz_drop"
   | "message_drop"
+  | "header_latency"
+  | "timestamp_jitter"
 
 export type ReviewStatus = "pending" | "approved" | "rejected" | "edited"
+
+export type HealthStatus = "green" | "yellow" | "red"
+
+export interface HealthGroupScore {
+  score: number
+  weight: number
+  detection_count: number
+}
+
+export interface HealthSummary {
+  health_score: number
+  status: HealthStatus
+  status_zones: {
+    green_min: number
+    yellow_min: number
+    red_max: number
+  }
+  trigger_llm_deep_dive: boolean
+  summary: {
+    total_messages: number
+    total_detections: number
+    worst_severity: Severity | null
+    groups: Record<string, HealthGroupScore>
+  }
+  detections_by_group: Record<string, Anomaly[]>
+}
+
+export interface LLMDeepDiveResult {
+  summary: string
+  explanation: string[]
+  suggestions: string[]
+  confidence: number
+  priority: "critical" | "high" | "medium" | "low"
+  affected_components: string[]
+}
 
 export interface TopicStat {
   name: string
@@ -212,6 +249,38 @@ export interface SimulationData {
   /** Ground-truth path the planner intended to follow. */
   plannedPath: { x: number; y: number }[]
   /** Second trajectory for A/B comparison (previous run on same route). */
+  referencePath: { x: number; y: number }[]
+}
+
+/* ---------- Simulation ---------- */
+
+export interface OccupancyMap {
+  width: number
+  height: number
+  resolution: number
+  rows: string[]
+}
+
+export interface SimFrame {
+  t: number
+  x: number
+  y: number
+  theta: number
+  v: number
+  w: number
+  scan: number[]
+  cpu: number
+  degraded: AnomalyKind | null
+}
+
+export interface SimulationData {
+  runId: string
+  map: OccupancyMap
+  scanAngleMin: number
+  scanAngleMax: number
+  scanRangeMax: number
+  frames: SimFrame[]
+  plannedPath: { x: number; y: number }[]
   referencePath: { x: number; y: number }[]
 }
 

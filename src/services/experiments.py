@@ -5,6 +5,7 @@ deletion. Upload and extraction are bounded by ``MAX_UPLOAD_BYTES`` to prevent
 disk-fill denial of service.
 """
 
+import logging
 import os
 from datetime import UTC, datetime
 from pathlib import Path
@@ -96,8 +97,10 @@ def _load_item(folder: Path) -> dict[str, Any] | None:
 def _read_bagfile_info(folder: Path) -> dict[str, Any] | None:
     """Return rosbag2 bagfile information, preferring `metadata.yaml`.
 
-    Falls back to deriving the information directly from the SQLite bag
-    (`.db3`) when no metadata file exists.
+    Falls back to deriving the information directly from the first bag file
+    when no metadata file exists: ``.db3`` bags are read through SQLite and
+    ``.mcap`` bags through the optional ``rosbags`` package. Unsupported
+    formats (``.bag``) return None.
     """
     metadata_file = folder / "metadata.yaml"
     if metadata_file.exists():
@@ -106,7 +109,15 @@ def _read_bagfile_info(folder: Path) -> dict[str, Any] | None:
         raw_info = (meta or {}).get("rosbag2_bagfile_information")
         if isinstance(raw_info, dict):
             return raw_info
-    return _read_bagfile_info_from_db3(folder)
+    first = next(iter(_bag_files(folder)), None)
+    if first is None:
+        return None
+    suffix = first.suffix.lower()
+    if suffix == ".db3":
+        return _read_bagfile_info_from_db3(folder)
+    if suffix == ".mcap":
+        return _read_bagfile_info_from_mcap(folder)
+    return None
 
 
 def _read_bagfile_info_from_db3(folder: Path) -> dict[str, Any] | None:
@@ -162,6 +173,95 @@ def _read_bagfile_info_from_db3(folder: Path) -> dict[str, Any] | None:
         "message_count": message_count,
         "topics_with_message_count": topics_with_message_count,
     }
+
+
+def _read_bagfile_info_from_mcap(folder: Path) -> dict[str, Any] | None:
+    """Derive bagfile information from the first ``.mcap`` in `folder`.
+
+    Uses ``rosbags`` (:class:`rosbags.highlevel.AnyReader`) to walk the
+    message index of the file: only per-topic message counts and timestamp
+    bounds are collected, never the message payloads themselves. Returns None
+    when the file cannot be opened as a valid MCAP recording.
+    """
+    mcap = next((f for f in _bag_files(folder) if f.suffix.lower() == ".mcap"), None)
+    if mcap is None:
+        return None
+    try:
+        from rosbags.highlevel import AnyReader  # noqa: PLC0415 - optional dependency
+
+        counts: dict[str, int] = {}
+        starts: dict[str, int] = {}
+        ends: dict[str, int] = {}
+        topics: dict[str, str] = {}
+        with AnyReader([mcap]) as reader:
+            for connection, timestamp_ns, _rawdata in reader.messages():
+                topic = connection.topic
+                counts[topic] = counts.get(topic, 0) + 1
+                starts[topic] = min(starts.get(topic, timestamp_ns), timestamp_ns)
+                ends[topic] = max(ends.get(topic, timestamp_ns), timestamp_ns)
+                topics.setdefault(topic, connection.msgtype)
+    except Exception:
+        return None
+
+    message_count = sum(counts.values())
+    start_ns = min(starts.values(), default=0)
+    end_ns = max(ends.values(), default=start_ns)
+    topics_with_message_count = [
+        {
+            "topic_metadata": {
+                "name": topic,
+                "type": msgtype,
+                "serialization_format": "cdr",
+                "offered_qos_profiles": {},
+            },
+            "message_count": counts.get(topic, 0),
+        }
+        for topic, msgtype in topics.items()
+    ]
+    return {
+        "version": 4,
+        "storage_identifier": "mcap",
+        "duration": {"nanoseconds": max(0, end_ns - start_ns)},
+        "starting_time": {"nanoseconds_since_epoch": start_ns},
+        "message_count": message_count,
+        "topics_with_message_count": topics_with_message_count,
+    }
+
+
+def _ensure_timestamp_index(db3_path: Path) -> None:
+    """Create timestamp indexes on a rosbag2 ``.db3`` to speed sorted reads.
+
+    SQLite has no index backing ``ORDER BY timestamp`` on fresh bags, so
+    read-time sorts fall back to a full table sort. Indexing once at upload
+    time (a writable connection, unlike the read-only readers) lets later
+    queries reuse ``idx_messages_topic_time`` / ``idx_messages_time``.
+
+    Never raises: index creation is a best-effort optimization. Files that
+    are not valid rosbag2 databases (e.g. no ``messages`` table) log a warning
+    and are skipped so uploads are never blocked by a failed index build.
+    """
+    if db3_path.suffix.lower() != ".db3":
+        return
+    try:
+        conn = sqlite3.connect(str(db3_path))
+        try:
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_topic_time ON messages(topic_id, timestamp)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_time ON messages(timestamp)")
+            conn.commit()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            "experiments.index_skip",
+            extra={
+                "diagnostics": {
+                    "event": "experiments.index_skip",
+                    "level": "warning",
+                    "db3": str(db3_path),
+                }
+            },
+        )
 
 
 def _nanos_to_iso(nanos: int) -> str:
@@ -235,7 +335,25 @@ def save_uploaded_rosbag(filename: str, source: BinaryIO) -> dict[str, Any]:
     Raises:
         ValueError: Unsupported extension, unsafe zip content or upload too large.
     """
+    # #region agent debug log
+    _debug_log_path = Path(__file__).resolve().parent.parent.parent / "debug-b95897.log"
+    with _debug_log_path.open("a") as _f:
+        import json
+        _f.write(json.dumps({
+            "sessionId": "b95897", "location": "experiments.py:save_uploaded_rosbag:entry",
+            "message": "save_uploaded_rosbag called", "data": {"filename": filename},
+            "timestamp": int(datetime.now(UTC).timestamp() * 1000), "hypothesisId": "H3,H4"
+        }) + "\n")
+    # #endregion
     suffix = Path(filename).suffix.lower()
+    # #region agent debug log
+    with _debug_log_path.open("a") as _f:
+        _f.write(json.dumps({
+            "sessionId": "b95897", "location": "experiments.py:save_uploaded_rosbag:suffix_check",
+            "message": "suffix check", "data": {"suffix": suffix, "allowed": list(ALLOWED_BAG_EXTENSIONS)},
+            "timestamp": int(datetime.now(UTC).timestamp() * 1000), "hypothesisId": "H3,H4"
+        }) + "\n")
+    # #endregion
     if suffix not in ALLOWED_BAG_EXTENSIONS and suffix != ".zip":
         raise ValueError(f"unsupported file type: {suffix}")
 
@@ -268,15 +386,18 @@ def save_uploaded_rosbag(filename: str, source: BinaryIO) -> dict[str, Any]:
             safe_name = Path(filename).name
             with (folder / safe_name).open("wb") as out:
                 _copy_bounded(source, out)
-            # Never fabricate an empty metadata.yaml for a flat .db3: info is
-            # derived from the database itself so uploads show real counts.
-            # Non-db3 formats (which have nothing to derive from) still get a
-            # minimal metadata file when one is not already present.
-            if suffix != ".db3" and not (folder / "metadata.yaml").exists():
+            # Never fabricate an empty metadata.yaml for a flat .db3/.mcap:
+            # info is derived from the bag itself so uploads show real counts.
+            # Unsupported formats (which have nothing to derive from) still
+            # get a minimal metadata file when one is not already present.
+            if suffix not in {".db3", ".mcap"} and not (folder / "metadata.yaml").exists():
                 _write_minimal_metadata(folder, safe_name)
     except Exception:
         shutil.rmtree(folder, ignore_errors=True)
         raise
+
+    for db3 in _bag_files(folder):
+        _ensure_timestamp_index(db3)
 
     item = _load_item(folder)
     if item is None:
