@@ -6,7 +6,7 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
 
-RUN python -m pip install --no-cache-dir --prefix=/install .
+RUN python -m pip install --default-timeout=100 --retries 5 --no-cache-dir --prefix=/install .
 
 # ---- Backend production image ----
 FROM python:3.11-slim AS backend
@@ -35,8 +35,8 @@ FROM node:22-bookworm-slim AS frontend-deps
 WORKDIR /app/frontend
 
 RUN corepack enable
-COPY frontend/package.json frontend/pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml* frontend/.npmrc* ./
+RUN pnpm install --no-frozen-lockfile --ignore-scripts
 
 # ---- Frontend production build ----
 FROM frontend-deps AS frontend-builder
