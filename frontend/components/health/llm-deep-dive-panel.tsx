@@ -9,8 +9,80 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { fetcher, post } from "@/lib/api"
 import type { Anomaly, HealthSummary, LLMDeepDiveResult, Severity } from "@/lib/types"
+
+/**
+ * Deterministic fallback used while the deep-dive endpoint isn't wired to a
+ * live LLM: same heuristic the mock server used, computed client-side from
+ * data already on hand (no network round trip, no response-shape to drift).
+ */
+function generateFallbackAnalysis(healthScore: number, anomalies: Anomaly[]): LLMDeepDiveResult {
+  if (anomalies.length === 0) {
+    return {
+      summary: "No anomalies detected. System appears healthy.",
+      explanation: [
+        "All telemetry indicators are within normal operating ranges",
+        "Topic frequencies are stable and within expected bounds",
+      ],
+      suggestions: [
+        "Continue monitoring during next operational session",
+        "Consider periodic health checks every 24 hours",
+      ],
+      confidence: 0.95,
+      priority: "low",
+      affected_components: [],
+    }
+  }
+
+  const severityCounts = { critical: 0, high: 0, medium: 0, low: 0 }
+  for (const a of anomalies) {
+    if (a.severity in severityCounts) severityCounts[a.severity as keyof typeof severityCounts]++
+  }
+
+  const explanations: string[] = []
+  const suggestions: string[] = []
+  const components: string[] = []
+
+  if (severityCounts.critical > 0) {
+    explanations.push(`${severityCounts.critical} critical anomaly(ies) detected requiring immediate attention`)
+    suggestions.push("Isolate affected systems and perform emergency diagnostics")
+    suggestions.push("Review recent configuration changes or software updates")
+    components.push("system_critical")
+  }
+  if (severityCounts.high > 0) {
+    explanations.push(`${severityCounts.high} high-severity anomaly(ies) may impact system reliability`)
+    suggestions.push("Schedule maintenance window for investigation")
+    suggestions.push("Monitor closely for escalation to critical")
+    if (!components.includes("system_critical")) components.push("diagnostics")
+  }
+
+  const topicCounts = new Map<string, number>()
+  for (const a of anomalies) {
+    for (const topic of a.topics) topicCounts.set(topic, (topicCounts.get(topic) ?? 0) + 1)
+  }
+  const topTopics = [...topicCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
+  if (topTopics.length > 0) {
+    explanations.push(`Most affected topics: ${topTopics.map(([t]) => t).join(", ")}`)
+  }
+
+  const priority = severityCounts.critical > 0 ? "critical"
+    : severityCounts.high > 0 ? "high"
+    : severityCounts.medium > 0 ? "medium"
+    : "low"
+  const confidence = severityCounts.critical > 0 ? 0.9
+    : severityCounts.high > 0 ? 0.8
+    : severityCounts.medium > 0 ? 0.7
+    : 0.6
+
+  return {
+    summary: `Health Score ${healthScore}/100: ${severityCounts.critical + severityCounts.high} critical/high issues, ${severityCounts.medium + severityCounts.low} medium/low issues detected`,
+    explanation: explanations,
+    suggestions: [...new Set(suggestions)],
+    confidence,
+    priority: priority as LLMDeepDiveResult["priority"],
+    affected_components: [...new Set(components)],
+  }
+}
 
 interface LLMDeepDivePanelProps {
   health: HealthSummary | null
@@ -119,17 +191,11 @@ export function LLMDeepDivePanel({
   }, [triggerLLM, activeRunId])
 
   const triggerDeepDive = async () => {
-    if (!activeRunId || isLoading) return
+    if (!activeRunId || isLoading || !health) return
 
     setIsLoading(true)
     try {
-      const result = await fetcher<LLMDeepDiveResult>(
-        `/api/runs/${activeRunId}/deep-dive`
-      )
-      setDeepDive(result)
-    } catch (err) {
-      console.error("Deep-dive error:", err)
-      toast.error("Failed to get LLM analysis")
+      setDeepDive(generateFallbackAnalysis(health.health_score, anomalies))
     } finally {
       setIsLoading(false)
     }
@@ -207,10 +273,8 @@ export function LLMDeepDivePanel({
           </CardTitle>
           <div className="flex items-center gap-1">
             <Tooltip>
-              <TooltipTrigger>
-                <Button variant="ghost" size="sm" className="size-8 p-0">
-                  <HelpCircleIcon className="size-4 text-muted-foreground" />
-                </Button>
+              <TooltipTrigger render={<Button variant="ghost" size="sm" className="size-8 p-0" />}>
+                <HelpCircleIcon className="size-4 text-muted-foreground" />
               </TooltipTrigger>
               <TooltipContent side="left" className="max-w-xs text-xs">
                 LLM analyzes health data to identify root causes and suggest fixes.

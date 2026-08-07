@@ -41,14 +41,16 @@ function GaugeArc({ score, status }: { score: number; status: HealthStatus }) {
     A ${r} ${r} 0 1 1 ${cx + r * Math.cos(bgEndRad)} ${cy + r * Math.sin(bgEndRad)}
   `
 
-  // Value arc
-  const valueAngle = startAngle + (score / 100) * totalAngle
+  // Value arc — large-arc-flag must reflect the actual sweep angle (> 180deg),
+  // not the raw score, or SVG draws the complementary (wrong) arc.
+  const sweepAngle = (score / 100) * totalAngle
+  const valueAngle = startAngle + sweepAngle
   const valueRad = (valueAngle * Math.PI) / 180
 
   const valuePath = score > 0
     ? `
       M ${cx + r * Math.cos(bgStartRad)} ${cy + r * Math.sin(bgStartRad)}
-      A ${r} ${r} 0 ${score > 50 ? 1 : 0} 1 ${cx + r * Math.cos(valueRad)} ${cy + r * Math.sin(valueRad)}
+      A ${r} ${r} 0 ${sweepAngle > 180 ? 1 : 0} 1 ${cx + r * Math.cos(valueRad)} ${cy + r * Math.sin(valueRad)}
     `
     : `M ${cx + r * Math.cos(bgStartRad)} ${cy + r * Math.sin(bgStartRad)} L ${cx + r * Math.cos(bgStartRad)} ${cy + r * Math.sin(bgStartRad)}`
 
@@ -58,7 +60,7 @@ function GaugeArc({ score, status }: { score: number; status: HealthStatus }) {
       <path
         d={bgPath}
         fill="none"
-        stroke="hsl(var(--border))"
+        stroke="var(--border)"
         strokeWidth={strokeWidth}
         strokeLinecap="round"
       />
@@ -94,13 +96,14 @@ function GaugeMini({ score, status }: { score: number; status: HealthStatus }) {
     A ${r} ${r} 0 1 1 ${cx + r * Math.cos(bgEndRad)} ${cy + r * Math.sin(bgEndRad)}
   `
 
-  const valueAngle = startAngle + (score / 100) * totalAngle
+  const sweepAngle = (score / 100) * totalAngle
+  const valueAngle = startAngle + sweepAngle
   const valueRad = (valueAngle * Math.PI) / 180
 
   const valuePath = score > 0
     ? `
       M ${cx + r * Math.cos(bgStartRad)} ${cy + r * Math.sin(bgStartRad)}
-      A ${r} ${r} 0 ${score > 50 ? 1 : 0} 1 ${cx + r * Math.cos(valueRad)} ${cy + r * Math.sin(valueRad)}
+      A ${r} ${r} 0 ${sweepAngle > 180 ? 1 : 0} 1 ${cx + r * Math.cos(valueRad)} ${cy + r * Math.sin(valueRad)}
     `
     : `M ${cx + r * Math.cos(bgStartRad)} ${cy + r * Math.sin(bgStartRad)} L ${cx + r * Math.cos(bgStartRad)} ${cy + r * Math.sin(bgStartRad)}`
 
@@ -109,7 +112,7 @@ function GaugeMini({ score, status }: { score: number; status: HealthStatus }) {
       <path
         d={bgPath}
         fill="none"
-        stroke="hsl(var(--border))"
+        stroke="var(--border)"
         strokeWidth={strokeWidth}
         strokeLinecap="round"
       />

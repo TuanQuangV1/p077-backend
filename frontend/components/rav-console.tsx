@@ -79,6 +79,9 @@ export function RavConsole() {
             setTimelineLanes(payload.lanes)
             setAnomalies(payload.anomalies)
             setTimelineView((view) => ({ from: view.from, to: Math.min(view.to, payload.durationSec) }))
+        }).catch(() => {
+            // No backend timeline endpoint for real runs yet — keep lanes empty instead of crashing.
+            setTimelineLanes([])
         })
     }, [section, activeRun, timelineView.from, timelineView.to, topicFilter])
     useEffect(() => { if (section === "vllm") { fetcher<any>("/api/vllm/metrics?windowMin=60").then(setMetrics); fetcher<{ items: VllmRequest[] }>('/api/vllm/requests').then((x) => setRequests(x.items)) } }, [section])

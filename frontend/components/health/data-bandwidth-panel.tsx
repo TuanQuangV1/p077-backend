@@ -132,7 +132,7 @@ function SimpleDoughnut({
         {paths.map((p, i) => (
           <path key={i} d={p.path} fill={p.color} />
         ))}
-        <circle cx="50" cy="50" r="25" fill="hsl(var(--background))" />
+        <circle cx="50" cy="50" r="25" fill="var(--background)" />
       </svg>
       <div className="flex flex-wrap justify-center gap-2">
         {data.map((item, i) => (

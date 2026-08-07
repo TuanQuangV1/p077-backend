@@ -48,8 +48,8 @@ export function AnalysisHealthPanel({
     }
 
     setIsLoading(true)
-    fetcher<HealthSummary>(`/api/runs/${activeRunId}/health`)
-      .then(setHealth)
+    fetcher<{ health: HealthSummary } | HealthSummary>(`/api/runs/${activeRunId}/health`)
+      .then((res) => setHealth("health" in res ? res.health : res))
       .catch((err) => {
         console.error("Failed to fetch health:", err)
         setHealth(null)
@@ -162,7 +162,7 @@ export function AnalysisHealthPanel({
             <HealthScoreCard
               score={health.health_score}
               status={health.status}
-              worstSeverity={health.summary.worst_severity}
+              worstSeverity={health.summary?.worst_severity ?? null}
               topDropPct={worstDrop.pct}
               topDropTopic={worstDrop.topic}
               duration={durationSec}

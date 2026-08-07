@@ -193,13 +193,11 @@ export function TFTreeStatus({
             TF Tree Status
           </CardTitle>
           <Tooltip>
-            <TooltipTrigger>
-              <button
-                onClick={() => setShowHelp(!showHelp)}
-                className="rounded p-1 hover:bg-accent"
-              >
-                <HelpCircleIcon className="size-4 text-muted-foreground" />
-              </button>
+            <TooltipTrigger
+              onClick={() => setShowHelp(!showHelp)}
+              className="rounded p-1 hover:bg-accent"
+            >
+              <HelpCircleIcon className="size-4 text-muted-foreground" />
             </TooltipTrigger>
             <TooltipContent side="left" className="max-w-xs text-xs">
               <p className="font-semibold">TF Tree Visualization</p>
