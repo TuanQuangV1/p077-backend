@@ -57,32 +57,13 @@ export async function del<T>(url: string): Promise<T> {
 }
 
 /** Uploads a rosbag file (or rosbag2 zip) to the backend via multipart. */
-// #region agent debug log
-const _LOG_ENDPOINT = 'http://127.0.0.1:7428/ingest/0de14040-a27b-427b-9e1d-d3337aaee23b';
-const _LOG = (hypothesisId: string, location: string, message: string, data: Record<string, unknown>) => {
-    fetch(_LOG_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '83b68f' },
-        body: JSON.stringify({ sessionId: '83b68f', location, message, data, timestamp: Date.now(), hypothesisId })
-    }).catch(() => {});
-};
-// #endregion
 export async function uploadRosbag(file: File): Promise<Rosbag> {
-    // #region agent debug log
-    _LOG('H1,H5', 'api.ts:uploadRosbag:entry', 'uploadRosbag called', { fileName: file.name, fileSize: file.size, fileType: file.type });
-    // #endregion
     const form = new FormData()
     form.append("file", file)
-    // #region agent debug log
-    _LOG('H3', 'api.ts:uploadRosbag:fetch', 'sending POST request', { url: `${API_V1_BASE}/datasets/upload`, fileName: file.name });
-    // #endregion
     const res = await fetch(`${API_V1_BASE}/datasets/upload`, {
         method: "POST",
         body: form,
     })
-    // #region agent debug log
-    _LOG('H1,H2', 'api.ts:uploadRosbag:response', 'got response', { status: res.status, ok: res.ok, statusText: res.statusText });
-    // #endregion
     if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
     return res.json() as Promise<Rosbag>
 }

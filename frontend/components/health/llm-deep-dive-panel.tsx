@@ -36,12 +36,26 @@ const SEVERITY_COLORS: Record<Severity, string> = {
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
 
-  const copy = () => {
-    navigator.clipboard.writeText(text).then(() => {
+  const copy = async () => {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text)
+      } else {
+        const el = document.createElement("textarea")
+        el.value = text
+        el.style.position = "fixed"
+        el.style.opacity = "0"
+        document.body.appendChild(el)
+        el.select()
+        document.execCommand("copy")
+        document.body.removeChild(el)
+      }
       setCopied(true)
       toast.success("Copied to clipboard")
       setTimeout(() => setCopied(false), 2000)
-    })
+    } catch {
+      toast.error("Failed to copy to clipboard")
+    }
   }
 
   return (
@@ -128,13 +142,16 @@ export function LLMDeepDivePanel({
       anomalies,
       exportedAt: new Date().toISOString(),
     }
+    const runLabel = activeRunId ?? new Date().toISOString()
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `health-analysis-${activeRunId}.json`
+    a.download = `health-analysis-${runLabel}.json`
+    document.body.appendChild(a)
     a.click()
-    URL.revokeObjectURL(url)
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 0)
     toast.success("Exported health analysis")
   }
 
