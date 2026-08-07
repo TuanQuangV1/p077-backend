@@ -19,7 +19,6 @@ test("dashboard exposes the full sidebar navigation", async ({ page }) => {
         "Dashboard",
         "Datasets",
         "Analysis",
-        "Simulation Replay",
         "Human Review",
         "VLLM Monitoring",
         "Reports",

@@ -1,6 +1,8 @@
 import { data } from "@/lib/server/store"
 import { fail, ok } from "@/lib/server/http"
 
+export const dynamic = "force-static"
+
 export async function GET(_req: Request, { params }: { params: Promise<{ runId: string }> }) {
   const { runId } = await params
   const d = data()

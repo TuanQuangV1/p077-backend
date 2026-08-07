@@ -60,7 +60,49 @@
  * severity colour is the only thing that competes for attention.
  * Palette: slate neutrals + cyan primary + amber accent + red destructive.
  */
-:root,
+:root {
+  color-scheme: light;
+  --background: oklch(0.985 0.003 250);
+  --foreground: oklch(0.18 0.015 250);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.015 250);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.015 250);
+  --primary: oklch(0.55 0.18 245);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.94 0.005 250);
+  --secondary-foreground: oklch(0.2 0.015 250);
+  --muted: oklch(0.95 0.005 250);
+  --muted-foreground: oklch(0.45 0.015 250);
+  --accent: oklch(0.93 0.008 250);
+  --accent-foreground: oklch(0.18 0.015 250);
+  --destructive: oklch(0.57 0.22 27);
+  --border: oklch(0.88 0.005 250);
+  --input: oklch(0.88 0.005 250);
+  --ring: oklch(0.55 0.18 245 / 50%);
+  --chart-1: oklch(0.55 0.18 245);
+  --chart-2: oklch(0.65 0.16 72);
+  --chart-3: oklch(0.57 0.22 27);
+  --chart-4: oklch(0.55 0.12 165);
+  --chart-5: oklch(0.45 0.03 250);
+  --radius: 0.5rem;
+  --sidebar: oklch(0.965 0.005 250);
+  --sidebar-foreground: oklch(0.2 0.015 250);
+  --sidebar-primary: oklch(0.55 0.18 245);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.91 0.008 250);
+  --sidebar-accent-foreground: oklch(0.18 0.015 250);
+  --sidebar-border: oklch(0.88 0.005 250);
+  --sidebar-ring: oklch(0.55 0.18 245 / 50%);
+
+  --severity-critical: oklch(0.57 0.22 27);
+  --severity-high: oklch(0.65 0.18 45);
+  --severity-medium: oklch(0.68 0.16 72);
+  --severity-low: oklch(0.5 0.08 210);
+  --ok: oklch(0.55 0.15 162);
+  --grid-line: oklch(0.15 0.01 250 / 6%);
+}
+
 .dark {
   color-scheme: dark;
   --background: oklch(0.166 0.008 250);

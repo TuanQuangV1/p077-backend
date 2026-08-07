@@ -520,3 +520,159 @@ def test_merge_thresholds_precedence(tmp_path) -> None:
     assert merged["frequency_gap_min_threshold_sec"] == pytest.approx(0.01)
     assert merged["silent_node_min_span_sec"] == pytest.approx(0.9)
     assert merged["frequency_gap_multiplier"] == pytest.approx(1.5)
+
+
+def _hz_stream(rate: float, seconds: float, start: float = 0.0, topic: str = "/scan") -> list[dict[str, Any]]:
+    """Build a synthetic message stream at ``rate`` Hz for ``seconds``."""
+    count = int(rate * seconds)
+    step = 1.0 / rate
+    return [
+        {
+            "timestamp": start + i * step,
+            "topic": topic,
+            "node": "scanner",
+            "message_type": "sensor_msgs/msg/LaserScan",
+        }
+        for i in range(count)
+    ]
+
+
+def test_hz_drop_flags_sustained_rate_fall() -> None:
+    # 60 Hz nominal, then a long 30 Hz segment (>30% drop) and a 10 Hz segment (>50%).
+    messages = _hz_stream(60.0, 2.0, start=0.0) + _hz_stream(30.0, 2.0, start=2.0)
+    messages += _hz_stream(10.0, 2.0, start=4.0)
+    summary = detect_anomalies(messages, thresholds={"hz_drop_min_messages": 10}, expected_hz={"/scan": 60.0})
+    kinds = {d["kind"] for d in summary["detections"]}
+    assert "hz_drop" in kinds
+    assert "hz_drop_critical" in kinds
+    critical = next(d for d in summary["detections"] if d["kind"] == "hz_drop_critical")
+    assert critical["severity"] == "high"
+    assert critical["evidence"]["expected_hz"] == pytest.approx(60.0)
+    assert critical["evidence"]["drop_pct"] >= 0.5
+
+
+def test_hz_drop_skipped_below_min_messages() -> None:
+    messages = _hz_stream(10.0, 0.3)  # 3 messages, far below the 50-msg default
+    summary = detect_anomalies(messages, expected_hz={"/scan": 10.0})
+    assert not any(d["kind"].startswith("hz_drop") for d in summary["detections"])
+
+
+def test_hz_drop_infers_expected_from_peak_when_no_map() -> None:
+    # Multi-window stream so the peak-window fallback can be derived: 60 Hz
+    # nominal, 35 Hz mid window (warn tier), 20 Hz final window (critical tier).
+    messages = _hz_stream(60.0, 5.0)
+    messages += _hz_stream(35.0, 5.0, start=5.0)
+    messages += _hz_stream(20.0, 5.0, start=10.0)
+    summary = detect_anomalies(messages, thresholds={"hz_drop_min_messages": 10})
+    kinds = {d["kind"] for d in summary["detections"]}
+    assert "hz_drop" in kinds
+    assert "hz_drop_critical" in kinds
+
+
+def test_header_latency_flags_sustained_skew() -> None:
+    messages = [
+        {
+            "timestamp": 10.0 + i,
+            "topic": "/imu",
+            "node": "imu_node",
+            "message_type": "Imu",
+            "header": 10.0 + i - 0.5,
+        }
+        for i in range(5)
+    ]  # 500 ms lag, sustained
+    summary = detect_anomalies(messages)
+    latency = next((d for d in summary["detections"] if d["kind"] == "header_latency"), None)
+    assert latency is not None
+    assert latency["evidence"]["max_latency_ms"] == pytest.approx(500.0, abs=1.0)
+    assert latency["evidence"]["threshold_ms"] == pytest.approx(100.0)
+
+
+def test_header_latency_ignored_when_sparse() -> None:
+    messages = [
+        {"timestamp": 10.0 + i, "topic": "/imu", "node": "imu_node", "message_type": "Imu", "header": 10.0 + i - 0.5}
+        for i in range(2)
+    ]  # only 2 lagging messages, below the sustained minimum of 3
+    summary = detect_anomalies(messages)
+    assert not any(d["kind"] == "header_latency" for d in summary["detections"])
+
+
+def test_log_severity_rules_fire() -> None:
+    messages = [
+        {"timestamp": float(i), "topic": "/rosout", "node": "node_a", "message_type": "Log", "level": "error"}
+        for i in range(3)
+    ]
+    messages += [
+        {"timestamp": float(10 + i), "topic": "/rosout", "node": "node_a", "message_type": "Log", "level": "fatal"}
+        for i in range(1)
+    ]
+    summary = detect_anomalies(messages)
+    kinds = {d["kind"] for d in summary["detections"]}
+    assert "log_error_burst" in kinds
+    assert "log_fatal" in kinds
+    fatal = next(d for d in summary["detections"] if d["kind"] == "log_fatal")
+    assert fatal["severity"] == "critical"
+
+
+def test_payload_zero_byte_flags_empty_sensor_stream() -> None:
+    messages = [
+        {
+            "timestamp": float(i),
+            "topic": "/camera/image_raw",
+            "node": "camera",
+            "message_type": "sensor_msgs/msg/Image",
+            "payload_bytes": 0,
+        }
+        for i in range(6)
+    ]
+    summary = detect_anomalies(messages)
+    zero = next((d for d in summary["detections"] if d["kind"] == "payload_zero_byte"), None)
+    assert zero is not None
+    assert zero["severity"] == "high"
+    assert zero["evidence"]["zero_byte_count"] == 6
+
+
+def test_tf_missing_gap_flags_broadcast_stall() -> None:
+    messages = [
+        {"timestamp": 0.0, "topic": "/tf", "node": "tf_node", "message_type": "TFMessage",
+         "frame_id": "odom", "child_frame_id": "base_link"},
+        {"timestamp": 3.0, "topic": "/tf", "node": "tf_node", "message_type": "TFMessage",
+         "frame_id": "odom", "child_frame_id": "base_link"},
+    ]
+    summary = detect_anomalies(messages)
+    gap = next((d for d in summary["detections"] if d["kind"] == "tf_missing_gap"), None)
+    assert gap is not None
+    assert gap["severity"] == "high"
+    assert gap["evidence"]["gap_sec"] == pytest.approx(3.0)
+
+
+def test_tf_drift_jump_flags_reparenting() -> None:
+    messages = [
+        {"timestamp": 1.0, "topic": "/tf", "node": "tf_node", "message_type": "TFMessage",
+         "frame_id": "odom", "child_frame_id": "base_link"},
+        {"timestamp": 2.0, "topic": "/tf", "node": "tf_node", "message_type": "TFMessage",
+         "frame_id": "map", "child_frame_id": "base_link"},
+    ]
+    summary = detect_anomalies(messages)
+    jump = next((d for d in summary["detections"] if d["kind"] == "tf_drift_jump"), None)
+    assert jump is not None
+    assert jump["severity"] == "critical"
+    assert jump["evidence"]["from_frame"] == "odom"
+    assert jump["evidence"]["to_frame"] == "map"
+
+
+def test_new_detection_kinds_carry_tsec_endsec() -> None:
+    messages = _hz_stream(10.0, 0.3, topic="/scan") + [
+        {"timestamp": float(i), "topic": "/rosout", "node": "n", "message_type": "Log", "level": "error"}
+        for i in range(3)
+    ]
+    summary = detect_anomalies(messages)
+    for detection in summary["detections"]:
+        assert "tSec" in detection
+        assert "endSec" in detection
+        assert detection["endSec"] >= detection["tSec"]
+
+
+def test_detect_anomalies_accepts_expected_hz_kwarg() -> None:
+    messages = _hz_stream(30.0, 0.5)  # 15 messages at 30 Hz
+    summary = detect_anomalies(messages, thresholds={"hz_drop_min_messages": 5}, expected_hz={"/scan": 60.0})
+    assert any(d["kind"] in {"hz_drop", "hz_drop_critical"} for d in summary["detections"])

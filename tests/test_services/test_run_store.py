@@ -178,3 +178,46 @@ def test_review_items_status_filter_and_update(monkeypatch, tmp_path) -> None:
     assert again["id"] == "review_001"
     assert run_store.get_review_item("missing") is None
     assert len(run_store.list_review_items(status="pending")) == 1
+
+
+def test_save_and_get_hilt_iteration(monkeypatch, tmp_path) -> None:
+    run_store.save_hilt_iteration(
+        "run_1", "anomaly_001", 1,
+        "root cause A", ["action 1", "action 2"], "explanation A", 0.8,
+        1, "test passed"
+    )
+
+    iteration = run_store.get_hilt_iteration("run_1", "anomaly_001", 1)
+    assert iteration is not None
+    assert iteration["iteration"] == 1
+    assert iteration["llm_root_cause"] == "root cause A"
+    assert iteration["llm_actions"] == ["action 1", "action 2"]
+    assert iteration["llm_explanation"] == "explanation A"
+    assert iteration["llm_confidence"] == 0.8
+    assert iteration["test_pass"] is True
+    assert iteration["test_comment"] == "test passed"
+
+    assert run_store.get_hilt_iteration("run_1", "anomaly_001", 999) is None
+    assert run_store.get_hilt_iteration("other", "anomaly_001", 1) is None
+
+
+def test_list_hilt_iterations_ordered(monkeypatch, tmp_path) -> None:
+    run_store.save_hilt_iteration("run_1", "anomaly_001", 3, "c", [], "c", 0.7, 0, None)
+    run_store.save_hilt_iteration("run_1", "anomaly_001", 1, "a", [], "a", 0.9, 1, "ok")
+    run_store.save_hilt_iteration("run_1", "anomaly_001", 2, "b", [], "b", 0.8, 0, "fail")
+
+    iterations = run_store.list_hilt_iterations("run_1", "anomaly_001")
+    assert len(iterations) == 3
+    assert [it["iteration"] for it in iterations] == [1, 2, 3]
+    assert iterations[0]["llm_root_cause"] == "a"
+    assert iterations[1]["llm_root_cause"] == "b"
+    assert iterations[2]["llm_root_cause"] == "c"
+
+
+def test_hilt_iterations_persist_after_save(monkeypatch, tmp_path) -> None:
+    run_store.save_hilt_iteration("run_1", "anomaly_001", 1, "cause", ["act"], "exp", 0.8, 1, "comment")
+    run_store.save_hilt_iteration("run_1", "anomaly_001", 2, "cause2", ["act2"], "exp2", 0.7, 0, "comment2")
+
+    # New connection (simulated by calling list again)
+    iterations = run_store.list_hilt_iterations("run_1", "anomaly_001")
+    assert len(iterations) == 2

@@ -37,6 +37,8 @@ from src.services.experiments import (
     save_uploaded_rosbag,
 )
 from src.services.hilt_store import HILT_LABELS, append_hilt_review, list_hilt_reviews
+from src.services.iterative_debug import IterativeDebugger
+from src.services.hilt_triggers import detect_llm_uncertainty
 from src.services.llm import chat_completion, explain_diagnostics, is_llm_configured
 from src.services.window_export import export_windowed_jsonl, iter_window_jsonl_lines
 
@@ -388,6 +390,157 @@ def _cmd_hilt(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_hilt_iterate(args: argparse.Namespace) -> int:
+    run = run_store.get_run(args.run_id)
+    if run is None:
+        _error(f"run not found: {args.run_id}")
+        return 1
+
+    anomalies = run_store.get_run_anomalies(args.run_id)
+    if not anomalies:
+        _error(f"run has no anomalies: {args.run_id}")
+        return 1
+
+    anomaly_id = args.anomaly_id or "anomaly_001"
+    anomaly = next((a for a in anomalies if a.get("id") == anomaly_id.replace("anomaly_", "")), None)
+    if anomaly is None:
+        _error(f"anomaly not found: {anomaly_id}")
+        return 1
+
+    debugger = IterativeDebugger(args.run_id, anomaly_id, anomaly)
+    feedback_history = run_store.list_hilt_iterations(args.run_id, anomaly_id)
+    feedback_list = [
+        {"iteration": fb["iteration"], "test_pass": fb["test_pass"], "comment": fb["test_comment"]}
+        for fb in feedback_history
+    ]
+
+    print(f"Running iterative debug for {args.run_id}/{anomaly_id}")
+    print(f"Previous iterations: {len(feedback_history)}")
+
+    ai_result = debugger.suggest(feedback_list)
+    print(f"\nLLM Suggestion (iteration {len(feedback_history) + 1}):")
+    print(f"  Root Cause: {ai_result.rootCause}")
+    print(f"  Confidence: {ai_result.confidence}")
+    print(f"  Explanation: {ai_result.explanation}")
+    print(f"  Actions: {', '.join(ai_result.suggestedFix)}")
+
+    if args.test_pass is not None:
+        test_pass = args.test_pass
+    else:
+        test_pass_input = input("\nTest passed? (y/n): ").strip().lower()
+        test_pass = test_pass_input == "y"
+
+    test_comment = args.test_comment or input("Test comment (optional): ").strip() or None
+
+    iteration_num = len(feedback_history) + 1
+    debugger.record_test(
+        iteration=iteration_num,
+        llm_root_cause=ai_result.rootCause,
+        llm_actions=ai_result.suggestedFix,
+        llm_explanation=ai_result.explanation,
+        llm_confidence=ai_result.confidence,
+        test_pass=test_pass,
+        test_comment=test_comment,
+    )
+
+    llm_output = {"root_cause": ai_result.rootCause, "explanation": ai_result.explanation, "confidence": ai_result.confidence}
+    triggers = debugger.evaluate_triggers(llm_output)
+
+    if triggers:
+        print(f"\n⚠️  TRIGGERS FIRED: {', '.join(triggers)}")
+        hilt_payload = debugger.build_hilt_payload(triggers)
+        _emit(args, hilt_payload)
+        return 0
+
+    if not debugger.should_continue(iteration_num, triggers):
+        print(f"\n⚠️  Max iterations reached ({iteration_num})")
+        hilt_payload = debugger.build_hilt_payload(["max_iterations"])
+        _emit(args, hilt_payload)
+        return 0
+
+    print(f"\n✓ Iteration {iteration_num} recorded. No triggers fired. Run again for next iteration.")
+    return 0
+
+
+def _cmd_hilt_triggers(args: argparse.Namespace) -> int:
+    run = run_store.get_run(args.run_id)
+    if run is None:
+        _error(f"run not found: {args.run_id}")
+        return 1
+
+    anomalies = run_store.get_run_anomalies(args.run_id)
+    if not anomalies:
+        _error(f"run has no anomalies: {args.run_id}")
+        return 1
+
+    anomaly_id = args.anomaly_id or "anomaly_001"
+    anomaly = next((a for a in anomalies if a.get("id") == anomaly_id.replace("anomaly_", "")), None)
+    if anomaly is None:
+        _error(f"anomaly not found: {anomaly_id}")
+        return 1
+
+    debugger = IterativeDebugger(args.run_id, anomaly_id, anomaly)
+    iterations = run_store.list_hilt_iterations(args.run_id, anomaly_id)
+
+    if not iterations:
+        _emit(args, {"run_id": args.run_id, "anomaly_id": anomaly_id, "triggers": [], "message": "No iterations yet"})
+        return 0
+
+    last_iteration = iterations[-1]
+    llm_output = {
+        "root_cause": last_iteration["llm_root_cause"],
+        "explanation": last_iteration["llm_explanation"],
+        "confidence": last_iteration["llm_confidence"],
+    }
+
+    triggers = debugger.evaluate_triggers(llm_output)
+    failure_count = sum(1 for it in iterations if not it["test_pass"])
+
+    result = {
+        "run_id": args.run_id,
+        "anomaly_id": anomaly_id,
+        "current_iteration": len(iterations),
+        "triggers": triggers,
+        "failure_count": failure_count,
+        "llm_uncertainty_score": 0.0,
+        "llm_loop_detected": "llm_looping" in triggers,
+        "user_failures": failure_count,
+    }
+
+    if iterations:
+        combined = last_iteration["llm_root_cause"] + " " + last_iteration["llm_explanation"]
+        result["llm_uncertainty_score"] = detect_llm_uncertainty(combined, last_iteration["llm_confidence"])
+
+    _emit(args, result)
+    return 0
+
+
+def _cmd_hilt_summary(args: argparse.Namespace) -> int:
+    run = run_store.get_run(args.run_id)
+    if run is None:
+        _error(f"run not found: {args.run_id}")
+        return 1
+
+    anomalies = run_store.get_run_anomalies(args.run_id)
+    if not anomalies:
+        _error(f"run has no anomalies: {args.run_id}")
+        return 1
+
+    anomaly_id = args.anomaly_id or "anomaly_001"
+    anomaly = next((a for a in anomalies if a.get("id") == anomaly_id.replace("anomaly_", "")), None)
+    if anomaly is None:
+        _error(f"anomaly not found: {anomaly_id}")
+        return 1
+
+    debugger = IterativeDebugger(args.run_id, anomaly_id, anomaly)
+    iterations = run_store.list_hilt_iterations(args.run_id, anomaly_id)
+    triggers = debugger.evaluate_triggers({})
+    hilt_payload = debugger.build_hilt_payload(triggers)
+
+    _emit(args, hilt_payload)
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="rav13",
@@ -465,6 +618,18 @@ def _build_parser() -> argparse.ArgumentParser:
         help="non-interactive label (skips the prompts)",
     )
     hilt_review.add_argument("--comment", help="comment for the recorded label")
+    hilt_iterate = hilt_sub.add_parser("iterate", help="run one iteration of the debug loop")
+    hilt_iterate.add_argument("run_id")
+    hilt_iterate.add_argument("--anomaly-id", help="anomaly ID (default: anomaly_001)")
+    hilt_iterate.add_argument("--test-pass", action="store_true", help="test passed (non-interactive)")
+    hilt_iterate.add_argument("--test-fail", action="store_true", dest="test_pass", help="test failed (non-interactive)")
+    hilt_iterate.add_argument("--test-comment", help="test comment (non-interactive)")
+    hilt_triggers = hilt_sub.add_parser("triggers", help="evaluate HILT triggers for a run/anomaly")
+    hilt_triggers.add_argument("run_id")
+    hilt_triggers.add_argument("--anomaly-id", help="anomaly ID (default: anomaly_001)")
+    hilt_summary = hilt_sub.add_parser("summary", help="output HILT escalation summary JSON")
+    hilt_summary.add_argument("run_id")
+    hilt_summary.add_argument("--anomaly-id", help="anomaly ID (default: anomaly_001)")
 
     return parser
 
@@ -484,7 +649,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         "review": _cmd_review,
         "export": _cmd_export,
         "hilt": _cmd_hilt,
+        "hilt_iterate": _cmd_hilt_iterate,
+        "hilt_triggers": _cmd_hilt_triggers,
+        "hilt_summary": _cmd_hilt_summary,
     }
+    # Handle HILT subcommands
+    if args.command == "hilt":
+        subcommand_handlers = {
+            "list": _cmd_hilt,
+            "review": _cmd_hilt,
+            "iterate": _cmd_hilt_iterate,
+            "triggers": _cmd_hilt_triggers,
+            "summary": _cmd_hilt_summary,
+        }
+        handler = subcommand_handlers.get(args.subcommand)
+        if handler is None:
+            _error(f"unhandled hilt subcommand: {args.subcommand}")
+            return 2
+        return handler(args)
     handler = handlers.get(args.command)
     if handler is None:
         _error(f"unhandled command: {args.command}")

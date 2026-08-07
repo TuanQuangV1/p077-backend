@@ -10,6 +10,7 @@ import logging
 import os
 import threading
 import time
+import json
 from collections import Counter, defaultdict
 from collections.abc import Iterator
 from itertools import chain
@@ -50,6 +51,10 @@ from src.models.schemas import (
     DiagnosticsSummaryResponse,
     DiagnosticsThresholdsResponse,
     DiagnosticsThresholdsUpdateRequest,
+    HealthSummaryResponse,
+    HiltFixRequest,
+    HiltFixResponse,
+    HiltSummary,
     ReviewItem,
     ReviewListResponse,
 )
@@ -58,6 +63,8 @@ from src.services.analysis import _KIND_LABELS, _anomaly_summaries, _build_ai_re
 from src.services.bag_stream import iter_bag_messages
 from src.services.diagnostics import detect_anomalies, parse_mcap_file
 from src.services.diagnostics_config import get_diagnostics_thresholds, save_diagnostics_thresholds
+from src.services.health import DEEP_DIVE_TRIGGER_THRESHOLD, build_deep_dive_prompt, compute_health_summary
+from src.services.iterative_debug import IterativeDebugger
 from src.services.rate_limit import SlidingWindowRateLimiter
 from src.services.window_export import iter_window_jsonl_lines
 from src.services.experiments import (
@@ -535,12 +542,86 @@ async def get_analysis(run_id: str) -> AnalysisDetailResponse:
         ai_results = [AIResultSummary(**result) for result in persisted_ai]
     else:
         ai_results = _build_ai_results(run_id, detections)
+    health = compute_health_summary(detections, total_messages=rosbag.messageCount if rosbag else 0)
     return AnalysisDetailResponse(
         run=run,
         rosbag=rosbag,
         anomalies=_anomaly_summaries(run_id, detections),
         aiResults=ai_results,
+        health=health,
     )
+
+
+@router.get("/analysis/{run_id}/health", response_model=HealthSummaryResponse)
+async def get_analysis_health(run_id: str) -> HealthSummaryResponse:
+    """Return the Health Summary JSON for a run's persisted detections.
+
+    The response is the LLM-friendly context payload: a composite 0-100
+    ``health_score``, its green/yellow/red zone, the per-group subscores (log,
+    frequency, latency, tf, payload) and detections grouped by indicator. A
+    ``trigger_llm_deep_dive`` flag fires when the score drops below the
+    ``DEEP_DIVE_TRIGGER_THRESHOLD`` (70), signaling the frontend/agent to run a
+    root-cause deep-dive.
+
+    Args:
+        run_id: ID of the analysis run to summarize.
+
+    Returns:
+        ``HealthSummaryResponse`` wrapping the Health Summary JSON.
+
+    Raises:
+        HTTPException 404: No run found with the given ID.
+    """
+    run_row = run_store.get_run(run_id)
+    if run_row is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    datasets = _load_datasets()
+    rosbag = next((ds for ds in datasets if ds.id == run_row["rosbagId"]), None)
+    detections = run_store.get_run_anomalies(run_id)
+    total_messages = rosbag.messageCount if rosbag else 0
+    health = compute_health_summary(detections, total_messages=total_messages)
+    return HealthSummaryResponse(health=health)
+
+
+@router.get("/analysis/{run_id}/deep-dive")
+async def analysis_deep_dive(
+    run_id: str,
+    deep_dive_threshold: float = Query(default=DEEP_DIVE_TRIGGER_THRESHOLD, ge=0.0, le=100.0),
+) -> dict[str, object]:
+    """Build the LLM deep-dive context for a run.
+
+    Returns the Health Summary plus a ready-to-send context prompt. Callers
+    should send the ``prompt`` to ``POST /analysis/explain`` (or the LLM chat
+    endpoint) whenever ``trigger_llm_deep_dive`` is true or the user clicked a
+    red anomaly band on the dashboard timeline.
+
+    Args:
+        run_id: ID of the analysis run.
+        deep_dive_threshold: Optional override of the deep-dive trigger score.
+
+    Returns:
+        Dict with ``run_id``, ``triggered``, ``threshold``, ``health`` and
+        ``prompt``.
+
+    Raises:
+        HTTPException 404: No run found with the given ID.
+    """
+    run_row = run_store.get_run(run_id)
+    if run_row is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    datasets = _load_datasets()
+    rosbag = next((ds for ds in datasets if ds.id == run_row["rosbagId"]), None)
+    detections = run_store.get_run_anomalies(run_id)
+    total_messages = rosbag.messageCount if rosbag else 0
+    health = compute_health_summary(detections, total_messages=total_messages)
+    score = float(health.get("health_score", 0.0))
+    return {
+        "run_id": run_id,
+        "triggered": score < deep_dive_threshold,
+        "threshold": deep_dive_threshold,
+        "health": health,
+        "prompt": build_deep_dive_prompt(health),
+    }
 
 
 @router.get("/analysis/{run_id}/export/windows")
@@ -653,6 +734,164 @@ async def explain(request: DiagnosticsExplanationRequest) -> DiagnosticsExplanat
     """
     explanation = await anyio.to_thread.run_sync(explain_diagnostics, request.summary)
     return DiagnosticsExplanationResponse(**explanation)
+
+
+@router.get("/hilt/summary/{run_id}", response_model=HiltSummary)
+async def get_hilt_summary(
+    run_id: str,
+    anomaly_id: str = Query(..., description="Anomaly ID to get HILT summary for"),
+) -> HiltSummary:
+    """Get HILT escalation summary for expert review.
+
+    Returns the complete iteration history, trigger reasons, and diagnostic
+    context for a specific anomaly within a run.
+
+    Args:
+        run_id: Analysis run ID.
+        anomaly_id: Anomaly ID within the run.
+
+    Returns:
+        HiltSummary with all iterations and trigger information.
+
+    Raises:
+        HTTPException 404: Run or anomaly not found.
+    """
+    run_row = run_store.get_run(run_id)
+    if run_row is None:
+        raise HTTPException(status_code=404, detail="run not found")
+
+    anomalies = run_store.get_run_anomalies(run_id)
+    anomaly = next((a for a in anomalies if a.get("id") == anomaly_id.replace("anomaly_", "")), None)
+    if anomaly is None:
+        raise HTTPException(status_code=404, detail="anomaly not found")
+
+    debugger = IterativeDebugger(run_id, anomaly_id, anomaly)
+    triggers = debugger.evaluate_triggers({})
+    hilt_payload = debugger.build_hilt_payload(triggers)
+
+    return HiltSummary(**hilt_payload)
+
+
+@router.post("/hilt/iterate", response_model=AIResultSummary)
+async def hilt_iterate(
+    run_id: str = Query(..., description="Analysis run ID"),
+    anomaly_id: str = Query(..., description="Anomaly ID"),
+    test_pass: bool = Query(..., description="Whether engineer test passed"),
+    test_comment: str = Query(default="", description="Engineer test comment"),
+) -> AIResultSummary:
+    """Run one iteration of the iterative debug loop.
+
+    Records the engineer's test result, evaluates triggers, and returns the
+    next LLM suggestion (or escalation payload if triggers fire).
+
+    Args:
+        run_id: Analysis run ID.
+        anomaly_id: Anomaly ID within the run.
+        test_pass: Whether the engineer's test passed.
+        test_comment: Optional comment from the engineer.
+
+    Returns:
+        Next AIResultSummary from LLM (or canned fallback).
+
+    Raises:
+        HTTPException 404: Run or anomaly not found.
+    """
+    run_row = run_store.get_run(run_id)
+    if run_row is None:
+        raise HTTPException(status_code=404, detail="run not found")
+
+    anomalies = run_store.get_run_anomalies(run_id)
+    anomaly = next((a for a in anomalies if a.get("id") == anomaly_id.replace("anomaly_", "")), None)
+    if anomaly is None:
+        raise HTTPException(status_code=404, detail="anomaly not found")
+
+    debugger = IterativeDebugger(run_id, anomaly_id, anomaly)
+
+    feedback_history = run_store.list_hilt_iterations(run_id, anomaly_id)
+    feedback_list = [
+        {
+            "iteration": fb["iteration"],
+            "test_pass": fb["test_pass"],
+            "comment": fb["test_comment"],
+        }
+        for fb in feedback_history
+    ]
+
+    ai_result = debugger.suggest(feedback_list)
+
+    llm_output = {
+        "root_cause": ai_result.rootCause,
+        "explanation": ai_result.explanation,
+        "confidence": ai_result.confidence,
+    }
+
+    iteration_num = len(feedback_history) + 1
+    debugger.record_test(
+        iteration=iteration_num,
+        llm_root_cause=ai_result.rootCause,
+        llm_actions=ai_result.suggestedFix,
+        llm_explanation=ai_result.explanation,
+        llm_confidence=ai_result.confidence,
+        test_pass=test_pass,
+        test_comment=test_comment or None,
+    )
+
+    triggers = debugger.evaluate_triggers(llm_output)
+
+    if not debugger.should_continue(iteration_num, triggers):
+        hilt_payload = debugger.build_hilt_payload(triggers)
+        run_store.save_expert_fix(
+            run_id,
+            anomaly_id,
+            root_cause="ESCALATED: " + ", ".join(triggers),
+            actions=[],
+            notes=json.dumps(hilt_payload),
+        )
+        return ai_result
+
+    return ai_result
+
+
+@router.post("/hilt/fix/{run_id}", response_model=HiltFixResponse)
+async def hilt_fix(
+    run_id: str,
+    anomaly_id: str = Query(..., description="Anomaly ID"),
+    payload: HiltFixRequest = ...,
+) -> HiltFixResponse:
+    """Record expert fix for an escalated anomaly.
+
+    The expert provides a corrected root cause and actions, which are stored
+    and can be used to update the run's AI result.
+
+    Args:
+        run_id: Analysis run ID.
+        anomaly_id: Anomaly ID within the run.
+        payload: Expert's corrected root cause, actions, and notes.
+
+    Returns:
+        HiltFixResponse confirming the fix was recorded.
+
+    Raises:
+        HTTPException 404: Run or anomaly not found.
+    """
+    run_row = run_store.get_run(run_id)
+    if run_row is None:
+        raise HTTPException(status_code=404, detail="run not found")
+
+    anomalies = run_store.get_run_anomalies(run_id)
+    anomaly = next((a for a in anomalies if a.get("id") == anomaly_id.replace("anomaly_", "")), None)
+    if anomaly is None:
+        raise HTTPException(status_code=404, detail="anomaly not found")
+
+    run_store.save_expert_fix(
+        run_id,
+        anomaly_id,
+        root_cause=payload.corrected_root_cause,
+        actions=payload.corrected_actions,
+        notes=payload.notes,
+    )
+
+    return HiltFixResponse(ok=True, message="Expert fix recorded successfully")
 
 
 @router.post("/review/{review_id}/decision", response_model=DashboardReviewDecisionResponse)

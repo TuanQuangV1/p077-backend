@@ -22,6 +22,16 @@ DEFAULT_DIAGNOSTICS_THRESHOLDS = {
     "timestamp_jitter_max_sec": 0.02,
     "max_gap_burst_sec": 1.0,
     "clock_drift_max_sec": 0.1,
+    "hz_drop_warn_pct": 0.30,
+    "hz_drop_critical_pct": 0.50,
+    "hz_drop_min_messages": 50,
+    "header_latency_max_ms": 100,
+    "log_error_min_count": 3,
+    "log_warn_min_count": 10,
+    "log_fatal_min_count": 1,
+    "tf_max_missing_span_sec": 0.5,
+    "tf_jump_distance_m": 0.5,
+    "payload_zero_byte_min_count": 5,
 }
 
 DEFAULT_DIAGNOSTICS_THRESHOLDS_FILE = Path("data/diagnostics/thresholds.json")

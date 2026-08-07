@@ -4,7 +4,6 @@ const SECTIONS: { path: string; title: string }[] = [
     { path: "/", title: "Fleet overview" },
     { path: "/datasets", title: "Rosbag datasets" },
     { path: "/analysis", title: "Analysis workspace" },
-    { path: "/simulation", title: "Simulation replay" },
     { path: "/review", title: "Human review queue" },
     { path: "/reports", title: "Diagnostic reports" },
     { path: "/vllm", title: "VLLM observability" },

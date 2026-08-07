@@ -120,7 +120,7 @@ def _unquote_arg(val):
 
 
 def _conv_cwds(transcript: Path) -> set[str]:
-    """All Cwd values that appear in tool calls inside this transcript."""
+    """All path values that appear in tool calls or context inside this transcript."""
     cwds: set[str] = set()
     try:
         with open(transcript, encoding="utf-8") as f:
@@ -134,10 +134,17 @@ def _conv_cwds(transcript: Path) -> set[str]:
                     continue
                 for tc in (entry.get("tool_calls") or []):
                     args = tc.get("args") or {}
-                    cwd = args.get("Cwd") or args.get("cwd")
-                    cwd = _unquote_arg(cwd)
-                    if isinstance(cwd, str):
-                        n = _normalize(cwd)
+                    for key in ("Cwd", "cwd", "AbsolutePath", "TargetFile", "SearchPath", "DirectoryPath"):
+                        val = _unquote_arg(args.get(key))
+                        if isinstance(val, str):
+                            n = _normalize(val)
+                            if n:
+                                cwds.add(n)
+                # Check for workspace URI in transcript entries
+                content = entry.get("content")
+                if isinstance(content, str):
+                    for match in re.findall(r"([a-zA-Z]:[\\/][^\]\n\r\"'>\s]+)", content):
+                        n = _normalize(match)
                         if n:
                             cwds.add(n)
     except OSError:
@@ -146,15 +153,11 @@ def _conv_cwds(transcript: Path) -> set[str]:
 
 
 def _conv_matches_repo(cwds: set[str], repo_root_n: str) -> bool:
-    """True if any cwd is equal to, ancestor of, or descendant of the repo."""
+    """True if any cwd is equal to or a descendant of the current repo root."""
     if not repo_root_n or not cwds:
         return False
     for cwd in cwds:
-        if cwd == repo_root_n:
-            return True
-        if cwd.startswith(repo_root_n + "\\"):
-            return True
-        if repo_root_n.startswith(cwd + "\\"):
+        if cwd == repo_root_n or cwd.startswith(repo_root_n + "\\"):
             return True
     return False
 

@@ -4,6 +4,7 @@ import { CircleDotIcon, RadioIcon } from "lucide-react"
 
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
+import { ThemeToggle } from "@/components/theme-toggle"
 import { useLiveStream } from "@/hooks/use-live-stream"
 import { cn } from "@/lib/utils"
 
@@ -52,6 +53,8 @@ export function TopBar() {
         ) : (
           <span className="text-muted-foreground">awaiting telemetry…</span>
         )}
+        <Separator orientation="vertical" className="!h-4" />
+        <ThemeToggle />
       </div>
     </header>
   )
