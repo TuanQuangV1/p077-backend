@@ -23,6 +23,9 @@ interface AnalysisHealthPanelProps {
   rosbag: Rosbag | null
   anomalies: Anomaly[]
   logs: LogEvent[]
+  /** Per-topic stats derived from the run's window export; falls back to the
+   *  dataset's own topic list, which is empty for bags uploaded without metadata. */
+  topics?: TopicStat[]
   onSelectAnomaly?: (id: string) => void
   onSeek?: (tSec: number) => void
 }
@@ -32,6 +35,7 @@ export function AnalysisHealthPanel({
   rosbag,
   anomalies,
   logs,
+  topics: topicsProp,
   onSelectAnomaly,
   onSeek,
 }: AnalysisHealthPanelProps) {
@@ -84,7 +88,7 @@ export function AnalysisHealthPanel({
   )
 
   // Find worst drop topic
-  const topics: TopicStat[] = rosbag?.topics ?? []
+  const topics: TopicStat[] = topicsProp?.length ? topicsProp : (rosbag?.topics ?? [])
   let worstDrop = { topic: null as string | null, pct: 0 }
   for (const t of topics) {
     const dropPct = Math.round(t.dropRate * 100)

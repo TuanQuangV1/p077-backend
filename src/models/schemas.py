@@ -86,6 +86,9 @@ class AIResultSummary(BaseModel):
     promptTokens: int
     completionTokens: int
     vllmRequestId: str
+    reviewer: str | None = None
+    reviewerNote: str | None = None
+    reviewedAt: str | None = None
 
 
 class AnalysisDetailResponse(BaseModel):
@@ -117,6 +120,39 @@ class ReviewItem(BaseModel):
     reviewStatus: str
     rootCause: str
     explanation: str
+    reviewer: str | None = None
+    notes: str | None = None
+    decidedAt: str | None = None
+
+
+class ReviewStatsRun(BaseModel):
+    runId: str
+    rosbagName: str
+    total: int
+    reviewed: int
+    approved: int
+    rejected: int
+    edited: int
+    pending: int
+    accuracy: float | None = None
+
+
+class ReviewStatsResponse(BaseModel):
+    """Human-in-the-loop verdict tallies used to measure agent accuracy.
+
+    ``accuracy`` is approved / reviewed. Recall is deliberately absent: it needs
+    ground-truth labels for anomalies the agent never reported, which the review
+    queue cannot observe.
+    """
+
+    total: int
+    reviewed: int
+    approved: int
+    rejected: int
+    edited: int
+    pending: int
+    accuracy: float | None = None
+    runs: list[ReviewStatsRun]
 
 
 class ReviewListResponse(BaseModel):

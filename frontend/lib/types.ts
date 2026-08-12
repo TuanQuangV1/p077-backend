@@ -151,6 +151,32 @@ export interface AIResult {
   promptTokens: number
   completionTokens: number
   vllmRequestId: string
+  reviewer?: string | null
+  reviewerNote?: string | null
+  reviewedAt?: string | null
+}
+
+export interface ReviewStatsRun {
+  runId: string
+  rosbagName: string
+  total: number
+  reviewed: number
+  approved: number
+  rejected: number
+  edited: number
+  pending: number
+  accuracy: number | null
+}
+
+export interface ReviewStats {
+  total: number
+  reviewed: number
+  approved: number
+  rejected: number
+  edited: number
+  pending: number
+  accuracy: number | null
+  runs: ReviewStatsRun[]
 }
 
 export interface Feedback {

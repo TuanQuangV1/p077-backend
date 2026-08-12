@@ -1,12 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { Fragment, useState } from "react"
 import { ChevronDownIcon, ChevronRightIcon, SignalIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
 import type { Anomaly, TopicStat } from "@/lib/types"
 
 interface TopicHealthTableProps {
@@ -136,13 +135,10 @@ export function TopicHealthTable({
                 const isExpanded = expandedTopic === topic.name
 
                 return (
-                  <Collapsible
-                    key={topic.name}
-                    open={isExpanded}
-                    onOpenChange={(open) =>
-                      setExpandedTopic(open ? topic.name : null)
-                    }
-                  >
+                  // A Fragment, not Collapsible: that primitive renders a <div>,
+                  // which is invalid directly inside <tbody> and breaks hydration.
+                  // Expansion is already driven by `expandedTopic` state.
+                  <Fragment key={topic.name}>
                     <tr className="group">
                       <td className="px-3 py-2">
                         <button
@@ -201,7 +197,7 @@ export function TopicHealthTable({
                         </Badge>
                       </td>
                     </tr>
-                    <CollapsibleContent>
+                    {isExpanded ? (
                       <tr className="bg-muted/30">
                         <td colSpan={5} className="px-4 py-2">
                           <div className="space-y-2">
@@ -255,8 +251,8 @@ export function TopicHealthTable({
                           </div>
                         </td>
                       </tr>
-                    </CollapsibleContent>
-                  </Collapsible>
+                    ) : null}
+                  </Fragment>
                 )
               })}
             </tbody>

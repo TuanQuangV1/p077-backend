@@ -27,6 +27,7 @@ export function resolveApiUrl(url: string): string {
         return `${API_V1_BASE}/analysis/${runId}`
     }
     if (route === "review") return `${API_V1_BASE}/review`
+    if (route === "review/stats") return `${API_V1_BASE}/review/stats`
     if (route.startsWith("review/")) return `${API_V1_BASE}/${route}`
     if (route.startsWith("reports")) return url
     if (route.startsWith("vllm/")) return url
@@ -56,6 +57,34 @@ export async function post<T>(url: string, body?: unknown): Promise<T> {
 
 export async function del<T>(url: string): Promise<T> {
     return requestJson<T>(url, { method: "DELETE" })
+}
+
+/** One row of the backend's per-(topic, window) NDJSON summary export. */
+export interface WindowSummaryRow {
+    window_start: string
+    topic: string
+    node: string
+    message_type: string
+    count: number
+    expected_hz: number | null
+    actual_hz: number
+    max_gap_ms: number
+    jitter_ms: number
+    drift_ms: number | null
+}
+
+/**
+ * Streams the run's windowed bag summary (NDJSON, one row per topic+window).
+ *
+ * Kept separate from `fetcher` because the response is newline-delimited JSON,
+ * not a single JSON document. The backend re-reads the whole bag per call
+ * (~1s), so callers should fetch once per run rather than per view change.
+ */
+export async function fetchWindowSummaries(runId: string, windowSec = 5): Promise<WindowSummaryRow[]> {
+    const res = await fetch(`${API_V1_BASE}/analysis/${runId}/export/windows?window_sec=${windowSec}`)
+    if (!res.ok) throw new Error(`Request failed: ${res.status}`)
+    const body = await res.text()
+    return body.split("\n").filter(Boolean).map((line) => JSON.parse(line) as WindowSummaryRow)
 }
 
 /** Uploads a rosbag file (or rosbag2 zip) to the backend via multipart. */

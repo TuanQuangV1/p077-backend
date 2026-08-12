@@ -168,6 +168,11 @@ def _anomaly_summaries(run_id: str, detections: list[dict[str, Any]]) -> list[di
             "max_gap_sec",
             "jitter_sec",
             "drift_sec",
+            "expected_hz",
+            "actual_hz",
+            "drop_pct",
+            "max_latency_ms",
+            "threshold_ms",
             "threshold_sec",
         ):
             if key in evidence:
