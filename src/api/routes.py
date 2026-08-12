@@ -57,6 +57,8 @@ from src.models.schemas import (
     HiltSummary,
     ReviewItem,
     ReviewListResponse,
+    ReviewStatsResponse,
+    ReviewStatsRun,
 )
 from src.services import run_store
 from src.services.analysis import _KIND_LABELS, _anomaly_summaries, _build_ai_results, run_analysis
@@ -667,14 +669,70 @@ async def export_analysis_windows(
 
 
 @router.get("/review", response_model=ReviewListResponse)
-async def review_queue() -> ReviewListResponse:
-    """Get the queue of AI results awaiting human review.
+async def review_queue(
+    status_filter: str = Query(default="pending", alias="status"),
+) -> ReviewListResponse:
+    """Get AI results in the human review queue.
+
+    Args:
+        status_filter: ``pending`` (default), a specific verdict
+            (``approved``/``rejected``/``edited``), or ``all`` for every item.
 
     Returns:
-        ``ReviewListResponse`` with the pending review items and total count.
+        ``ReviewListResponse`` with the matching review items and total count.
     """
-    items = [ReviewItem(**item) for item in run_store.list_review_items(status="pending")]
+    rows = run_store.list_review_items(status=None if status_filter == "all" else status_filter)
+    items = [ReviewItem(**item) for item in rows]
     return ReviewListResponse(items=items, total=len(items))
+
+
+@router.get("/review/stats", response_model=ReviewStatsResponse)
+async def review_statistics() -> ReviewStatsResponse:
+    """Aggregate human verdicts into agent-accuracy metrics.
+
+    ``accuracy`` is approved / reviewed, per run and overall; it is ``None``
+    until at least one item has been reviewed. Recall is not reported because
+    it would require ground truth for anomalies the agent never raised.
+
+    Returns:
+        ``ReviewStatsResponse`` with overall totals and a per-run breakdown.
+    """
+
+    def _accuracy(approved: int, reviewed: int) -> float | None:
+        return round(approved / reviewed, 4) if reviewed else None
+
+    per_run = run_store.review_stats()
+    runs = []
+    for row in per_run:
+        reviewed = row["approved"] + row["rejected"] + row["edited"]
+        runs.append(
+            ReviewStatsRun(
+                runId=row["runId"],
+                rosbagName=row["rosbagName"],
+                total=row["total"],
+                reviewed=reviewed,
+                approved=row["approved"],
+                rejected=row["rejected"],
+                edited=row["edited"],
+                pending=row["pending"],
+                accuracy=_accuracy(row["approved"], reviewed),
+            )
+        )
+
+    approved = sum(run.approved for run in runs)
+    rejected = sum(run.rejected for run in runs)
+    edited = sum(run.edited for run in runs)
+    reviewed = approved + rejected + edited
+    return ReviewStatsResponse(
+        total=sum(run.total for run in runs),
+        reviewed=reviewed,
+        approved=approved,
+        rejected=rejected,
+        edited=edited,
+        pending=sum(run.pending for run in runs),
+        accuracy=_accuracy(approved, reviewed),
+        runs=runs,
+    )
 
 
 @router.post("/analysis/diagnose", response_model=DiagnosticsSummaryResponse)

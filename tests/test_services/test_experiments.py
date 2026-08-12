@@ -153,7 +153,7 @@ def _make_valid_db3(bytes_io: io.BytesIO) -> None:
         conn.execute("CREATE TABLE messages(id INTEGER PRIMARY KEY, topic_id INTEGER, timestamp INTEGER, data BLOB)")
         conn.execute("INSERT INTO topics VALUES (1, '/scan', 'sensor_msgs/msg/LaserScan')")
         conn.execute(
-            "INSERT INTO messages(topic_id, timestamp) VALUES (1, 1_000_000_000)"
+            "INSERT INTO messages(topic_id, timestamp) VALUES (1, 1000000000)"
         )
         conn.commit()
         conn.close()

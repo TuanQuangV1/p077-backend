@@ -22,14 +22,94 @@ import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { bytes, clock, compact, del, fetcher, ms, post, uploadRosbag } from "@/lib/api"
-import type { AIResult, Anomaly, AnalysisRun, LogEvent, Rosbag, VllmRequest } from "@/lib/types"
+import { bytes, clock, compact, del, fetchWindowSummaries, fetcher, ms, post, uploadRosbag, type WindowSummaryRow } from "@/lib/api"
+import type { AIResult, Anomaly, AnalysisRun, LogEvent, ReviewStats, Rosbag, TopicStat, VllmRequest } from "@/lib/types"
 
 import { AnalysisHealthPanel } from "@/components/health/analysis-health-panel"
 
 type Overview = { totals: Record<string, number>; topIssues: { label: string; count: number }[]; severity: { severity: string; count: number }[]; trend: { date: string; bags: number; anomalies: number; p95Ms: number; costUsd: number }[]; recentRuns: AnalysisRun[] }
 
 const json = (value: unknown) => JSON.stringify(value, null, 2)
+
+const TIMELINE_WINDOW_SEC = 5
+const TIMELINE_BUCKETS = 240
+
+/**
+ * Folds the backend's per-(topic, window) summary rows into canvas lanes.
+ *
+ * Bag timestamps are absolute seconds (a bag may start at t=350s), and the
+ * canvas maps buckets over 0..durationSec, so durationSec is derived from the
+ * last window rather than assumed — anomaly markers carry the same absolute
+ * tSec and must line up with the density bars.
+ */
+function buildTimelineLanes(rows: WindowSummaryRow[], windowSec: number): { lanes: Lane[]; durationSec: number; startSec: number } {
+    if (rows.length === 0) return { lanes: [], durationSec: 0, startSec: 0 }
+    const startOf = (row: WindowSummaryRow) => Date.parse(row.window_start) / 1000
+    const durationSec = Math.max(...rows.map((row) => startOf(row) + windowSec))
+    const startSec = Math.min(...rows.map(startOf))
+
+    const byTopic = new Map<string, WindowSummaryRow[]>()
+    for (const row of rows) {
+        const bucket = byTopic.get(row.topic)
+        if (bucket) bucket.push(row)
+        else byTopic.set(row.topic, [row])
+    }
+
+    const lanes = [...byTopic.entries()]
+        .map(([topic, topicRows]) => {
+            const density = new Array<number>(TIMELINE_BUCKETS).fill(0)
+            for (const row of topicRows) {
+                const start = startOf(row)
+                const from = Math.max(0, Math.floor((start / durationSec) * TIMELINE_BUCKETS))
+                const to = Math.min(TIMELINE_BUCKETS - 1, Math.floor(((start + windowSec) / durationSec) * TIMELINE_BUCKETS))
+                for (let b = from; b <= to; b++) density[b] = Math.max(density[b], row.count)
+            }
+            const meanHz = topicRows.reduce((sum, row) => sum + row.actual_hz, 0) / topicRows.length
+            return {
+                topic,
+                messageType: topicRows[0].message_type,
+                expectedHz: topicRows[0].expected_hz ?? 0,
+                hz: Number(meanHz.toFixed(2)),
+                density,
+            }
+        })
+        .sort((a, b) => a.topic.localeCompare(b.topic))
+
+    return { lanes, durationSec, startSec }
+}
+
+/**
+ * Per-topic stats for the Topic Health table, from the same window rows.
+ *
+ * The bag's own `expected_hz` is absent (rosbag2 does not record it), so the
+ * nominal rate is the topic's best sustained window — the same definition the
+ * backend's hz_drop rule falls back to (`resolved_expected = max(rates)`),
+ * keeping the table consistent with the detections it sits next to.
+ */
+function buildTopicStats(rows: WindowSummaryRow[]): TopicStat[] {
+    const byTopic = new Map<string, WindowSummaryRow[]>()
+    for (const row of rows) {
+        const bucket = byTopic.get(row.topic)
+        if (bucket) bucket.push(row)
+        else byTopic.set(row.topic, [row])
+    }
+
+    return [...byTopic.entries()]
+        .map(([topic, topicRows]) => {
+            const rates = topicRows.map((row) => row.actual_hz)
+            const expectedHz = topicRows[0].expected_hz ?? Math.max(...rates)
+            const hz = rates.reduce((sum, rate) => sum + rate, 0) / rates.length
+            return {
+                name: topic,
+                messageType: topicRows[0].message_type,
+                messageCount: topicRows.reduce((sum, row) => sum + row.count, 0),
+                hz: Number(hz.toFixed(2)),
+                expectedHz: Number(expectedHz.toFixed(2)),
+                dropRate: expectedHz > 0 ? Math.max(0, Number((1 - hz / expectedHz).toFixed(4))) : 0,
+            }
+        })
+        .sort((a, b) => a.name.localeCompare(b.name))
+}
 
 export function RavConsole() {
     const pathname = usePathname()
@@ -50,6 +130,9 @@ export function RavConsole() {
     const [savingThresholds, setSavingThresholds] = useState(false)
     const [timelineView, setTimelineView] = useState({ from: 0, to: 120 })
     const [timelineLanes, setTimelineLanes] = useState<Lane[]>([])
+    const [timelineDuration, setTimelineDuration] = useState(0)
+    const [timelineStart, setTimelineStart] = useState(0)
+    const [topicStats, setTopicStats] = useState<TopicStat[]>([])
     const [topicFilter, setTopicFilter] = useState("all")
     const [timeRange, setTimeRange] = useState("all")
 
@@ -71,34 +154,45 @@ export function RavConsole() {
             fetcher<{ logs: LogEvent[] }>(`/api/runs/${run.id}/logs`).catch(() => ({ logs: [] as LogEvent[] })),
           ]).then(([detail, logsData]) => { setAnomalies(detail.anomalies); setAiResults(detail.aiResults); setLogs(logsData.logs); setSelected(detail.anomalies[0]?.id ?? null) })
     }, [overview, activeRun])
+    // Fetched once per run: the backend re-reads the whole bag to build this,
+    // so it must not be tied to view/filter changes (zoom would refetch ~1s).
     useEffect(() => {
         if (section !== "analysis" || !activeRun) return
-        const params = new URLSearchParams({ from: String(timelineView.from), to: String(timelineView.to) })
-        if (topicFilter !== "all") params.set("topics", topicFilter)
-        fetcher<{ lanes: Lane[]; anomalies: Anomaly[]; durationSec: number }>(`/api/runs/${activeRun.id}/timeline?${params}`).then((payload) => {
-            setTimelineLanes(payload.lanes)
-            setAnomalies(payload.anomalies)
-            setTimelineView((view) => ({ from: view.from, to: Math.min(view.to, payload.durationSec) }))
+        let cancelled = false
+        fetchWindowSummaries(activeRun.id, TIMELINE_WINDOW_SEC).then((rows) => {
+            if (cancelled) return
+            const { lanes, durationSec, startSec } = buildTimelineLanes(rows, TIMELINE_WINDOW_SEC)
+            setTimelineLanes(lanes)
+            setTopicStats(buildTopicStats(rows))
+            setTimelineDuration(durationSec)
+            setTimelineStart(startSec)
+            // Bags rarely start at t=0; open on the recorded span, not the empty lead-in.
+            setTimelineView({ from: startSec, to: durationSec })
         }).catch(() => {
-            // No backend timeline endpoint for real runs yet — keep lanes empty instead of crashing.
+            if (cancelled) return
             setTimelineLanes([])
+            setTopicStats([])
+            setTimelineDuration(0)
+            setTimelineStart(0)
         })
-    }, [section, activeRun, timelineView.from, timelineView.to, topicFilter])
+        return () => { cancelled = true }
+    }, [section, activeRun])
     useEffect(() => { if (section === "vllm") { fetcher<any>("/api/vllm/metrics?windowMin=60").then(setMetrics); fetcher<{ items: VllmRequest[] }>('/api/vllm/requests').then((x) => setRequests(x.items)) } }, [section])
     useEffect(() => { if (section === "analysis") { fetcher<{ thresholds: Record<string, number> }>('/api/v1/analysis/thresholds').then((payload) => setThresholds(payload.thresholds)).catch(() => toast.error('Thresholds unavailable')) } }, [section])
 
     const selectedAnomaly = anomalies.find((a) => a.id === selected) ?? anomalies[0]
     const selectedResult = aiResults.find((r) => r.anomalyId === selectedAnomaly?.id) ?? aiResults[0]
     const navigate = (href: string) => router.push(href)
+    const handleReviewed = (updated: AIResult) => setAiResults((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
     const title = ({ dashboard: "Fleet overview", datasets: "Rosbag datasets", analysis: "Analysis workspace", review: "Human review queue", reports: "Diagnostic reports", vllm: "VLLM observability", architecture: "System architecture" } as Record<string, string>)[section] ?? "RAV-13"
 
     return <main className="min-h-[calc(100vh-3rem)] bg-background p-4 md:p-6"><div className="mx-auto flex max-w-[1800px] flex-col gap-5">
         <PageHeader title={title} description={section === "analysis" ? `${activeRun?.rosbagName ?? "Select a run"} Â· synchronized diagnosis surface` : "ROS2 Doctor + Agent + VLLM diagnostic console"} actions={<div className="flex gap-2"><Button variant="outline" size="sm" onClick={() => window.location.reload()}><RefreshCwIcon data-icon="inline-start" />Refresh</Button>{section === "datasets" ? <Button size="sm" onClick={refreshBags}><UploadIcon data-icon="inline-start" />Refresh datasets</Button> : null}</div>} />
         {section === "dashboard" && <DashboardEnhanced overview={overview} navigate={navigate} />}
         {section === "datasets" && <DatasetRegistry bags={bags} onRefresh={refreshBags} navigate={navigate} />}
-        {section === "analysis" && <AnalysisWorkspace activeRun={activeRun} rosbag={bags.find(b => b.id === activeRun?.rosbagId) ?? null} anomalies={anomalies} logs={logs} selected={selected} setSelected={setSelected} lanes={timelineLanes} playhead={playhead} setPlayhead={setPlayhead} selectedResult={selectedResult} view={timelineView} setView={setTimelineView} topicFilter={topicFilter} setTopicFilter={setTopicFilter} timeRange={timeRange} setTimeRange={setTimeRange} thresholds={thresholds} setThresholds={setThresholds} savingThresholds={savingThresholds} setSavingThresholds={setSavingThresholds} />}
-        {section === "review" && <Review results={aiResults} anomalies={anomalies} />}
-        {section === "reports" && <ReportsEnhanced overview={overview} activeRun={activeRun} />}
+        {section === "analysis" && <AnalysisWorkspace activeRun={activeRun} rosbag={bags.find(b => b.id === activeRun?.rosbagId) ?? null} anomalies={anomalies} logs={logs} selected={selected} setSelected={setSelected} lanes={timelineLanes} playhead={playhead} setPlayhead={setPlayhead} selectedResult={selectedResult} view={timelineView} setView={setTimelineView} topicFilter={topicFilter} setTopicFilter={setTopicFilter} timeRange={timeRange} setTimeRange={setTimeRange} thresholds={thresholds} setThresholds={setThresholds} savingThresholds={savingThresholds} setSavingThresholds={setSavingThresholds} onReviewed={handleReviewed} durationSec={timelineDuration} startSec={timelineStart} topics={topicStats} />}
+        {section === "review" && <Review results={aiResults} anomalies={anomalies} onReviewed={handleReviewed} />}
+        {section === "reports" && <ReportsEnhanced activeRun={activeRun} />}
         {section === "vllm" && <Vllm metrics={metrics} requests={requests} />}
         {section === "architecture" && <Architecture />}
     </div></main>
@@ -109,7 +203,7 @@ function Dashboard({ overview, navigate }: { overview: Overview | null; navigate
 function Analysis({ activeRun, anomalies, selected, setSelected, lanes, playhead, setPlayhead, selectedResult }: { activeRun: AnalysisRun | null; anomalies: Anomaly[]; selected: string | null; setSelected: (s: string) => void; lanes: Lane[]; playhead: number; setPlayhead: (n: number) => void; selectedResult?: AIResult }) { return <div className="grid min-h-[680px] gap-4 xl:grid-cols-[230px_minmax(0,1fr)_380px]"><Card className="min-h-0 overflow-hidden"><CardHeader className="border-b border-border py-3"><CardTitle className="text-sm">Detections</CardTitle></CardHeader><AnomalyList anomalies={anomalies} selectedId={selected} severities={[]} onSeveritiesChange={() => { }} onSelect={(a) => { setSelected(a.id); setPlayhead(a.tSec) }} /></Card><Card className="min-w-0 overflow-hidden"><CardHeader className="flex-row items-center justify-between border-b border-border py-3"><div><CardTitle className="text-sm">Message timeline</CardTitle><p className="font-mono text-[10px] text-muted-foreground">{activeRun?.rosbagName ?? "Loading run"} Â· drag to scrub</p></div><Badge variant="outline" className="font-mono text-[10px]">{clock(playhead)}</Badge></CardHeader><CardContent className="p-0 pt-3"><TimelineCanvas durationSec={120} lanes={lanes} anomalies={anomalies} playhead={playhead} view={{ from: 0, to: 120 }} selectedAnomalyId={selected} onScrub={setPlayhead} onViewChange={() => { }} onSelectAnomaly={setSelected} /></CardContent></Card><div className="min-h-0 overflow-auto">{selectedResult ? <AIConclusion result={selectedResult} anomaly={anomalies.find((a) => a.id === selectedResult.anomalyId)} onSeek={setPlayhead} /> : <Card><CardContent className="p-5 text-sm text-muted-foreground">Select a detection to inspect the agent conclusion.</CardContent></Card>}</div></div> }
 
 
-function Review({ results, anomalies }: { results: AIResult[]; anomalies: Anomaly[] }) { return <div className="grid gap-4 lg:grid-cols-2">{results.map((r) => <AIConclusion key={r.id} result={r} anomaly={anomalies.find((a) => a.id === r.anomalyId)} compact />)}</div> }
+function Review({ results, anomalies, onReviewed }: { results: AIResult[]; anomalies: Anomaly[]; onReviewed: (result: AIResult) => void }) { return <div className="grid gap-4 lg:grid-cols-2">{results.map((r) => <AIConclusion key={r.id} result={r} anomaly={anomalies.find((a) => a.id === r.anomalyId)} onReviewed={onReviewed} compact />)}</div> }
 function Reports({ overview }: { overview: Overview | null }) { return <SectionCard title="Report ledger" description="Auditable outputs generated from reviewed diagnosis"><div className="flex flex-col gap-3"><div className="flex items-center justify-between border-b border-border pb-3"><div><p className="text-sm font-medium">Warehouse navigation incident review</p><p className="font-mono text-[10px] text-muted-foreground">RPT-2026-071 Â· 3 key issues Â· 2 approvals</p></div><div className="flex gap-2"><Button variant="outline" size="sm"><DownloadIcon data-icon="inline-start" />JSON</Button><Button size="sm">Publish</Button></div></div><pre className="max-h-72 overflow-auto border border-border bg-muted/20 p-4 font-mono text-xs text-muted-foreground">{json({ generatedAt: "2026-07-31T09:00:00Z", anomalies: overview?.totals.anomalies ?? 0, recommendations: ["Isolate sensor VLAN", "Reserve controller CPU"] })}</pre></div></SectionCard> }
 function Vllm({ metrics, requests }: { metrics: any; requests: VllmRequest[] }) {
     const [tab, setTab] = useState("metrics")
@@ -215,9 +309,12 @@ function DatasetRegistry({ bags, onRefresh, navigate }: { bags: Rosbag[]; onRefr
     return <SectionCard title="Capture registry" description="Upload, delete, and launch diagnosis from stored rosbag files" actions={<div className="flex items-center gap-2"><Button size="sm" variant="outline" disabled={uploading || selected.size === 0} onClick={analyzeSelected}><PlayIcon data-icon="inline-start" />Analyze selected{selected.size ? ` (${selected.size})` : ""}</Button><Button size="sm" disabled={uploading} onClick={() => document.getElementById('file-upload-input')?.click()}><UploadIcon data-icon="inline-start" />{uploading ? "Uploading..." : "Upload rosbag"}</Button><input key={fileInputKey} id="file-upload-input" type="file" accept=".db3,.mcap,.bag,.zip" className="hidden" onChange={(e) => upload(e.target.files?.[0])} /></div>}><div className="mb-4 flex max-w-xl items-center gap-2"><SearchIcon className="size-4 text-muted-foreground" /><Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter file, site, or robot type" /></div><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b border-border font-mono text-[10px] uppercase text-muted-foreground"><tr><th className="pb-2"><Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all" /></th><th className="pb-2">Capture</th><th className="pb-2">Robot / site</th><th className="pb-2">Size / duration</th><th className="pb-2">Status</th><th className="pb-2 text-right">Action</th></tr></thead><tbody className="divide-y divide-border">{filtered.map((bag) => <tr key={bag.id} className={selected.has(bag.id) ? "bg-accent/30" : undefined}><td className="py-3"><Checkbox checked={selected.has(bag.id)} onCheckedChange={() => toggle(bag.id)} aria-label={`Select ${bag.name}`} /></td><td className="py-3 font-mono text-xs">{bag.name}<div className="text-[10px] text-muted-foreground">{bag.messageCount.toLocaleString()} messages</div></td><td className="py-3 text-xs">{bag.robotType}<div className="text-muted-foreground">{bag.site}</div></td><td className="py-3 font-mono text-xs">{bytes(bag.sizeBytes)}<div className="text-muted-foreground">{clock(bag.durationSec, false)}</div></td><td className="py-3"><StatusLabel status={bag.status} /></td><td className="py-3 text-right"><div className="flex justify-end gap-1"><Button size="sm" variant="ghost" disabled={busy === bag.id} onClick={() => analyze(bag)}>Analyze</Button><Button size="sm" variant="ghost" disabled={busy === bag.id} onClick={() => remove(bag)}><Trash2Icon data-icon="inline-start" />Delete</Button></div></td></tr>)}</tbody></table></div></SectionCard>
 }
 
-function AnalysisWorkspace({ activeRun, rosbag, anomalies, logs, selected, setSelected, lanes, playhead, setPlayhead, selectedResult, view, setView, topicFilter, setTopicFilter, timeRange, setTimeRange, thresholds, setThresholds, savingThresholds, setSavingThresholds }: { activeRun: AnalysisRun | null; rosbag: Rosbag | null; anomalies: Anomaly[]; logs: LogEvent[]; selected: string | null; setSelected: (id: string) => void; lanes: Lane[]; playhead: number; setPlayhead: (time: number) => void; selectedResult?: AIResult; view: { from: number; to: number }; setView: (view: { from: number; to: number }) => void; topicFilter: string; setTopicFilter: (topic: string) => void; timeRange: string; setTimeRange: (range: string) => void; thresholds: Record<string, number>; setThresholds: (thresholds: Record<string, number>) => void; savingThresholds: boolean; setSavingThresholds: (saving: boolean) => void }) {
-    const duration = activeRun ? 120 : 0
-    const visibleAnomalies = timeRange === "all" ? anomalies : anomalies.filter((item) => item.tSec <= Number(timeRange))
+function AnalysisWorkspace({ activeRun, rosbag, anomalies, logs, selected, setSelected, lanes, playhead, setPlayhead, selectedResult, view, setView, topicFilter, setTopicFilter, timeRange, setTimeRange, thresholds, setThresholds, savingThresholds, setSavingThresholds, onReviewed, durationSec, startSec, topics }: { activeRun: AnalysisRun | null; rosbag: Rosbag | null; anomalies: Anomaly[]; logs: LogEvent[]; selected: string | null; setSelected: (id: string) => void; lanes: Lane[]; playhead: number; setPlayhead: (time: number) => void; selectedResult?: AIResult; view: { from: number; to: number }; setView: (view: { from: number; to: number }) => void; topicFilter: string; setTopicFilter: (topic: string) => void; timeRange: string; setTimeRange: (range: string) => void; thresholds: Record<string, number>; setThresholds: (thresholds: Record<string, number>) => void; savingThresholds: boolean; setSavingThresholds: (saving: boolean) => void; onReviewed: (result: AIResult) => void; durationSec: number; startSec: number; topics: TopicStat[] }) {
+    const duration = durationSec
+    const visibleLanes = topicFilter === "all" ? lanes : lanes.filter((lane) => lane.topic === topicFilter)
+    // Ranges are relative to the bag's own start — a bag recorded at t=350s
+    // would otherwise match nothing against absolute "first 30 sec".
+    const visibleAnomalies = timeRange === "all" ? anomalies : anomalies.filter((item) => item.tSec <= startSec + Number(timeRange))
     const saveThresholds = async () => {
         setSavingThresholds(true)
         try {
@@ -230,13 +327,74 @@ function AnalysisWorkspace({ activeRun, rosbag, anomalies, logs, selected, setSe
             setSavingThresholds(false)
         }
     }
-    return <div className="flex min-h-[680px] flex-col gap-3"><div className="flex flex-wrap items-center gap-2 border border-border bg-card p-2"><select value={topicFilter} onChange={(e) => setTopicFilter(e.target.value)} className="h-8 border border-input bg-background px-2 font-mono text-xs"><option value="all">All topics</option>{lanes.map((lane) => <option key={lane.topic} value={lane.topic}>{lane.topic}</option>)}</select><select value={timeRange} onChange={(e) => { const value = e.target.value; setTimeRange(value); setView({ from: 0, to: value === "all" ? duration : Number(value) }) }} className="h-8 border border-input bg-background px-2 font-mono text-xs"><option value="all">Full run</option><option value="30">First 30 sec</option><option value="60">First 60 sec</option></select><span className="ml-auto font-mono text-[10px] text-muted-foreground">{activeRun?.stage ?? "loading"} · {activeRun?.progress ?? 0}% · {lanes.length} lanes</span></div><AnalysisHealthPanel activeRunId={activeRun?.id ?? null} rosbag={rosbag} anomalies={anomalies} logs={logs} onSelectAnomaly={(id) => { setSelected(id); setPlayhead(anomalies.find(a => a.id === id)?.tSec ?? 0) }} onSeek={setPlayhead} /><div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[230px_minmax(0,1fr)_380px]"><Card className="min-h-0 overflow-hidden"><CardHeader className="border-b border-border py-3"><CardTitle className="text-sm">Detections <span className="font-mono text-[10px] text-muted-foreground">{visibleAnomalies.length}</span></CardTitle></CardHeader><AnomalyList anomalies={visibleAnomalies} selectedId={selected} severities={[]} onSeveritiesChange={() => { }} onSelect={(anomaly) => { setSelected(anomaly.id); setPlayhead(anomaly.tSec) }} /></Card><Card className="min-w-0 overflow-hidden"><CardHeader className="flex-row items-center justify-between border-b border-border py-3"><div><CardTitle className="text-sm">Message timeline</CardTitle><p className="font-mono text-[10px] text-muted-foreground">{activeRun?.rosbagName ?? "Loading run"} · drag scrub · shift-drag pan</p></div><Badge variant="outline" data-testid="timeline-playhead" className="font-mono text-[10px]">{clock(playhead)}</Badge></CardHeader><CardContent className="p-0 pt-3"><TimelineCanvas durationSec={duration} lanes={lanes} anomalies={visibleAnomalies} playhead={playhead} view={view} selectedAnomalyId={selected} onScrub={setPlayhead} onViewChange={setView} onSelectAnomaly={setSelected} /></CardContent></Card><div className="min-h-0 overflow-auto space-y-3">{selectedResult ? <AIConclusion result={selectedResult} anomaly={visibleAnomalies.find((item) => item.id === selectedResult.anomalyId)} onSeek={setPlayhead} /> : <Card><CardContent className="p-5 text-sm text-muted-foreground">Select a detection to inspect the agent conclusion.</CardContent></Card>}</div></div></div>
+    return <div className="flex min-h-[680px] flex-col gap-3"><div className="flex flex-wrap items-center gap-2 border border-border bg-card p-2"><select value={topicFilter} onChange={(e) => setTopicFilter(e.target.value)} className="h-8 border border-input bg-background px-2 font-mono text-xs"><option value="all">All topics</option>{lanes.map((lane) => <option key={lane.topic} value={lane.topic}>{lane.topic}</option>)}</select><select value={timeRange} onChange={(e) => { const value = e.target.value; setTimeRange(value); setView({ from: startSec, to: value === "all" ? duration : startSec + Number(value) }) }} className="h-8 border border-input bg-background px-2 font-mono text-xs"><option value="all">Full run</option><option value="30">First 30 sec</option><option value="60">First 60 sec</option></select><span className="ml-auto font-mono text-[10px] text-muted-foreground">{activeRun?.stage ?? "loading"} · {activeRun?.progress ?? 0}% · {lanes.length} lanes</span></div><AnalysisHealthPanel activeRunId={activeRun?.id ?? null} rosbag={rosbag} anomalies={anomalies} logs={logs} topics={topics} onSelectAnomaly={(id) => { setSelected(id); setPlayhead(anomalies.find(a => a.id === id)?.tSec ?? 0) }} onSeek={setPlayhead} /><div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[230px_minmax(0,1fr)_380px]"><Card className="min-h-0 overflow-hidden"><CardHeader className="border-b border-border py-3"><CardTitle className="text-sm">Detections <span className="font-mono text-[10px] text-muted-foreground">{visibleAnomalies.length}</span></CardTitle></CardHeader><AnomalyList anomalies={visibleAnomalies} selectedId={selected} severities={[]} onSeveritiesChange={() => { }} onSelect={(anomaly) => { setSelected(anomaly.id); setPlayhead(anomaly.tSec) }} /></Card><Card className="min-w-0 overflow-hidden"><CardHeader className="flex-row items-center justify-between border-b border-border py-3"><div><CardTitle className="text-sm">Message timeline</CardTitle><p className="font-mono text-[10px] text-muted-foreground">{activeRun?.rosbagName ?? "Loading run"} · drag scrub · shift-drag pan</p></div><Badge variant="outline" data-testid="timeline-playhead" className="font-mono text-[10px]">{clock(playhead)}</Badge></CardHeader><CardContent className="p-0 pt-3"><TimelineCanvas durationSec={duration} lanes={visibleLanes} anomalies={visibleAnomalies} playhead={playhead} view={view} selectedAnomalyId={selected} onScrub={setPlayhead} onViewChange={setView} onSelectAnomaly={setSelected} /></CardContent></Card><div className="min-h-0 overflow-auto space-y-3">{selectedResult ? <AIConclusion result={selectedResult} anomaly={visibleAnomalies.find((item) => item.id === selectedResult.anomalyId)} onSeek={setPlayhead} onReviewed={onReviewed} /> : <Card><CardContent className="p-5 text-sm text-muted-foreground">Select a detection to inspect the agent conclusion.</CardContent></Card>}</div></div></div>
 }
 
-function ReportsEnhanced({ overview, activeRun }: { overview: Overview | null; activeRun: AnalysisRun | null }) {
-    const [reports, setReports] = useState<any[]>([])
-    const [busy, setBusy] = useState(false)
-    useEffect(() => { fetcher<{ items: any[] }>("/api/reports").then((payload) => setReports(payload.items)) }, [])
-    const generate = async () => { if (!activeRun) return; setBusy(true); try { const payload = await post<{ report: any }>("/api/reports", { runId: activeRun.id }); setReports([payload.report, ...reports]); toast.success("Report generated") } finally { setBusy(false) } }
-    return <SectionCard title="Report ledger" description="Auditable outputs generated from reviewed diagnosis" actions={<Button size="sm" disabled={busy || !activeRun} onClick={generate}><FileTextIcon data-icon="inline-start" />Generate report</Button>}><div className="flex flex-col divide-y divide-border">{reports.map((report) => <div key={report.id} className="flex flex-wrap items-center gap-3 py-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{report.title}</p><p className="font-mono text-[10px] text-muted-foreground">{report.id} Â· {report.rosbagName}</p></div><StatusLabel status={report.status} /><Button variant="outline" size="sm" onClick={() => { navigator.clipboard?.writeText(json(report)); toast.success("JSON copied") }}><DownloadIcon data-icon="inline-start" />JSON</Button></div>)}{reports.length === 0 ? <p className="py-8 text-sm text-muted-foreground">No reports yet. Finish a reviewed run to generate the first report.</p> : null}<div className="mt-4 border-t border-border pt-4"><p className="mb-2 font-mono text-[10px] uppercase text-muted-foreground">Current scope</p><pre className="overflow-auto bg-muted/20 p-3 font-mono text-xs text-muted-foreground">{json({ analyzed: overview?.totals.analyzed ?? 0, anomalies: overview?.totals.anomalies ?? 0, activeRun: activeRun?.id ?? null })}</pre></div></div></SectionCard>
+const pct = (value: number | null) => (value === null ? "--" : `${Math.round(value * 100)}%`)
+
+/**
+ * Agent accuracy measured from human verdicts — the payoff of the HITL loop.
+ *
+ * Accuracy is approved / reviewed. Recall is intentionally absent: it needs
+ * ground-truth labels for anomalies the agent never raised, which the review
+ * queue cannot observe.
+ */
+function ReportsEnhanced({ activeRun }: { activeRun: AnalysisRun | null }) {
+    const [stats, setStats] = useState<ReviewStats | null>(null)
+    const [failed, setFailed] = useState(false)
+
+    const load = () => {
+        fetcher<ReviewStats>("/api/review/stats")
+            .then((payload) => { setStats(payload); setFailed(false) })
+            .catch(() => setFailed(true))
+    }
+    useEffect(load, [])
+
+    if (failed) return <SectionCard title="Agent accuracy" description="Human-in-the-loop verdict summary"><p className="py-8 text-sm text-muted-foreground">Review statistics unavailable.</p></SectionCard>
+    if (!stats) return <SectionCard title="Agent accuracy" description="Human-in-the-loop verdict summary"><p className="py-8 text-sm text-muted-foreground">Loading review statistics...</p></SectionCard>
+
+    const copyJson = () => {
+        navigator.clipboard?.writeText(json(stats))
+        toast.success("Accuracy report copied as JSON")
+    }
+
+    return <>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatTile label="Agent accuracy" value={pct(stats.accuracy)} tone={stats.accuracy !== null && stats.accuracy < 0.7 ? "critical" : "primary"} hint={`${stats.approved} approved of ${stats.reviewed} reviewed`} icon={<ShieldCheckIcon className="size-4" />} />
+            <StatTile label="Reviewed" value={stats.reviewed} hint={`${stats.pending} still pending`} icon={<FileTextIcon className="size-4" />} />
+            <StatTile label="Rejected" value={stats.rejected} tone="critical" hint="conclusion judged wrong" icon={<CircleAlertIcon className="size-4" />} />
+            <StatTile label="Corrected" value={stats.edited} hint="root cause edited by reviewer" icon={<ActivityIcon className="size-4" />} />
+        </div>
+        <SectionCard
+            title="Accuracy by run"
+            description="Verdicts recorded by engineers on each analysis run"
+            actions={<div className="flex gap-2"><Button variant="outline" size="sm" onClick={load}><RefreshCwIcon data-icon="inline-start" />Refresh</Button><Button variant="outline" size="sm" onClick={copyJson}><DownloadIcon data-icon="inline-start" />JSON</Button></div>}
+        >
+            <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                    <thead className="border-b border-border font-mono text-[10px] uppercase text-muted-foreground">
+                        <tr><th className="pb-2">Run</th><th className="pb-2 text-right">Detections</th><th className="pb-2 text-right">Reviewed</th><th className="pb-2 text-right">Approved</th><th className="pb-2 text-right">Rejected</th><th className="pb-2 text-right">Edited</th><th className="pb-2 text-right">Accuracy</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                        {stats.runs.map((run) => (
+                            <tr key={run.runId} className={activeRun?.id === run.runId ? "bg-accent/30" : undefined}>
+                                <td className="py-3"><span className="text-xs">{run.rosbagName}</span><div className="font-mono text-[10px] text-muted-foreground">{run.runId}</div></td>
+                                <td className="py-3 text-right font-mono text-xs">{run.total}</td>
+                                <td className="py-3 text-right font-mono text-xs">{run.reviewed}</td>
+                                <td className="py-3 text-right font-mono text-xs text-ok">{run.approved}</td>
+                                <td className="py-3 text-right font-mono text-xs text-critical">{run.rejected}</td>
+                                <td className="py-3 text-right font-mono text-xs">{run.edited}</td>
+                                <td className="py-3 text-right font-mono text-xs font-semibold">{pct(run.accuracy)}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+                {stats.runs.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No analysis runs yet.</p> : null}
+            </div>
+            <p className="mt-4 border-t border-border pt-3 text-[11px] text-muted-foreground">
+                Accuracy = approved / reviewed. Recall is not reported: it needs ground-truth labels for
+                anomalies the agent never raised, which the review queue cannot observe.
+            </p>
+        </SectionCard>
+    </>
 }

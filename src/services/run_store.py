@@ -271,15 +271,87 @@ def update_review_item(
     reviewer: str,
     notes: str | None,
 ) -> None:
+    target = conn.execute(
+        "SELECT run_id, anomaly_id FROM review_items WHERE id = ?", (review_id,)
+    ).fetchone()
+    decided_at = _now_iso()
     conn.execute(
         """
         UPDATE review_items
         SET review_status = ?, verdict = ?, reviewer = ?, notes = ?, decided_at = ?
         WHERE id = ?
         """,
-        (verdict, verdict, reviewer, notes, _now_iso(), review_id),
+        (verdict, verdict, reviewer, notes, decided_at, review_id),
     )
+    if target is not None:
+        _sync_ai_result_review_status(
+            conn, target["run_id"], target["anomaly_id"], verdict, reviewer, notes, decided_at
+        )
     conn.commit()
+
+
+def _sync_ai_result_review_status(
+    conn: sqlite3.Connection,
+    run_id: str,
+    anomaly_id: str,
+    review_status: str,
+    reviewer: str,
+    notes: str | None,
+    decided_at: str,
+) -> None:
+    """Mirror a review decision onto the matching row in run_ai_results.
+
+    review_items and run_ai_results are separate tables (one row of JSON per
+    AI result), so a review decision only reached review_items until now,
+    leaving GET /analysis/{run_id} stuck showing "pending" forever.
+    """
+    rows = conn.execute(
+        "SELECT idx, payload FROM run_ai_results WHERE run_id = ?", (run_id,)
+    ).fetchall()
+    for row in rows:
+        payload = json.loads(row["payload"])
+        if payload.get("anomalyId") == anomaly_id:
+            payload["reviewStatus"] = review_status
+            payload["reviewer"] = reviewer
+            payload["reviewerNote"] = notes
+            payload["reviewedAt"] = decided_at
+            conn.execute(
+                "UPDATE run_ai_results SET payload = ? WHERE run_id = ? AND idx = ?",
+                (json.dumps(payload), run_id, row["idx"]),
+            )
+            break
+
+
+@_with_conn
+def review_stats(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Per-run verdict tallies for the agent-accuracy report."""
+    rows = conn.execute(
+        """
+        SELECT r.run_id AS run_id,
+               COALESCE(runs.rosbag_name, r.run_id) AS rosbag_name,
+               COUNT(*) AS total,
+               SUM(CASE WHEN r.review_status = 'approved' THEN 1 ELSE 0 END) AS approved,
+               SUM(CASE WHEN r.review_status = 'rejected' THEN 1 ELSE 0 END) AS rejected,
+               SUM(CASE WHEN r.review_status = 'edited' THEN 1 ELSE 0 END) AS edited,
+               SUM(CASE WHEN r.review_status = 'pending' THEN 1 ELSE 0 END) AS pending
+        FROM review_items r
+        LEFT JOIN runs ON runs.id = r.run_id
+        GROUP BY r.run_id
+        ORDER BY r.run_id
+        """
+    ).fetchall()
+    return [
+        {
+            "runId": row["run_id"],
+            "rosbagName": row["rosbag_name"],
+            "total": row["total"],
+            "approved": row["approved"],
+            "rejected": row["rejected"],
+            "edited": row["edited"],
+            "pending": row["pending"],
+        }
+        for row in rows
+    ]
 
 
 def _review_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
@@ -293,6 +365,7 @@ def _review_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
         "verdict": row["verdict"],
         "reviewer": row["reviewer"],
         "notes": row["notes"],
+        "decidedAt": row["decided_at"],
     }
 
 

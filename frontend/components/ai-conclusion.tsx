@@ -17,6 +17,26 @@ import { clock, ms, post } from "@/lib/api"
 import type { AIResult, Anomaly } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
+const REVIEWER_KEY = "rav13.reviewer"
+
+/** Reviewer identity for the audit trail. No auth system yet, so it is stored
+ *  locally and prompted for once, rather than logging every verdict as "reviewer". */
+export function getReviewer(): string {
+    if (typeof window === "undefined") return "reviewer"
+    return window.localStorage.getItem(REVIEWER_KEY) || "reviewer"
+}
+
+export function setReviewer(name: string): void {
+    if (typeof window !== "undefined") window.localStorage.setItem(REVIEWER_KEY, name)
+}
+
+/** "2026-08-12T05:04:23Z" -> "12 Aug 12:04" for the reviewed-at badge. */
+function reviewedStamp(iso: string): string {
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return ""
+    return d.toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })
+}
+
 /**
  * One agent conclusion with its evidence chain and the human verdict controls.
  * Shared by the analysis workspace and the review queue so a reviewer sees
@@ -43,11 +63,18 @@ export function AIConclusion({
   const submit = async (verdict: "approved" | "rejected" | "edited") => {
     setBusy(true)
     try {
-      await post("/api/feedback", {
-        aiResultId: result.id,
+      // Review items and AI results share the same 1-based index minted together
+      // in analysis.py, so "ai_003" maps to "review_{runId}_003".
+      const suffix = result.id.replace(/^ai_/, "")
+      const reviewId = `review_${result.runId}_${suffix}`
+      const combinedNotes = verdict === "edited"
+        ? `Corrected root cause: ${draft}${notes ? ` — ${notes}` : ""}`
+        : notes || undefined
+      const reviewer = getReviewer()
+      const saved = await post<{ reviewer: string }>(`/api/review/${reviewId}/decision`, {
         verdict,
-        editedRootCause: verdict === "edited" ? draft : undefined,
-        notes,
+        reviewer,
+        notes: combinedNotes,
       })
       toast.success(`Conclusion ${verdict}`, { description: result.issue })
       setEditing(false)
@@ -55,6 +82,9 @@ export function AIConclusion({
         ...result,
         reviewStatus: verdict,
         rootCause: verdict === "edited" ? draft : result.rootCause,
+        reviewer: saved.reviewer ?? reviewer,
+        reviewerNote: combinedNotes ?? null,
+        reviewedAt: new Date().toISOString(),
       })
     } catch {
       toast.error("Could not record verdict")
@@ -85,6 +115,8 @@ export function AIConclusion({
               )}
             >
               {result.reviewStatus}
+              {result.reviewedAt ? ` · ${reviewedStamp(result.reviewedAt)}` : ""}
+              {result.reviewer ? ` · ${result.reviewer}` : ""}
             </Badge>
           ) : (
             <Badge variant="secondary" className="font-mono text-[10px] uppercase">
@@ -188,6 +220,15 @@ export function AIConclusion({
             ))}
           </ol>
         </div>
+
+        {reviewed && result.reviewerNote ? (
+          <div className="flex flex-col gap-1 border-l-2 border-primary/40 pl-2.5">
+            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              Reviewer note
+            </span>
+            <p className="text-xs leading-relaxed text-foreground/85">{result.reviewerNote}</p>
+          </div>
+        ) : null}
       </CardContent>
 
       <CardFooter className="flex flex-wrap items-center gap-2 px-4">
