@@ -1,0 +1,126 @@
+{
+  "health": {
+    "health_score": 69.2,
+    "status": "yellow",
+    "status_zones": {
+      "green_min": 80.0,
+      "yellow_min": 60.0,
+      "red_max": 60.0
+    },
+    "trigger_llm_deep_dive": true,
+    "summary": {
+      "total_messages": 74602,
+      "total_detections": 6,
+      "worst_severity": "critical",
+      "groups": {
+        "log": {
+          "score": 100.0,
+          "weight": 0.2,
+          "detection_count": 0
+        },
+        "frequency": {
+          "score": 0.0,
+          "weight": 0.3,
+          "detection_count": 5
+        },
+        "latency": {
+          "score": 95.0,
+          "weight": 0.15,
+          "detection_count": 1
+        },
+        "tf": {
+          "score": 100.0,
+          "weight": 0.25,
+          "detection_count": 0
+        },
+        "payload": {
+          "score": 100.0,
+          "weight": 0.1,
+          "detection_count": 0
+        }
+      }
+    },
+    "detections_by_group": {
+      "log": [],
+      "frequency": [
+        {
+          "kind": "frequency_gap",
+          "topic": "/cmd_vel",
+          "severity": "medium",
+          "tSec": 593.089,
+          "endSec": 593.451,
+          "evidence": {
+            "interval_sec": 0.362,
+            "threshold_sec": 0.08
+          }
+        },
+        {
+          "kind": "frequency_gap",
+          "topic": "/tf",
+          "severity": "medium",
+          "tSec": 593.483,
+          "endSec": 593.588,
+          "evidence": {
+            "interval_sec": 0.105,
+            "threshold_sec": 0.08
+          }
+        },
+        {
+          "kind": "frequency_gap",
+          "topic": "/scan",
+          "severity": "medium",
+          "tSec": 661.53,
+          "endSec": 661.97,
+          "evidence": {
+            "interval_sec": 0.44,
+            "threshold_sec": 0.1515
+          }
+        },
+        {
+          "kind": "silent_node",
+          "topic": "/cmd_vel",
+          "severity": "critical",
+          "tSec": 593.089,
+          "endSec": 593.451,
+          "evidence": {
+            "node": "cmd_vel",
+            "last_timestamp_sec": 593.089,
+            "resume_timestamp_sec": 593.451,
+            "silent_duration_sec": 0.362,
+            "threshold_sec": 0.3,
+            "median_interval_sec": 0.05
+          }
+        },
+        {
+          "kind": "hz_drop_critical",
+          "topic": "/scan",
+          "severity": "high",
+          "tSec": 645.0,
+          "endSec": 735.0,
+          "evidence": {
+            "expected_hz": 9.901,
+            "actual_hz": 2.4938,
+            "drop_pct": 0.7481,
+            "window_sec": 5.0,
+            "window_count": 18
+          }
+        }
+      ],
+      "latency": [
+        {
+          "kind": "timestamp_jitter",
+          "topic": "/scan",
+          "severity": "low",
+          "tSec": 594.62,
+          "endSec": 803.419,
+          "evidence": {
+            "jitter_sec": 0.1098,
+            "threshold_sec": 0.02
+          }
+        }
+      ],
+      "tf": [],
+      "payload": []
+    }
+  }
+}

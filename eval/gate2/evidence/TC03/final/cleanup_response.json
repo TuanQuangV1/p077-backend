@@ -1,0 +1,15 @@
+{
+  "captured_at": "2026-08-12T10:08:50.394811+00:00",
+  "status_code": 200,
+  "headers": {
+    "date": "Wed, 12 Aug 2026 10:08:50 GMT",
+    "server": "uvicorn",
+    "content-length": "26",
+    "content-type": "application/json"
+  },
+  "body": {
+    "ok": true,
+    "id": "F1_01_0"
+  },
+  "execution_time_sec": 0.005
+}

@@ -1,0 +1,93 @@
+INFO:     Started server process [34564]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+llm.chat_completion_retry
+llm.chat_completion_retry
+llm.chat_completion_retry
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\uvicorn\protocols\http\httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        self.scope, self.receive, self.send
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\uvicorn\middleware\proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\fastapi\applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\starlette\applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\starlette\middleware\errors.py", line 186, in __call__
+    raise exc
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\starlette\middleware\cors.py", line 88, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\starlette\routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\fastapi\routing.py", line 2692, in app
+    await route.handle(scope, receive, send)
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\fastapi\routing.py", line 1773, in handle
+    await self.original_router.handle(scope, receive, send)
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\fastapi\routing.py", line 2747, in handle
+    await included_router._handle_selected(scope, receive, send)
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\fastapi\routing.py", line 1793, in _handle_selected
+    await original_route.handle(scope, receive, send)
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\fastapi\routing.py", line 1272, in handle
+    await app(scope, receive, send)
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\fastapi\routing.py", line 156, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\fastapi\routing.py", line 142, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\fastapi\routing.py", line 698, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\fastapi\routing.py", line 350, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\src\api\routes.py", line 793, in explain
+    explanation = await anyio.to_thread.run_sync(explain_diagnostics, request.summary)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\anyio\to_thread.py", line 65, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        func, args, abandon_on_cancel=abandon_on_cancel, limiter=limiter
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 2641, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 1033, in run
+    result = context.run(func, *args)
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\src\services\llm.py", line 178, in explain_diagnostics
+    message = chat_completion(messages)
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\src\services\llm.py", line 137, in chat_completion
+    raise last_error if last_error is not None else httpx.HTTPError("llm request failed")
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\src\services\llm.py", line 100, in chat_completion
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\tuanq\Downloads\VinAI\P-077\.venv\Lib\site-packages\httpx\_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '401 Unauthorized' for url 'https://api.openai.com/v1/chat/completions'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401

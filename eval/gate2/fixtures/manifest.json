@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "suite": "ROS2 Doctor Gate 2 Evaluation",
+  "execution_status": "PARTIAL",
+  "source_report": "data/dataset/Report_dataset.md",
+  "cases": [
+    {
+      "id": "TC01",
+      "name": "Healthy Rosbag",
+      "actual_status": "PASS",
+      "bag_path": "data/dataset/bags/healthy/healthy_01/healthy_01_0.mcap",
+      "metadata_path": "data/dataset/bags/healthy/healthy_01/metadata.yaml",
+      "ground_truth_path": "data/dataset/bags/healthy/healthy_01_ground_truth.json",
+      "expected_ground_truth": {
+        "bag_name": "healthy_01",
+        "label": "healthy",
+        "fault_count": 0,
+        "bag_duration_sec": 178.98
+      }
+    },
+    {
+      "id": "TC02",
+      "name": "Frequency Drop",
+      "actual_status": "PASS",
+      "bag_path": "data/dataset/bags/faulty/F1_02/F1_02_0.mcap",
+      "metadata_path": "data/dataset/bags/faulty/F1_02/metadata.yaml",
+      "ground_truth_path": "data/dataset/bags/faulty/F1_02_ground_truth.json",
+      "expected_ground_truth": {
+        "bag_name": "F1_02",
+        "label": "faulty",
+        "fault_count": 1,
+        "fault_type": "frequency_drop",
+        "topic": "/scan",
+        "severity": "high",
+        "baseline_hz": 10.0,
+        "observed_hz": 2.5,
+        "fault_start_rel_sec": 45.0,
+        "fault_end_rel_sec": 135.0
+      }
+    },
+    {
+      "id": "TC03",
+      "name": "Topic Dead / Silent Node",
+      "actual_status": "PASS",
+      "bag_path": "data/dataset/bags/faulty/F1_01/F1_01_0.mcap",
+      "metadata_path": "data/dataset/bags/faulty/F1_01/metadata.yaml",
+      "ground_truth_path": "data/dataset/bags/faulty/F1_01_ground_truth.json",
+      "expected_ground_truth": {
+        "bag_name": "F1_01",
+        "label": "faulty",
+        "fault_count": 1,
+        "fault_type": "topic_dead",
+        "topic": "/scan",
+        "severity": "critical",
+        "baseline_hz": 10.0,
+        "observed_hz": 0.0,
+        "fault_start_rel_sec": 60.0,
+        "fault_end_rel_sec": 175.0
+      }
+    },
+    {
+      "id": "TC04",
+      "name": "Invalid Rosbag",
+      "actual_status": "PASS",
+      "fixture_path": "eval/gate2/fixtures/not_a_rosbag.txt",
+      "expected_http_status": 400,
+      "expected_detail_contains": "unsupported file type"
+    },
+    {
+      "id": "TC05",
+      "name": "LLM Diagnosis",
+      "actual_status": "BLOCKED",
+      "depends_on": "TC02",
+      "input_endpoint": "GET /api/v1/analysis/{run_id}/health",
+      "target_endpoint": "POST /api/v1/analysis/explain",
+      "expected_response_fields": [
+        "root_cause",
+        "recommended_actions",
+        "explanation"
+      ]
+    }
+  ]
+}

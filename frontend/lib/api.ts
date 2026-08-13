@@ -16,6 +16,7 @@ export function resolveApiUrl(url: string): string {
         return `${API_V1_BASE}/datasets/${id}`
     }
     if (route === "runs") return `${API_V1_BASE}/analysis`
+    if (route === "analysis/explain") return `${API_V1_BASE}/analysis/explain`
     if (route.startsWith("runs/")) {
         const suffix = route.slice("runs/".length)
         if (suffix.includes("/simulation")) return url
@@ -95,7 +96,10 @@ export async function uploadRosbag(file: File): Promise<Rosbag> {
         method: "POST",
         body: form,
     })
-    if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
+    if (!res.ok) {
+        const body = await res.json().catch(() => null) as { detail?: string } | null
+        throw new Error(body?.detail ?? `HTTP ${res.status}`)
+    }
     return res.json() as Promise<Rosbag>
 }
 

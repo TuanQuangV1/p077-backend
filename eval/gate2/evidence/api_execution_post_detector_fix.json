@@ -1,0 +1,178 @@
+{
+  "phase": "post_detector_fix",
+  "base_url": "http://localhost:8000/api/v1",
+  "started_at": "2026-08-12T10:00:58.076331+00:00",
+  "results": [
+    {
+      "case_id": "TC01",
+      "status": "FAIL",
+      "checks": {
+        "run_succeeded": true,
+        "message_count": true,
+        "topics_parsed": true,
+        "no_high_or_critical": false,
+        "health_green": false,
+        "no_auto_llm": false
+      },
+      "anomaly_count": 8,
+      "severe_anomalies": [
+        {
+          "id": "anomaly_006",
+          "runId": "run_healthy_01_0",
+          "kind": "silent_node",
+          "title": "Silent node diagnostics",
+          "severity": "critical",
+          "tSec": 2177.0,
+          "endSec": 2178.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.92,
+          "metric": "threshold sec 0.3"
+        }
+      ],
+      "health_score": 66.2,
+      "started_at": "2026-08-12T10:00:58.441687+00:00",
+      "finished_at": "2026-08-12T10:01:07.198786+00:00",
+      "execution_time_sec": 8.757,
+      "timings": {
+        "upload_sec": 2.909,
+        "analysis_sec": 5.811,
+        "detail_sec": 0.016,
+        "health_sec": 0.012
+      },
+      "dataset_id": "healthy_01_0",
+      "run_id": "run_healthy_01_0"
+    },
+    {
+      "case_id": "TC02",
+      "status": "PASS",
+      "checks": {
+        "run_succeeded": true,
+        "frequency_anomaly_detected": true,
+        "correct_topic": true
+      },
+      "expected_frequency_hz": 10.0,
+      "ground_truth_frequency_hz": 2.5,
+      "actual_detector_output": {
+        "kind": "hz_drop_critical",
+        "topic": "/scan",
+        "severity": "high",
+        "tSec": 645.0,
+        "endSec": 735.0,
+        "evidence": {
+          "expected_hz": 9.901,
+          "actual_hz": 2.4938,
+          "drop_pct": 0.7481,
+          "window_sec": 5.0,
+          "window_count": 18
+        }
+      },
+      "all_scan_frequency_detections": [
+        {
+          "kind": "frequency_gap",
+          "topic": "/scan",
+          "severity": "medium",
+          "tSec": 661.53,
+          "endSec": 661.97,
+          "evidence": {
+            "interval_sec": 0.44,
+            "threshold_sec": 0.1515
+          }
+        },
+        {
+          "kind": "hz_drop_critical",
+          "topic": "/scan",
+          "severity": "high",
+          "tSec": 645.0,
+          "endSec": 735.0,
+          "evidence": {
+            "expected_hz": 9.901,
+            "actual_hz": 2.4938,
+            "drop_pct": 0.7481,
+            "window_sec": 5.0,
+            "window_count": 18
+          }
+        }
+      ],
+      "started_at": "2026-08-12T10:01:07.262238+00:00",
+      "finished_at": "2026-08-12T10:01:15.030314+00:00",
+      "execution_time_sec": 7.768,
+      "timings": {
+        "upload_sec": 0.871,
+        "analysis_sec": 6.866,
+        "detail_sec": 0.016,
+        "health_sec": 0.007
+      },
+      "dataset_id": "F1_02_0",
+      "run_id": "run_F1_02_0"
+    },
+    {
+      "case_id": "TC03",
+      "status": "PASS",
+      "checks": {
+        "run_succeeded": true,
+        "silent_node_detected": true,
+        "correct_topic": true,
+        "critical_severity": true,
+        "duration_matches": true
+      },
+      "measured_topic_silence": {
+        "topic": "/scan",
+        "topic_message_count": 934,
+        "bag_start_sec": 358.383,
+        "bag_end_sec": 567.277,
+        "last_topic_timestamp_sec": 567.225,
+        "silent_tail_sec": 0.052,
+        "max_gap_sec": 115.09,
+        "max_gap_start_sec": 425.133,
+        "max_gap_end_sec": 540.223
+      },
+      "threshold_sec": 0.5,
+      "actual_detector_output": {
+        "kind": "silent_node",
+        "topic": "/scan",
+        "severity": "critical",
+        "tSec": 425.133,
+        "endSec": 540.223,
+        "evidence": {
+          "node": "scan",
+          "last_timestamp_sec": 425.133,
+          "resume_timestamp_sec": 540.223,
+          "silent_duration_sec": 115.09,
+          "threshold_sec": 0.5,
+          "median_interval_sec": 0.1
+        }
+      },
+      "started_at": "2026-08-12T10:01:15.092662+00:00",
+      "finished_at": "2026-08-12T10:01:22.505580+00:00",
+      "execution_time_sec": 7.413,
+      "timings": {
+        "upload_sec": 0.779,
+        "analysis_sec": 6.129,
+        "detail_sec": 0.019,
+        "health_sec": 0.01
+      },
+      "dataset_id": "F1_01_0",
+      "run_id": "run_F1_01_0"
+    },
+    {
+      "case_id": "TC04",
+      "status": "PASS",
+      "checks": {
+        "http_400": true,
+        "clear_error": true,
+        "registry_unchanged": true,
+        "backend_healthy": true
+      },
+      "actual_status_code": 400,
+      "actual_error": {
+        "detail": "unsupported file type: .txt"
+      },
+      "started_at": "2026-08-12T10:01:23.085090+00:00",
+      "finished_at": "2026-08-12T10:01:23.106719+00:00",
+      "execution_time_sec": 0.007
+    }
+  ],
+  "finished_at": "2026-08-12T10:01:23.117081+00:00"
+}

@@ -1,0 +1,1143 @@
+{
+  "captured_at": "2026-08-12T09:55:58.157627+00:00",
+  "status_code": 200,
+  "headers": {
+    "date": "Wed, 12 Aug 2026 09:55:54 GMT",
+    "server": "uvicorn",
+    "content-length": "15822",
+    "content-type": "application/json"
+  },
+  "body": {
+    "health": {
+      "health_score": 66.2,
+      "status": "yellow",
+      "status_zones": {
+        "green_min": 80.0,
+        "yellow_min": 60.0,
+        "red_max": 60.0
+      },
+      "trigger_llm_deep_dive": true,
+      "summary": {
+        "total_messages": 64953,
+        "total_detections": 85,
+        "worst_severity": "high",
+        "groups": {
+          "log": {
+            "score": 100.0,
+            "weight": 0.2,
+            "detection_count": 0
+          },
+          "frequency": {
+            "score": 0.0,
+            "weight": 0.3,
+            "detection_count": 82
+          },
+          "latency": {
+            "score": 75.0,
+            "weight": 0.15,
+            "detection_count": 3
+          },
+          "tf": {
+            "score": 100.0,
+            "weight": 0.25,
+            "detection_count": 0
+          },
+          "payload": {
+            "score": 100.0,
+            "weight": 0.1,
+            "detection_count": 0
+          }
+        }
+      },
+      "detections_by_group": {
+        "log": [],
+        "frequency": [
+          {
+            "kind": "frequency_gap",
+            "topic": "/amcl_pose",
+            "severity": "medium",
+            "tSec": 2237.224,
+            "endSec": 2239.925,
+            "evidence": {
+              "interval_sec": 2.701,
+              "threshold_sec": 1.5045
+            }
+          },
+          {
+            "kind": "message_drop_burst",
+            "topic": "/amcl_pose",
+            "severity": "medium",
+            "tSec": 2237.224,
+            "endSec": 2239.925,
+            "evidence": {
+              "max_gap_sec": 2.701,
+              "threshold_sec": 1.0
+            }
+          },
+          {
+            "kind": "frequency_gap",
+            "topic": "/diagnostics",
+            "severity": "medium",
+            "tSec": 2177.0,
+            "endSec": 2178.0,
+            "evidence": {
+              "interval_sec": 1.0,
+              "threshold_sec": 0.08
+            }
+          },
+          {
+            "kind": "silent_node",
+            "topic": "/tf",
+            "severity": "low",
+            "tSec": 2176.4,
+            "endSec": 2355.36,
+            "evidence": {
+              "node": "tf",
+              "active_span_sec": 178.96
+            }
+          },
+          {
+            "kind": "silent_node",
+            "topic": "/imu",
+            "severity": "low",
+            "tSec": 2176.506,
+            "endSec": 2355.37,
+            "evidence": {
+              "node": "imu",
+              "active_span_sec": 178.864
+            }
+          },
+          {
+            "kind": "silent_node",
+            "topic": "/odom",
+            "severity": "low",
+            "tSec": 2176.52,
+            "endSec": 2355.36,
+            "evidence": {
+              "node": "odom",
+              "active_span_sec": 178.84
+            }
+          },
+          {
+            "kind": "silent_node",
+            "topic": "/scan",
+            "severity": "low",
+            "tSec": 2176.526,
+            "endSec": 2355.325,
+            "evidence": {
+              "node": "scan",
+              "active_span_sec": 178.799
+            }
+          },
+          {
+            "kind": "silent_node",
+            "topic": "/amcl_pose",
+            "severity": "low",
+            "tSec": 2176.621,
+            "endSec": 2355.328,
+            "evidence": {
+              "node": "amcl_pose",
+              "active_span_sec": 178.707
+            }
+          },
+          {
+            "kind": "silent_node",
+            "topic": "/diagnostics",
+            "severity": "low",
+            "tSec": 2177.0,
+            "endSec": 2355.0,
+            "evidence": {
+              "node": "diagnostics",
+              "active_span_sec": 178.0
+            }
+          },
+          {
+            "kind": "silent_node",
+            "topic": "/cmd_vel",
+            "severity": "low",
+            "tSec": 2177.184,
+            "endSec": 2355.344,
+            "evidence": {
+              "node": "cmd_vel",
+              "active_span_sec": 178.16
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2175.0,
+            "endSec": 2180.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.8204,
+              "drop_pct": 0.726,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2180.0,
+            "endSec": 2185.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.2114,
+              "drop_pct": 0.8177,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2185.0,
+            "endSec": 2190.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.4674,
+              "drop_pct": 0.7792,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2190.0,
+            "endSec": 2195.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.1109,
+              "drop_pct": 0.8328,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2195.0,
+            "endSec": 2200.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.2853,
+              "drop_pct": 0.8066,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2200.0,
+            "endSec": 2205.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 2.5008,
+              "drop_pct": 0.6236,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2205.0,
+            "endSec": 2210.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.214,
+              "drop_pct": 0.8173,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2210.0,
+            "endSec": 2215.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.4289,
+              "drop_pct": 0.785,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2215.0,
+            "endSec": 2220.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.2165,
+              "drop_pct": 0.8169,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2220.0,
+            "endSec": 2225.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.1644,
+              "drop_pct": 0.8248,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2225.0,
+            "endSec": 2230.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 2.4105,
+              "drop_pct": 0.6372,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2230.0,
+            "endSec": 2235.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.2488,
+              "drop_pct": 0.8121,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2235.0,
+            "endSec": 2240.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 0.8339,
+              "drop_pct": 0.8745,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2240.0,
+            "endSec": 2245.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.7032,
+              "drop_pct": 0.7437,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2245.0,
+            "endSec": 2250.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.1606,
+              "drop_pct": 0.8253,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2250.0,
+            "endSec": 2255.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.8243,
+              "drop_pct": 0.7254,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2255.0,
+            "endSec": 2260.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.1631,
+              "drop_pct": 0.825,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2260.0,
+            "endSec": 2265.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.2523,
+              "drop_pct": 0.8115,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2265.0,
+            "endSec": 2270.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 2.0592,
+              "drop_pct": 0.6901,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2270.0,
+            "endSec": 2275.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.2204,
+              "drop_pct": 0.8163,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2275.0,
+            "endSec": 2280.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.5389,
+              "drop_pct": 0.7684,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2280.0,
+            "endSec": 2285.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.1641,
+              "drop_pct": 0.8248,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2285.0,
+            "endSec": 2290.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.2103,
+              "drop_pct": 0.8179,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2290.0,
+            "endSec": 2295.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 2.3529,
+              "drop_pct": 0.6459,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2295.0,
+            "endSec": 2300.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.1623,
+              "drop_pct": 0.8251,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2300.0,
+            "endSec": 2305.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.6639,
+              "drop_pct": 0.7496,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2305.0,
+            "endSec": 2310.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.1652,
+              "drop_pct": 0.8246,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2310.0,
+            "endSec": 2315.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.1644,
+              "drop_pct": 0.8248,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2315.0,
+            "endSec": 2320.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 2.261,
+              "drop_pct": 0.6597,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2320.0,
+            "endSec": 2325.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.1865,
+              "drop_pct": 0.8214,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2325.0,
+            "endSec": 2330.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.4606,
+              "drop_pct": 0.7802,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2330.0,
+            "endSec": 2335.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.3024,
+              "drop_pct": 0.804,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2335.0,
+            "endSec": 2340.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.2174,
+              "drop_pct": 0.8168,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop",
+            "topic": "/amcl_pose",
+            "severity": "medium",
+            "tSec": 2340.0,
+            "endSec": 2345.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 3.5273,
+              "drop_pct": 0.4691,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2345.0,
+            "endSec": 2350.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.1893,
+              "drop_pct": 0.821,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2350.0,
+            "endSec": 2355.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.1416,
+              "drop_pct": 0.8282,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2175.0,
+            "endSec": 2180.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 3.0,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2180.0,
+            "endSec": 2185.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2185.0,
+            "endSec": 2190.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2190.0,
+            "endSec": 2195.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2195.0,
+            "endSec": 2200.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2200.0,
+            "endSec": 2205.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2205.0,
+            "endSec": 2210.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2210.0,
+            "endSec": 2215.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2215.0,
+            "endSec": 2220.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2220.0,
+            "endSec": 2225.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2225.0,
+            "endSec": 2230.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2230.0,
+            "endSec": 2235.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2235.0,
+            "endSec": 2240.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2240.0,
+            "endSec": 2245.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2245.0,
+            "endSec": 2250.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2250.0,
+            "endSec": 2255.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2255.0,
+            "endSec": 2260.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2260.0,
+            "endSec": 2265.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2265.0,
+            "endSec": 2270.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2270.0,
+            "endSec": 2275.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2275.0,
+            "endSec": 2280.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2280.0,
+            "endSec": 2285.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2285.0,
+            "endSec": 2290.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2290.0,
+            "endSec": 2295.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2295.0,
+            "endSec": 2300.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2300.0,
+            "endSec": 2305.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2305.0,
+            "endSec": 2310.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2310.0,
+            "endSec": 2315.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2315.0,
+            "endSec": 2320.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2320.0,
+            "endSec": 2325.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2325.0,
+            "endSec": 2330.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2330.0,
+            "endSec": 2335.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2335.0,
+            "endSec": 2340.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2340.0,
+            "endSec": 2345.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2345.0,
+            "endSec": 2350.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2350.0,
+            "endSec": 2355.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          }
+        ],
+        "latency": [
+          {
+            "kind": "timestamp_jitter",
+            "topic": "/amcl_pose",
+            "severity": "low",
+            "tSec": 2176.621,
+            "endSec": 2355.328,
+            "evidence": {
+              "jitter_sec": 0.491,
+              "threshold_sec": 0.02
+            }
+          },
+          {
+            "kind": "timestamp_jitter",
+            "topic": "/diagnostics",
+            "severity": "low",
+            "tSec": 2177.0,
+            "endSec": 2355.0,
+            "evidence": {
+              "jitter_sec": 0.5,
+              "threshold_sec": 0.02
+            }
+          },
+          {
+            "kind": "header_latency",
+            "topic": "/cmd_vel",
+            "severity": "medium",
+            "tSec": 2187.344,
+            "endSec": 2354.604,
+            "evidence": {
+              "max_latency_ms": 941.0,
+              "threshold_ms": 100.0,
+              "count": 594
+            }
+          }
+        ],
+        "tf": [],
+        "payload": []
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "case_id": "TC01",
+  "status": "PASS",
+  "checks": {
+    "run_succeeded": true,
+    "message_count": true,
+    "topics_parsed": true,
+    "no_high_or_critical": true,
+    "health_green": true,
+    "no_auto_llm": true
+  },
+  "anomaly_count": 0,
+  "severe_anomalies": [],
+  "health_score": 100.0,
+  "started_at": "2026-08-12T10:07:57.676092+00:00",
+  "finished_at": "2026-08-12T10:08:19.270489+00:00",
+  "execution_time_sec": 21.594,
+  "timings": {
+    "upload_sec": 4.545,
+    "analysis_sec": 12.623,
+    "detail_sec": 4.387,
+    "health_sec": 0.023
+  },
+  "dataset_id": "healthy_01_0",
+  "run_id": "run_healthy_01_0"
+}

@@ -317,14 +317,14 @@ export function LLMDeepDivePanel({
             >
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Executive Summary
+                  TÓM TẮT ĐIỀU HÀNH (EXECUTIVE SUMMARY)
                 </h4>
                 <div className="flex items-center gap-2">
                   <span
                     className="text-xs font-medium"
                     style={{ color: priorityColor }}
                   >
-                    {Math.round(deepDive.confidence * 100)}% confidence
+                    Độ tin cậy {Math.round(deepDive.confidence * 100)}%
                   </span>
                   <span className="text-muted-foreground">|</span>
                   <Badge
@@ -346,7 +346,7 @@ export function LLMDeepDivePanel({
             {deepDive.explanation.length > 0 && (
               <div>
                 <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Root Cause Analysis
+                  PHÂN TÍCH NGUYÊN NHÂN GỐC RỄ (ROOT CAUSE)
                 </h4>
                 <ul className="mt-2 space-y-1.5">
                   {deepDive.explanation.map((exp, i) => (
@@ -384,7 +384,7 @@ export function LLMDeepDivePanel({
               <div>
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Recommended Fixes
+                    ĐỀ XUẤT HƯỚNG KHẮC PHỤC (RECOMMENDED FIXES)
                   </h4>
                 </div>
                 <div className="mt-2 space-y-2">

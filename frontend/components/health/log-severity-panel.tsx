@@ -134,26 +134,26 @@ export function LogSeverityPanel({ logs, anomalies }: LogSeverityPanelProps) {
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-sm">
           <AlertCircleIcon className="size-4" />
-          Log System Severity
+          Mức độ nghiêm trọng Nhật ký (Log System Severity)
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         {/* Stat Cards */}
         <div className="grid grid-cols-3 gap-2">
           <LogStatCard
-            label="FATAL"
+            label="NGHIÊM TRỌNG (FATAL)"
             count={fatalCount}
             color="#dc3545"
             isAlert={hasFatal}
           />
           <LogStatCard
-            label="ERROR"
+            label="LỖI (ERROR)"
             count={errorCount}
             color="#dc3545"
             isAlert={hasError}
           />
           <LogStatCard
-            label="WARN"
+            label="CẢNH BÁO (WARN)"
             count={warnCount}
             color="#ffc107"
             isAlert={hasWarn}
@@ -222,7 +222,7 @@ export function LogSeverityPanel({ logs, anomalies }: LogSeverityPanelProps) {
         {/* No Issues */}
         {!hasFatal && !hasError && !hasWarn && (
           <p className="py-4 text-center text-xs text-muted-foreground">
-            No ERROR or WARN logs detected
+            Không phát hiện nhật ký LỖI (ERROR) hoặc CẢNH BÁO (WARN)
           </p>
         )}
       </CardContent>

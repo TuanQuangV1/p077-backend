@@ -190,7 +190,7 @@ export function TFTreeStatus({
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-sm">
             <GitBranchIcon className="size-4" />
-            TF Tree Status
+            Trạng thái Cây Tọa độ (TF Tree Status)
           </CardTitle>
           <Tooltip>
             <TooltipTrigger
@@ -200,10 +200,10 @@ export function TFTreeStatus({
               <HelpCircleIcon className="size-4 text-muted-foreground" />
             </TooltipTrigger>
             <TooltipContent side="left" className="max-w-xs text-xs">
-              <p className="font-semibold">TF Tree Visualization</p>
+              <p className="font-semibold">Trực quan hóa Cây TF</p>
               <p className="mt-1 text-muted-foreground">
-                Shows the coordinate transform chain. Green = healthy, Red =
-                anomaly detected.
+                Hiển thị chuỗi chuyển đổi tọa độ. Xanh = bình thường, Đỏ =
+                phát hiện bất thường.
               </p>
             </TooltipContent>
           </Tooltip>
@@ -213,19 +213,19 @@ export function TFTreeStatus({
         {/* Help panel */}
         {showHelp && (
           <div className="mb-3 rounded border border-border bg-muted/50 p-2 text-[10px]">
-            <p className="font-semibold">Transform Chain:</p>
+            <p className="font-semibold">Chuỗi chuyển đổi (Transform Chain):</p>
             <p className="mt-0.5 text-muted-foreground">
               map &rarr; odom &rarr; base_link
             </p>
-            <p className="mt-1 font-semibold">Status Colors:</p>
+            <p className="mt-1 font-semibold">Màu sắc trạng thái:</p>
             <div className="mt-0.5 space-y-0.5 text-muted-foreground">
               <p>
                 <span className="inline-block size-2 rounded-full bg-green-500" />{" "}
-                Green = Transform healthy
+                Xanh = Chuyển đổi bình thường
               </p>
               <p>
                 <span className="inline-block size-2 rounded-full bg-red-500" />{" "}
-                Red = Gap or Jump detected
+                Đỏ = Phát hiện bị đứt đoạn hoặc nhảy giá trị
               </p>
             </div>
           </div>

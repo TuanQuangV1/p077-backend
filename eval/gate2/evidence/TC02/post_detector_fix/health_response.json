@@ -1,0 +1,244 @@
+{
+  "captured_at": "2026-08-12T10:01:15.028304+00:00",
+  "status_code": 200,
+  "headers": {
+    "date": "Wed, 12 Aug 2026 10:01:14 GMT",
+    "server": "uvicorn",
+    "content-length": "3274",
+    "content-type": "application/json"
+  },
+  "body": {
+    "health": {
+      "health_score": 65.5,
+      "status": "yellow",
+      "status_zones": {
+        "green_min": 80.0,
+        "yellow_min": 60.0,
+        "red_max": 60.0
+      },
+      "trigger_llm_deep_dive": true,
+      "summary": {
+        "total_messages": 74602,
+        "total_detections": 15,
+        "worst_severity": "critical",
+        "groups": {
+          "log": {
+            "score": 100.0,
+            "weight": 0.2,
+            "detection_count": 0
+          },
+          "frequency": {
+            "score": 0.0,
+            "weight": 0.3,
+            "detection_count": 11
+          },
+          "latency": {
+            "score": 70.0,
+            "weight": 0.15,
+            "detection_count": 4
+          },
+          "tf": {
+            "score": 100.0,
+            "weight": 0.25,
+            "detection_count": 0
+          },
+          "payload": {
+            "score": 100.0,
+            "weight": 0.1,
+            "detection_count": 0
+          }
+        }
+      },
+      "detections_by_group": {
+        "log": [],
+        "frequency": [
+          {
+            "kind": "frequency_gap",
+            "topic": "/amcl_pose",
+            "severity": "medium",
+            "tSec": 697.525,
+            "endSec": 707.924,
+            "evidence": {
+              "interval_sec": 10.399,
+              "threshold_sec": 1.35
+            }
+          },
+          {
+            "kind": "message_drop_burst",
+            "topic": "/amcl_pose",
+            "severity": "medium",
+            "tSec": 697.525,
+            "endSec": 707.924,
+            "evidence": {
+              "max_gap_sec": 10.399,
+              "threshold_sec": 1.0
+            }
+          },
+          {
+            "kind": "frequency_gap",
+            "topic": "/cmd_vel",
+            "severity": "medium",
+            "tSec": 593.089,
+            "endSec": 593.451,
+            "evidence": {
+              "interval_sec": 0.362,
+              "threshold_sec": 0.08
+            }
+          },
+          {
+            "kind": "frequency_gap",
+            "topic": "/tf",
+            "severity": "medium",
+            "tSec": 593.483,
+            "endSec": 593.588,
+            "evidence": {
+              "interval_sec": 0.105,
+              "threshold_sec": 0.08
+            }
+          },
+          {
+            "kind": "frequency_gap",
+            "topic": "/diagnostics",
+            "severity": "medium",
+            "tSec": 599.999,
+            "endSec": 601.0,
+            "evidence": {
+              "interval_sec": 1.001,
+              "threshold_sec": 0.08
+            }
+          },
+          {
+            "kind": "message_drop_burst",
+            "topic": "/diagnostics",
+            "severity": "medium",
+            "tSec": 599.999,
+            "endSec": 601.0,
+            "evidence": {
+              "max_gap_sec": 1.001,
+              "threshold_sec": 1.0
+            }
+          },
+          {
+            "kind": "frequency_gap",
+            "topic": "/scan",
+            "severity": "medium",
+            "tSec": 661.53,
+            "endSec": 661.97,
+            "evidence": {
+              "interval_sec": 0.44,
+              "threshold_sec": 0.1515
+            }
+          },
+          {
+            "kind": "silent_node",
+            "topic": "/amcl_pose",
+            "severity": "critical",
+            "tSec": 697.525,
+            "endSec": 707.924,
+            "evidence": {
+              "node": "amcl_pose",
+              "last_timestamp_sec": 697.525,
+              "resume_timestamp_sec": 707.924,
+              "silent_duration_sec": 10.399,
+              "threshold_sec": 4.5,
+              "median_interval_sec": 0.9
+            }
+          },
+          {
+            "kind": "silent_node",
+            "topic": "/cmd_vel",
+            "severity": "critical",
+            "tSec": 593.089,
+            "endSec": 593.451,
+            "evidence": {
+              "node": "cmd_vel",
+              "last_timestamp_sec": 593.089,
+              "resume_timestamp_sec": 593.451,
+              "silent_duration_sec": 0.362,
+              "threshold_sec": 0.3,
+              "median_interval_sec": 0.05
+            }
+          },
+          {
+            "kind": "silent_node",
+            "topic": "/diagnostics",
+            "severity": "critical",
+            "tSec": 599.999,
+            "endSec": 601.0,
+            "evidence": {
+              "node": "diagnostics",
+              "last_timestamp_sec": 599.999,
+              "resume_timestamp_sec": 601.0,
+              "silent_duration_sec": 1.001,
+              "threshold_sec": 0.3,
+              "median_interval_sec": 0.001
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/scan",
+            "severity": "high",
+            "tSec": 645.0,
+            "endSec": 735.0,
+            "evidence": {
+              "expected_hz": 9.901,
+              "actual_hz": 2.4938,
+              "drop_pct": 0.7481,
+              "window_sec": 5.0,
+              "window_count": 18
+            }
+          }
+        ],
+        "latency": [
+          {
+            "kind": "timestamp_jitter",
+            "topic": "/amcl_pose",
+            "severity": "low",
+            "tSec": 592.982,
+            "endSec": 801.52,
+            "evidence": {
+              "jitter_sec": 1.8324,
+              "threshold_sec": 0.02
+            }
+          },
+          {
+            "kind": "timestamp_jitter",
+            "topic": "/diagnostics",
+            "severity": "low",
+            "tSec": 593.0,
+            "endSec": 803.001,
+            "evidence": {
+              "jitter_sec": 0.5,
+              "threshold_sec": 0.02
+            }
+          },
+          {
+            "kind": "timestamp_jitter",
+            "topic": "/scan",
+            "severity": "low",
+            "tSec": 594.62,
+            "endSec": 803.419,
+            "evidence": {
+              "jitter_sec": 0.1098,
+              "threshold_sec": 0.02
+            }
+          },
+          {
+            "kind": "header_latency",
+            "topic": "/cmd_vel",
+            "severity": "medium",
+            "tSec": 593.048,
+            "endSec": 803.424,
+            "evidence": {
+              "max_latency_ms": 912.0,
+              "threshold_ms": 100.0,
+              "count": 1248
+            }
+          }
+        ],
+        "tf": [],
+        "payload": []
+      }
+    }
+  }
+}

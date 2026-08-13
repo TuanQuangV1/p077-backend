@@ -1,0 +1,13 @@
+{
+  "captured_at": "2026-08-12T09:56:27.799963+00:00",
+  "status_code": 400,
+  "headers": {
+    "date": "Wed, 12 Aug 2026 09:56:24 GMT",
+    "server": "uvicorn",
+    "content-length": "40",
+    "content-type": "application/json"
+  },
+  "body": {
+    "detail": "unsupported file type: .txt"
+  }
+}

@@ -1,0 +1,3 @@
+This controlled Gate 2 fixture is intentionally not a ROS bag.
+It is uploaded with its .txt extension to verify that the dataset API rejects
+unsupported input with a controlled HTTP 400 response and does not crash.
