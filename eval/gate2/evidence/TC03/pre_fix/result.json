@@ -1,0 +1,42 @@
+{
+  "case_id": "TC03",
+  "status": "FAIL",
+  "checks": {
+    "run_succeeded": true,
+    "silent_node_detected": true,
+    "correct_topic": true,
+    "critical_severity": false,
+    "duration_matches": false
+  },
+  "measured_topic_tail": {
+    "topic": "/scan",
+    "topic_message_count": 934,
+    "bag_start_sec": 358.383,
+    "bag_end_sec": 567.277,
+    "last_topic_timestamp_sec": 567.225,
+    "silent_tail_sec": 0.052
+  },
+  "threshold_sec": null,
+  "actual_detector_output": {
+    "kind": "silent_node",
+    "topic": "/scan",
+    "severity": "low",
+    "tSec": 359.026,
+    "endSec": 567.225,
+    "evidence": {
+      "node": "scan",
+      "active_span_sec": 208.199
+    }
+  },
+  "started_at": "2026-08-12T09:56:11.908260+00:00",
+  "finished_at": "2026-08-12T09:56:25.704042+00:00",
+  "execution_time_sec": 13.796,
+  "timings": {
+    "upload_sec": 2.524,
+    "analysis_sec": 8.677,
+    "detail_sec": 1.487,
+    "health_sec": 0.008
+  },
+  "dataset_id": "F1_01_0",
+  "run_id": "run_F1_01_0"
+}

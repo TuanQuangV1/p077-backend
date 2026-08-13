@@ -1,0 +1,8 @@
+{
+  "captured_at": "2026-08-12T10:18:12.801406+00:00",
+  "status_code": 502,
+  "execution_time_sec": 10.215,
+  "body": {
+    "detail": "LLM provider request failed; verify provider credentials and availability"
+  }
+}

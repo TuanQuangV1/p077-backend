@@ -21,6 +21,7 @@ test("selecting an anomaly syncs playhead and shows the agent conclusion", async
     await expect(anomaly).toBeVisible()
     await anomaly.click()
 
-    await expect(page.getByText("Network path on the sensor VLAN dropped packet windows during the turn.")).toBeVisible()
+    await expect(page.getByText("Root cause")).toBeVisible()
+    await expect(page.getByText("Evidence chain")).toBeVisible()
     await expect(badge).not.toHaveText(initial ?? "")
 })

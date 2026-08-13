@@ -1,0 +1,31 @@
+{
+  "captured_at": "2026-08-12T10:08:14.847146+00:00",
+  "status_code": 202,
+  "headers": {
+    "date": "Wed, 12 Aug 2026 10:08:01 GMT",
+    "server": "uvicorn",
+    "content-length": "448",
+    "content-type": "application/json"
+  },
+  "body": {
+    "run": {
+      "id": "run_healthy_01_0",
+      "rosbagId": "healthy_01_0",
+      "rosbagName": "healthy_01_0.mcap",
+      "robotType": "amr-delivery",
+      "status": "succeeded",
+      "progress": 100,
+      "stage": "done",
+      "startedAt": "2026-08-12T10:08:08.363186+00:00",
+      "finishedAt": "2026-08-12T10:08:14.777672+00:00",
+      "anomalyCount": 0,
+      "worstSeverity": null,
+      "model": "vllm/qwen2.5-coder-32b",
+      "totalLatencyMs": 6414,
+      "promptTokens": 0,
+      "completionTokens": 0,
+      "costUsd": 0.0
+    },
+    "channel": "/ws/runs/run_healthy_01_0"
+  }
+}

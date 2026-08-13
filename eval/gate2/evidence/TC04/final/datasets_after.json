@@ -1,0 +1,78 @@
+{
+  "captured_at": "2026-08-12T10:08:50.705917+00:00",
+  "status_code": 200,
+  "headers": {
+    "date": "Wed, 12 Aug 2026 10:08:50 GMT",
+    "server": "uvicorn",
+    "content-length": "1195",
+    "content-type": "application/json"
+  },
+  "body": {
+    "items": [
+      {
+        "id": "dataset",
+        "name": "C_01_0.mcap",
+        "robotType": "amr-delivery",
+        "sizeBytes": 1583661458,
+        "durationSec": 241,
+        "recordedAt": "1970-01-01T00:01:49+00:00",
+        "uploadedAt": "1970-01-01T00:01:49+00:00",
+        "status": "uploaded",
+        "messageCount": 83765,
+        "topics": [
+          {
+            "name": "/diagnostics",
+            "type": "diagnostic_msgs/msg/DiagnosticArray",
+            "serialization_format": "cdr",
+            "offered_qos_profiles": {}
+          },
+          {
+            "name": "/imu",
+            "type": "sensor_msgs/msg/Imu",
+            "serialization_format": "cdr",
+            "offered_qos_profiles": {}
+          },
+          {
+            "name": "/odom",
+            "type": "nav_msgs/msg/Odometry",
+            "serialization_format": "cdr",
+            "offered_qos_profiles": {}
+          },
+          {
+            "name": "/tf",
+            "type": "tf2_msgs/msg/TFMessage",
+            "serialization_format": "cdr",
+            "offered_qos_profiles": {}
+          },
+          {
+            "name": "/cmd_vel",
+            "type": "geometry_msgs/msg/TwistStamped",
+            "serialization_format": "cdr",
+            "offered_qos_profiles": {}
+          },
+          {
+            "name": "/scan",
+            "type": "sensor_msgs/msg/LaserScan",
+            "serialization_format": "cdr",
+            "offered_qos_profiles": {}
+          },
+          {
+            "name": "/amcl_pose",
+            "type": "geometry_msgs/msg/PoseWithCovarianceStamped",
+            "serialization_format": "cdr",
+            "offered_qos_profiles": {}
+          },
+          {
+            "name": "/tf_static",
+            "type": "tf2_msgs/msg/TFMessage",
+            "serialization_format": "cdr",
+            "offered_qos_profiles": {}
+          }
+        ],
+        "site": "Unknown",
+        "rosVersion": "ROS 2 Jazzy"
+      }
+    ],
+    "total": 1
+  }
+}

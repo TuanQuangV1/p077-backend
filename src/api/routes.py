@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import anyio
+import httpx
 from fastapi import (
     APIRouter,
     Depends,
@@ -790,7 +791,23 @@ async def explain(request: DiagnosticsExplanationRequest) -> DiagnosticsExplanat
         ``DiagnosticsExplanationResponse`` with root cause, explanation and
         recommended actions.
     """
-    explanation = await anyio.to_thread.run_sync(explain_diagnostics, request.summary)
+    try:
+        explanation = await anyio.to_thread.run_sync(explain_diagnostics, request.summary)
+    except httpx.HTTPError as exc:
+        logger.warning(
+            "diagnostics.explain_upstream_failed",
+            extra={
+                "diagnostics": {
+                    "event": "diagnostics.explain_upstream_failed",
+                    "level": "warning",
+                    "details": {"error_type": type(exc).__name__},
+                }
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="LLM provider request failed; verify provider credentials and availability",
+        ) from exc
     return DiagnosticsExplanationResponse(**explanation)
 
 

@@ -149,8 +149,7 @@ def _message_from_completion(body: Any) -> dict[str, Any]:
 
 
 def explain_diagnostics(summary: dict[str, Any]) -> dict[str, str | list[str]]:
-    settings = get_settings()
-    if settings.llm_provider != "vllm" or not settings.vllm_base_url:
+    if not is_llm_configured():
         detections = summary.get("detections", [])
         labels = [item.get("kind", "unknown") for item in detections]
         primary = labels[0] if labels else "unknown"

@@ -31,25 +31,25 @@ import {
 
 const NAV = [
     {
-        label: "Operate",
+        label: "Vận hành",
         items: [
-            { href: "/", label: "Dashboard", icon: GaugeIcon },
-            { href: "/datasets", label: "Datasets", icon: DatabaseIcon },
+            { href: "/", label: "Tổng quan (Dashboard)", icon: GaugeIcon },
+            { href: "/datasets", label: "Tập dữ liệu (Datasets)", icon: DatabaseIcon },
         ],
     },
     {
-        label: "Diagnose",
+        label: "Chẩn đoán",
         items: [
-            { href: "/analysis", label: "Analysis", icon: ScanSearchIcon },
-            { href: "/review", label: "Human Review", icon: UserCheckIcon, badge: "pending" as const },
+            { href: "/analysis", label: "Phân tích (Analysis)", icon: ScanSearchIcon },
+            { href: "/review", label: "Duyệt thủ công (Human Review)", icon: UserCheckIcon, badge: "pending" as const },
         ],
     },
     {
-        label: "Platform",
+        label: "Nền tảng",
         items: [
-            { href: "/vllm", label: "VLLM Monitoring", icon: CpuIcon },
-            { href: "/reports", label: "Reports", icon: FileTextIcon },
-            { href: "/architecture", label: "Architecture", icon: LayersIcon },
+            { href: "/vllm", label: "Giám sát VLLM", icon: CpuIcon },
+            { href: "/reports", label: "Báo cáo", icon: FileTextIcon },
+            { href: "/architecture", label: "Kiến trúc", icon: LayersIcon },
         ],
     },
 ]

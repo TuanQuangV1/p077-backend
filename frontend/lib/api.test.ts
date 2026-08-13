@@ -17,6 +17,10 @@ describe("resolveApiUrl", () => {
         expect(resolveApiUrl("/api/runs")).toBe(`${BASE}/analysis`)
     })
 
+    it("maps diagnostics explanation to the backend LLM endpoint", () => {
+        expect(resolveApiUrl("/api/analysis/explain")).toBe(`${BASE}/analysis/explain`)
+    })
+
     it("maps run detail to analysis detail endpoint", () => {
         expect(resolveApiUrl("/api/runs/run_001")).toBe(`${BASE}/analysis/run_001`)
     })

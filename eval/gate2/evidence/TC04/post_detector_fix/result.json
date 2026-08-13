@@ -1,0 +1,17 @@
+{
+  "case_id": "TC04",
+  "status": "PASS",
+  "checks": {
+    "http_400": true,
+    "clear_error": true,
+    "registry_unchanged": true,
+    "backend_healthy": true
+  },
+  "actual_status_code": 400,
+  "actual_error": {
+    "detail": "unsupported file type: .txt"
+  },
+  "started_at": "2026-08-12T10:01:23.085090+00:00",
+  "finished_at": "2026-08-12T10:01:23.106719+00:00",
+  "execution_time_sec": 0.007
+}

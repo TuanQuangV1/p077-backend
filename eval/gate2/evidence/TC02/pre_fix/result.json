@@ -1,0 +1,282 @@
+{
+  "case_id": "TC02",
+  "status": "PASS",
+  "checks": {
+    "run_succeeded": true,
+    "frequency_anomaly_detected": true,
+    "correct_topic": true
+  },
+  "expected_frequency_hz": 10.0,
+  "ground_truth_frequency_hz": 2.5,
+  "actual_detector_output": {
+    "kind": "hz_drop_critical",
+    "topic": "/scan",
+    "severity": "high",
+    "tSec": 645.0,
+    "endSec": 650.0,
+    "evidence": {
+      "expected_hz": 13.1148,
+      "actual_hz": 2.7016,
+      "drop_pct": 0.794,
+      "window_sec": 5.0
+    }
+  },
+  "all_scan_frequency_detections": [
+    {
+      "kind": "frequency_gap",
+      "topic": "/scan",
+      "severity": "medium",
+      "tSec": 661.53,
+      "endSec": 661.97,
+      "evidence": {
+        "interval_sec": 0.44,
+        "threshold_sec": 0.1515
+      }
+    },
+    {
+      "kind": "hz_drop_critical",
+      "topic": "/scan",
+      "severity": "high",
+      "tSec": 645.0,
+      "endSec": 650.0,
+      "evidence": {
+        "expected_hz": 13.1148,
+        "actual_hz": 2.7016,
+        "drop_pct": 0.794,
+        "window_sec": 5.0
+      }
+    },
+    {
+      "kind": "hz_drop_critical",
+      "topic": "/scan",
+      "severity": "high",
+      "tSec": 650.0,
+      "endSec": 655.0,
+      "evidence": {
+        "expected_hz": 13.1148,
+        "actual_hz": 2.7335,
+        "drop_pct": 0.7916,
+        "window_sec": 5.0
+      }
+    },
+    {
+      "kind": "hz_drop_critical",
+      "topic": "/scan",
+      "severity": "high",
+      "tSec": 655.0,
+      "endSec": 660.0,
+      "evidence": {
+        "expected_hz": 13.1148,
+        "actual_hz": 2.7112,
+        "drop_pct": 0.7933,
+        "window_sec": 5.0
+      }
+    },
+    {
+      "kind": "hz_drop_critical",
+      "topic": "/scan",
+      "severity": "high",
+      "tSec": 660.0,
+      "endSec": 665.0,
+      "evidence": {
+        "expected_hz": 13.1148,
+        "actual_hz": 2.7236,
+        "drop_pct": 0.7923,
+        "window_sec": 5.0
+      }
+    },
+    {
+      "kind": "hz_drop_critical",
+      "topic": "/scan",
+      "severity": "high",
+      "tSec": 665.0,
+      "endSec": 670.0,
+      "evidence": {
+        "expected_hz": 13.1148,
+        "actual_hz": 2.7095,
+        "drop_pct": 0.7934,
+        "window_sec": 5.0
+      }
+    },
+    {
+      "kind": "hz_drop_critical",
+      "topic": "/scan",
+      "severity": "high",
+      "tSec": 670.0,
+      "endSec": 675.0,
+      "evidence": {
+        "expected_hz": 13.1148,
+        "actual_hz": 2.7298,
+        "drop_pct": 0.7919,
+        "window_sec": 5.0
+      }
+    },
+    {
+      "kind": "hz_drop_critical",
+      "topic": "/scan",
+      "severity": "high",
+      "tSec": 675.0,
+      "endSec": 680.0,
+      "evidence": {
+        "expected_hz": 13.1148,
+        "actual_hz": 2.7083,
+        "drop_pct": 0.7935,
+        "window_sec": 5.0
+      }
+    },
+    {
+      "kind": "hz_drop_critical",
+      "topic": "/scan",
+      "severity": "high",
+      "tSec": 680.0,
+      "endSec": 685.0,
+      "evidence": {
+        "expected_hz": 13.1148,
+        "actual_hz": 2.7267,
+        "drop_pct": 0.7921,
+        "window_sec": 5.0
+      }
+    },
+    {
+      "kind": "hz_drop_critical",
+      "topic": "/scan",
+      "severity": "high",
+      "tSec": 685.0,
+      "endSec": 690.0,
+      "evidence": {
+        "expected_hz": 13.1148,
+        "actual_hz": 2.7083,
+        "drop_pct": 0.7935,
+        "window_sec": 5.0
+      }
+    },
+    {
+      "kind": "hz_drop_critical",
+      "topic": "/scan",
+      "severity": "high",
+      "tSec": 690.0,
+      "endSec": 695.0,
+      "evidence": {
+        "expected_hz": 13.1148,
+        "actual_hz": 2.7248,
+        "drop_pct": 0.7922,
+        "window_sec": 5.0
+      }
+    },
+    {
+      "kind": "hz_drop_critical",
+      "topic": "/scan",
+      "severity": "high",
+      "tSec": 695.0,
+      "endSec": 700.0,
+      "evidence": {
+        "expected_hz": 13.1148,
+        "actual_hz": 2.714,
+        "drop_pct": 0.7931,
+        "window_sec": 5.0
+      }
+    },
+    {
+      "kind": "hz_drop_critical",
+      "topic": "/scan",
+      "severity": "high",
+      "tSec": 700.0,
+      "endSec": 705.0,
+      "evidence": {
+        "expected_hz": 13.1148,
+        "actual_hz": 2.7279,
+        "drop_pct": 0.792,
+        "window_sec": 5.0
+      }
+    },
+    {
+      "kind": "hz_drop_critical",
+      "topic": "/scan",
+      "severity": "high",
+      "tSec": 705.0,
+      "endSec": 710.0,
+      "evidence": {
+        "expected_hz": 13.1148,
+        "actual_hz": 2.7061,
+        "drop_pct": 0.7937,
+        "window_sec": 5.0
+      }
+    },
+    {
+      "kind": "hz_drop_critical",
+      "topic": "/scan",
+      "severity": "high",
+      "tSec": 710.0,
+      "endSec": 715.0,
+      "evidence": {
+        "expected_hz": 13.1148,
+        "actual_hz": 2.726,
+        "drop_pct": 0.7921,
+        "window_sec": 5.0
+      }
+    },
+    {
+      "kind": "hz_drop_critical",
+      "topic": "/scan",
+      "severity": "high",
+      "tSec": 715.0,
+      "endSec": 720.0,
+      "evidence": {
+        "expected_hz": 13.1148,
+        "actual_hz": 2.7106,
+        "drop_pct": 0.7933,
+        "window_sec": 5.0
+      }
+    },
+    {
+      "kind": "hz_drop_critical",
+      "topic": "/scan",
+      "severity": "high",
+      "tSec": 720.0,
+      "endSec": 725.0,
+      "evidence": {
+        "expected_hz": 13.1148,
+        "actual_hz": 2.731,
+        "drop_pct": 0.7918,
+        "window_sec": 5.0
+      }
+    },
+    {
+      "kind": "hz_drop_critical",
+      "topic": "/scan",
+      "severity": "high",
+      "tSec": 725.0,
+      "endSec": 730.0,
+      "evidence": {
+        "expected_hz": 13.1148,
+        "actual_hz": 2.7072,
+        "drop_pct": 0.7936,
+        "window_sec": 5.0
+      }
+    },
+    {
+      "kind": "hz_drop_critical",
+      "topic": "/scan",
+      "severity": "high",
+      "tSec": 730.0,
+      "endSec": 735.0,
+      "evidence": {
+        "expected_hz": 13.1148,
+        "actual_hz": 3.2623,
+        "drop_pct": 0.7513,
+        "window_sec": 5.0
+      }
+    }
+  ],
+  "started_at": "2026-08-12T09:55:58.353661+00:00",
+  "finished_at": "2026-08-12T09:56:11.750534+00:00",
+  "execution_time_sec": 13.397,
+  "timings": {
+    "upload_sec": 1.959,
+    "analysis_sec": 8.949,
+    "detail_sec": 2.415,
+    "health_sec": 0.018
+  },
+  "dataset_id": "F1_02_0",
+  "run_id": "run_F1_02_0"
+}

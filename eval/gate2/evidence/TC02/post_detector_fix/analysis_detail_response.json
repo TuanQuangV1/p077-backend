@@ -1,0 +1,974 @@
+{
+  "captured_at": "2026-08-12T10:01:15.018307+00:00",
+  "status_code": 200,
+  "headers": {
+    "date": "Wed, 12 Aug 2026 10:01:14 GMT",
+    "server": "uvicorn",
+    "content-length": "21707",
+    "content-type": "application/json"
+  },
+  "body": {
+    "run": {
+      "id": "run_F1_02_0",
+      "rosbagId": "F1_02_0",
+      "rosbagName": "F1_02_0.mcap",
+      "robotType": "amr-delivery",
+      "status": "succeeded",
+      "progress": 100,
+      "stage": "done",
+      "startedAt": "2026-08-12T10:01:11.787111+00:00",
+      "finishedAt": "2026-08-12T10:01:14.947608+00:00",
+      "anomalyCount": 15,
+      "worstSeverity": "critical",
+      "model": "vllm/qwen2.5-coder-32b",
+      "totalLatencyMs": 3160,
+      "promptTokens": 0,
+      "completionTokens": 0,
+      "costUsd": 0.0
+    },
+    "rosbag": {
+      "id": "F1_02_0",
+      "name": "F1_02_0.mcap",
+      "robotType": "amr-delivery",
+      "sizeBytes": 32124946,
+      "durationSec": 210,
+      "recordedAt": "1970-01-01T00:09:52.982000+00:00",
+      "uploadedAt": "1970-01-01T00:09:52.982000+00:00",
+      "status": "uploaded",
+      "messageCount": 74602,
+      "topics": [
+        {
+          "name": "/amcl_pose",
+          "type": "geometry_msgs/msg/PoseWithCovarianceStamped",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        },
+        {
+          "name": "/cmd_vel",
+          "type": "geometry_msgs/msg/TwistStamped",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        },
+        {
+          "name": "/tf",
+          "type": "tf2_msgs/msg/TFMessage",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        },
+        {
+          "name": "/tf_static",
+          "type": "tf2_msgs/msg/TFMessage",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        },
+        {
+          "name": "/diagnostics",
+          "type": "diagnostic_msgs/msg/DiagnosticArray",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        },
+        {
+          "name": "/odom",
+          "type": "nav_msgs/msg/Odometry",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        },
+        {
+          "name": "/imu",
+          "type": "sensor_msgs/msg/Imu",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        },
+        {
+          "name": "/scan",
+          "type": "sensor_msgs/msg/LaserScan",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        }
+      ],
+      "site": "Unknown",
+      "rosVersion": "ROS 2 Jazzy"
+    },
+    "anomalies": [
+      {
+        "id": "anomaly_001",
+        "runId": "run_F1_02_0",
+        "kind": "frequency_gap",
+        "title": "Publish gap on /amcl_pose",
+        "severity": "medium",
+        "tSec": 697.525,
+        "endSec": 707.924,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.81,
+        "metric": "interval sec 10.399; threshold sec 1.35"
+      },
+      {
+        "id": "anomaly_002",
+        "runId": "run_F1_02_0",
+        "kind": "message_drop_burst",
+        "title": "Message drop burst on /amcl_pose",
+        "severity": "medium",
+        "tSec": 697.525,
+        "endSec": 707.924,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.8,
+        "metric": "max gap sec 10.399; threshold sec 1.0"
+      },
+      {
+        "id": "anomaly_003",
+        "runId": "run_F1_02_0",
+        "kind": "timestamp_jitter",
+        "title": "Timestamp jitter on /amcl_pose",
+        "severity": "low",
+        "tSec": 592.982,
+        "endSec": 801.52,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.7,
+        "metric": "jitter sec 1.8324; threshold sec 0.02"
+      },
+      {
+        "id": "anomaly_004",
+        "runId": "run_F1_02_0",
+        "kind": "frequency_gap",
+        "title": "Publish gap on /cmd_vel",
+        "severity": "medium",
+        "tSec": 593.089,
+        "endSec": 593.451,
+        "topics": [
+          "/cmd_vel"
+        ],
+        "confidence": 0.81,
+        "metric": "interval sec 0.362; threshold sec 0.08"
+      },
+      {
+        "id": "anomaly_005",
+        "runId": "run_F1_02_0",
+        "kind": "frequency_gap",
+        "title": "Publish gap on /tf",
+        "severity": "medium",
+        "tSec": 593.483,
+        "endSec": 593.588,
+        "topics": [
+          "/tf"
+        ],
+        "confidence": 0.81,
+        "metric": "interval sec 0.105; threshold sec 0.08"
+      },
+      {
+        "id": "anomaly_006",
+        "runId": "run_F1_02_0",
+        "kind": "frequency_gap",
+        "title": "Publish gap on /diagnostics",
+        "severity": "medium",
+        "tSec": 599.999,
+        "endSec": 601.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.81,
+        "metric": "interval sec 1.001; threshold sec 0.08"
+      },
+      {
+        "id": "anomaly_007",
+        "runId": "run_F1_02_0",
+        "kind": "message_drop_burst",
+        "title": "Message drop burst on /diagnostics",
+        "severity": "medium",
+        "tSec": 599.999,
+        "endSec": 601.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.8,
+        "metric": "max gap sec 1.001; threshold sec 1.0"
+      },
+      {
+        "id": "anomaly_008",
+        "runId": "run_F1_02_0",
+        "kind": "timestamp_jitter",
+        "title": "Timestamp jitter on /diagnostics",
+        "severity": "low",
+        "tSec": 593.0,
+        "endSec": 803.001,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.7,
+        "metric": "jitter sec 0.5; threshold sec 0.02"
+      },
+      {
+        "id": "anomaly_009",
+        "runId": "run_F1_02_0",
+        "kind": "frequency_gap",
+        "title": "Publish gap on /scan",
+        "severity": "medium",
+        "tSec": 661.53,
+        "endSec": 661.97,
+        "topics": [
+          "/scan"
+        ],
+        "confidence": 0.81,
+        "metric": "interval sec 0.44; threshold sec 0.1515"
+      },
+      {
+        "id": "anomaly_010",
+        "runId": "run_F1_02_0",
+        "kind": "timestamp_jitter",
+        "title": "Timestamp jitter on /scan",
+        "severity": "low",
+        "tSec": 594.62,
+        "endSec": 803.419,
+        "topics": [
+          "/scan"
+        ],
+        "confidence": 0.7,
+        "metric": "jitter sec 0.1098; threshold sec 0.02"
+      },
+      {
+        "id": "anomaly_011",
+        "runId": "run_F1_02_0",
+        "kind": "silent_node",
+        "title": "Silent node amcl_pose",
+        "severity": "critical",
+        "tSec": 697.525,
+        "endSec": 707.924,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.92,
+        "metric": "threshold sec 4.5"
+      },
+      {
+        "id": "anomaly_012",
+        "runId": "run_F1_02_0",
+        "kind": "silent_node",
+        "title": "Silent node cmd_vel",
+        "severity": "critical",
+        "tSec": 593.089,
+        "endSec": 593.451,
+        "topics": [
+          "/cmd_vel"
+        ],
+        "confidence": 0.92,
+        "metric": "threshold sec 0.3"
+      },
+      {
+        "id": "anomaly_013",
+        "runId": "run_F1_02_0",
+        "kind": "silent_node",
+        "title": "Silent node diagnostics",
+        "severity": "critical",
+        "tSec": 599.999,
+        "endSec": 601.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.92,
+        "metric": "threshold sec 0.3"
+      },
+      {
+        "id": "anomaly_014",
+        "runId": "run_F1_02_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /scan",
+        "severity": "high",
+        "tSec": 645.0,
+        "endSec": 735.0,
+        "topics": [
+          "/scan"
+        ],
+        "confidence": 0.9,
+        "metric": "expected hz 9.901; actual hz 2.4938; drop pct 0.7481"
+      },
+      {
+        "id": "anomaly_015",
+        "runId": "run_F1_02_0",
+        "kind": "header_latency",
+        "title": "Header latency on /cmd_vel",
+        "severity": "medium",
+        "tSec": 593.048,
+        "endSec": 803.424,
+        "topics": [
+          "/cmd_vel"
+        ],
+        "confidence": 0.84,
+        "metric": "max latency ms 912.0; threshold ms 100.0"
+      }
+    ],
+    "aiResults": [
+      {
+        "id": "ai_001",
+        "runId": "run_F1_02_0",
+        "anomalyId": "anomaly_001",
+        "issue": "Producer thread starvation or transport buffering paused publishing.",
+        "rootCause": "Producer thread starvation or transport buffering paused publishing.",
+        "confidence": 0.81,
+        "explanation": "Frequent publish gap detected on /amcl_pose. Producer thread starvation or transport buffering paused publishing.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 697.525,
+            "detail": "Frequent publish gap detected on /amcl_pose. Producer thread starvation or transport buffering paused publishing."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_001",
+        "reviewer": null,
+        "reviewerNote": null,
+        "reviewedAt": null
+      },
+      {
+        "id": "ai_002",
+        "runId": "run_F1_02_0",
+        "anomalyId": "anomaly_002",
+        "issue": "A single long inter-message interval indicates dropped or coalesced messages.",
+        "rootCause": "A single long inter-message interval indicates dropped or coalesced messages.",
+        "confidence": 0.8,
+        "explanation": "Burst of dropped messages detected on /amcl_pose. A single long inter-message interval indicates dropped or coalesced messages.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 697.525,
+            "detail": "Burst of dropped messages detected on /amcl_pose. A single long inter-message interval indicates dropped or coalesced messages."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_002",
+        "reviewer": null,
+        "reviewerNote": null,
+        "reviewedAt": null
+      },
+      {
+        "id": "ai_003",
+        "runId": "run_F1_02_0",
+        "anomalyId": "anomaly_003",
+        "issue": "Publish cadence deviates more than expected from the nominal rate.",
+        "rootCause": "Publish cadence deviates more than expected from the nominal rate.",
+        "confidence": 0.7,
+        "explanation": "Timestamp jitter detected on /amcl_pose. Publish cadence deviates more than expected from the nominal rate.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 592.982,
+            "detail": "Timestamp jitter detected on /amcl_pose. Publish cadence deviates more than expected from the nominal rate."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_003",
+        "reviewer": null,
+        "reviewerNote": null,
+        "reviewedAt": null
+      },
+      {
+        "id": "ai_004",
+        "runId": "run_F1_02_0",
+        "anomalyId": "anomaly_004",
+        "issue": "Producer thread starvation or transport buffering paused publishing.",
+        "rootCause": "Producer thread starvation or transport buffering paused publishing.",
+        "confidence": 0.81,
+        "explanation": "Frequent publish gap detected on /cmd_vel. Producer thread starvation or transport buffering paused publishing.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/cmd_vel",
+            "tSec": 593.089,
+            "detail": "Frequent publish gap detected on /cmd_vel. Producer thread starvation or transport buffering paused publishing."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_004",
+        "reviewer": null,
+        "reviewerNote": null,
+        "reviewedAt": null
+      },
+      {
+        "id": "ai_005",
+        "runId": "run_F1_02_0",
+        "anomalyId": "anomaly_005",
+        "issue": "Producer thread starvation or transport buffering paused publishing.",
+        "rootCause": "Producer thread starvation or transport buffering paused publishing.",
+        "confidence": 0.81,
+        "explanation": "Frequent publish gap detected on /tf. Producer thread starvation or transport buffering paused publishing.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/tf",
+            "tSec": 593.483,
+            "detail": "Frequent publish gap detected on /tf. Producer thread starvation or transport buffering paused publishing."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_005",
+        "reviewer": null,
+        "reviewerNote": null,
+        "reviewedAt": null
+      },
+      {
+        "id": "ai_006",
+        "runId": "run_F1_02_0",
+        "anomalyId": "anomaly_006",
+        "issue": "Producer thread starvation or transport buffering paused publishing.",
+        "rootCause": "Producer thread starvation or transport buffering paused publishing.",
+        "confidence": 0.81,
+        "explanation": "Frequent publish gap detected on /diagnostics. Producer thread starvation or transport buffering paused publishing.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 599.999,
+            "detail": "Frequent publish gap detected on /diagnostics. Producer thread starvation or transport buffering paused publishing."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_006",
+        "reviewer": null,
+        "reviewerNote": null,
+        "reviewedAt": null
+      },
+      {
+        "id": "ai_007",
+        "runId": "run_F1_02_0",
+        "anomalyId": "anomaly_007",
+        "issue": "A single long inter-message interval indicates dropped or coalesced messages.",
+        "rootCause": "A single long inter-message interval indicates dropped or coalesced messages.",
+        "confidence": 0.8,
+        "explanation": "Burst of dropped messages detected on /diagnostics. A single long inter-message interval indicates dropped or coalesced messages.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 599.999,
+            "detail": "Burst of dropped messages detected on /diagnostics. A single long inter-message interval indicates dropped or coalesced messages."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_007",
+        "reviewer": null,
+        "reviewerNote": null,
+        "reviewedAt": null
+      },
+      {
+        "id": "ai_008",
+        "runId": "run_F1_02_0",
+        "anomalyId": "anomaly_008",
+        "issue": "Publish cadence deviates more than expected from the nominal rate.",
+        "rootCause": "Publish cadence deviates more than expected from the nominal rate.",
+        "confidence": 0.7,
+        "explanation": "Timestamp jitter detected on /diagnostics. Publish cadence deviates more than expected from the nominal rate.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 593.0,
+            "detail": "Timestamp jitter detected on /diagnostics. Publish cadence deviates more than expected from the nominal rate."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_008",
+        "reviewer": null,
+        "reviewerNote": null,
+        "reviewedAt": null
+      },
+      {
+        "id": "ai_009",
+        "runId": "run_F1_02_0",
+        "anomalyId": "anomaly_009",
+        "issue": "Producer thread starvation or transport buffering paused publishing.",
+        "rootCause": "Producer thread starvation or transport buffering paused publishing.",
+        "confidence": 0.81,
+        "explanation": "Frequent publish gap detected on /scan. Producer thread starvation or transport buffering paused publishing.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/scan",
+            "tSec": 661.53,
+            "detail": "Frequent publish gap detected on /scan. Producer thread starvation or transport buffering paused publishing."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_009",
+        "reviewer": null,
+        "reviewerNote": null,
+        "reviewedAt": null
+      },
+      {
+        "id": "ai_010",
+        "runId": "run_F1_02_0",
+        "anomalyId": "anomaly_010",
+        "issue": "Publish cadence deviates more than expected from the nominal rate.",
+        "rootCause": "Publish cadence deviates more than expected from the nominal rate.",
+        "confidence": 0.7,
+        "explanation": "Timestamp jitter detected on /scan. Publish cadence deviates more than expected from the nominal rate.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/scan",
+            "tSec": 594.62,
+            "detail": "Timestamp jitter detected on /scan. Publish cadence deviates more than expected from the nominal rate."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_010",
+        "reviewer": null,
+        "reviewerNote": null,
+        "reviewedAt": null
+      },
+      {
+        "id": "ai_011",
+        "runId": "run_F1_02_0",
+        "anomalyId": "anomaly_011",
+        "issue": "The node stopped publishing for the full observation window.",
+        "rootCause": "The node stopped publishing for the full observation window.",
+        "confidence": 0.92,
+        "explanation": "Node silence detected for topic /amcl_pose. The node stopped publishing for the full observation window.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 697.525,
+            "detail": "Node silence detected for topic /amcl_pose. The node stopped publishing for the full observation window."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_011",
+        "reviewer": null,
+        "reviewerNote": null,
+        "reviewedAt": null
+      },
+      {
+        "id": "ai_012",
+        "runId": "run_F1_02_0",
+        "anomalyId": "anomaly_012",
+        "issue": "The node stopped publishing for the full observation window.",
+        "rootCause": "The node stopped publishing for the full observation window.",
+        "confidence": 0.92,
+        "explanation": "Node silence detected for topic /cmd_vel. The node stopped publishing for the full observation window.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/cmd_vel",
+            "tSec": 593.089,
+            "detail": "Node silence detected for topic /cmd_vel. The node stopped publishing for the full observation window."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_012",
+        "reviewer": null,
+        "reviewerNote": null,
+        "reviewedAt": null
+      },
+      {
+        "id": "ai_013",
+        "runId": "run_F1_02_0",
+        "anomalyId": "anomaly_013",
+        "issue": "The node stopped publishing for the full observation window.",
+        "rootCause": "The node stopped publishing for the full observation window.",
+        "confidence": 0.92,
+        "explanation": "Node silence detected for topic /diagnostics. The node stopped publishing for the full observation window.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 599.999,
+            "detail": "Node silence detected for topic /diagnostics. The node stopped publishing for the full observation window."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_013",
+        "reviewer": null,
+        "reviewerNote": null,
+        "reviewedAt": null
+      },
+      {
+        "id": "ai_014",
+        "runId": "run_F1_02_0",
+        "anomalyId": "anomaly_014",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /scan. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/scan",
+            "tSec": 645.0,
+            "detail": "Anomaly pattern detected on /scan. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_014",
+        "reviewer": null,
+        "reviewerNote": null,
+        "reviewedAt": null
+      },
+      {
+        "id": "ai_015",
+        "runId": "run_F1_02_0",
+        "anomalyId": "anomaly_015",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.84,
+        "explanation": "Anomaly pattern detected on /cmd_vel. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/cmd_vel",
+            "tSec": 593.048,
+            "detail": "Anomaly pattern detected on /cmd_vel. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_015",
+        "reviewer": null,
+        "reviewerNote": null,
+        "reviewedAt": null
+      }
+    ],
+    "health": {
+      "health_score": 65.5,
+      "status": "yellow",
+      "status_zones": {
+        "green_min": 80.0,
+        "yellow_min": 60.0,
+        "red_max": 60.0
+      },
+      "trigger_llm_deep_dive": true,
+      "summary": {
+        "total_messages": 74602,
+        "total_detections": 15,
+        "worst_severity": "critical",
+        "groups": {
+          "log": {
+            "score": 100.0,
+            "weight": 0.2,
+            "detection_count": 0
+          },
+          "frequency": {
+            "score": 0.0,
+            "weight": 0.3,
+            "detection_count": 11
+          },
+          "latency": {
+            "score": 70.0,
+            "weight": 0.15,
+            "detection_count": 4
+          },
+          "tf": {
+            "score": 100.0,
+            "weight": 0.25,
+            "detection_count": 0
+          },
+          "payload": {
+            "score": 100.0,
+            "weight": 0.1,
+            "detection_count": 0
+          }
+        }
+      },
+      "detections_by_group": {
+        "log": [],
+        "frequency": [
+          {
+            "kind": "frequency_gap",
+            "topic": "/amcl_pose",
+            "severity": "medium",
+            "tSec": 697.525,
+            "endSec": 707.924,
+            "evidence": {
+              "interval_sec": 10.399,
+              "threshold_sec": 1.35
+            }
+          },
+          {
+            "kind": "message_drop_burst",
+            "topic": "/amcl_pose",
+            "severity": "medium",
+            "tSec": 697.525,
+            "endSec": 707.924,
+            "evidence": {
+              "max_gap_sec": 10.399,
+              "threshold_sec": 1.0
+            }
+          },
+          {
+            "kind": "frequency_gap",
+            "topic": "/cmd_vel",
+            "severity": "medium",
+            "tSec": 593.089,
+            "endSec": 593.451,
+            "evidence": {
+              "interval_sec": 0.362,
+              "threshold_sec": 0.08
+            }
+          },
+          {
+            "kind": "frequency_gap",
+            "topic": "/tf",
+            "severity": "medium",
+            "tSec": 593.483,
+            "endSec": 593.588,
+            "evidence": {
+              "interval_sec": 0.105,
+              "threshold_sec": 0.08
+            }
+          },
+          {
+            "kind": "frequency_gap",
+            "topic": "/diagnostics",
+            "severity": "medium",
+            "tSec": 599.999,
+            "endSec": 601.0,
+            "evidence": {
+              "interval_sec": 1.001,
+              "threshold_sec": 0.08
+            }
+          },
+          {
+            "kind": "message_drop_burst",
+            "topic": "/diagnostics",
+            "severity": "medium",
+            "tSec": 599.999,
+            "endSec": 601.0,
+            "evidence": {
+              "max_gap_sec": 1.001,
+              "threshold_sec": 1.0
+            }
+          },
+          {
+            "kind": "frequency_gap",
+            "topic": "/scan",
+            "severity": "medium",
+            "tSec": 661.53,
+            "endSec": 661.97,
+            "evidence": {
+              "interval_sec": 0.44,
+              "threshold_sec": 0.1515
+            }
+          },
+          {
+            "kind": "silent_node",
+            "topic": "/amcl_pose",
+            "severity": "critical",
+            "tSec": 697.525,
+            "endSec": 707.924,
+            "evidence": {
+              "node": "amcl_pose",
+              "last_timestamp_sec": 697.525,
+              "resume_timestamp_sec": 707.924,
+              "silent_duration_sec": 10.399,
+              "threshold_sec": 4.5,
+              "median_interval_sec": 0.9
+            }
+          },
+          {
+            "kind": "silent_node",
+            "topic": "/cmd_vel",
+            "severity": "critical",
+            "tSec": 593.089,
+            "endSec": 593.451,
+            "evidence": {
+              "node": "cmd_vel",
+              "last_timestamp_sec": 593.089,
+              "resume_timestamp_sec": 593.451,
+              "silent_duration_sec": 0.362,
+              "threshold_sec": 0.3,
+              "median_interval_sec": 0.05
+            }
+          },
+          {
+            "kind": "silent_node",
+            "topic": "/diagnostics",
+            "severity": "critical",
+            "tSec": 599.999,
+            "endSec": 601.0,
+            "evidence": {
+              "node": "diagnostics",
+              "last_timestamp_sec": 599.999,
+              "resume_timestamp_sec": 601.0,
+              "silent_duration_sec": 1.001,
+              "threshold_sec": 0.3,
+              "median_interval_sec": 0.001
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/scan",
+            "severity": "high",
+            "tSec": 645.0,
+            "endSec": 735.0,
+            "evidence": {
+              "expected_hz": 9.901,
+              "actual_hz": 2.4938,
+              "drop_pct": 0.7481,
+              "window_sec": 5.0,
+              "window_count": 18
+            }
+          }
+        ],
+        "latency": [
+          {
+            "kind": "timestamp_jitter",
+            "topic": "/amcl_pose",
+            "severity": "low",
+            "tSec": 592.982,
+            "endSec": 801.52,
+            "evidence": {
+              "jitter_sec": 1.8324,
+              "threshold_sec": 0.02
+            }
+          },
+          {
+            "kind": "timestamp_jitter",
+            "topic": "/diagnostics",
+            "severity": "low",
+            "tSec": 593.0,
+            "endSec": 803.001,
+            "evidence": {
+              "jitter_sec": 0.5,
+              "threshold_sec": 0.02
+            }
+          },
+          {
+            "kind": "timestamp_jitter",
+            "topic": "/scan",
+            "severity": "low",
+            "tSec": 594.62,
+            "endSec": 803.419,
+            "evidence": {
+              "jitter_sec": 0.1098,
+              "threshold_sec": 0.02
+            }
+          },
+          {
+            "kind": "header_latency",
+            "topic": "/cmd_vel",
+            "severity": "medium",
+            "tSec": 593.048,
+            "endSec": 803.424,
+            "evidence": {
+              "max_latency_ms": 912.0,
+              "threshold_ms": 100.0,
+              "count": 1248
+            }
+          }
+        ],
+        "tf": [],
+        "payload": []
+      }
+    }
+  }
+}

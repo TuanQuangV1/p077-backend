@@ -1,0 +1,41 @@
+{
+  "case_id": "TC01",
+  "status": "FAIL",
+  "checks": {
+    "run_succeeded": true,
+    "message_count": true,
+    "topics_parsed": true,
+    "no_high_or_critical": false,
+    "health_green": false,
+    "no_auto_llm": false
+  },
+  "anomaly_count": 8,
+  "severe_anomalies": [
+    {
+      "id": "anomaly_006",
+      "runId": "run_healthy_01_0",
+      "kind": "silent_node",
+      "title": "Silent node diagnostics",
+      "severity": "critical",
+      "tSec": 2177.0,
+      "endSec": 2178.0,
+      "topics": [
+        "/diagnostics"
+      ],
+      "confidence": 0.92,
+      "metric": "threshold sec 0.3"
+    }
+  ],
+  "health_score": 66.2,
+  "started_at": "2026-08-12T10:00:58.441687+00:00",
+  "finished_at": "2026-08-12T10:01:07.198786+00:00",
+  "execution_time_sec": 8.757,
+  "timings": {
+    "upload_sec": 2.909,
+    "analysis_sec": 5.811,
+    "detail_sec": 0.016,
+    "health_sec": 0.012
+  },
+  "dataset_id": "healthy_01_0",
+  "run_id": "run_healthy_01_0"
+}

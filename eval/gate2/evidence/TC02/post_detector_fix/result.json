@@ -1,0 +1,63 @@
+{
+  "case_id": "TC02",
+  "status": "PASS",
+  "checks": {
+    "run_succeeded": true,
+    "frequency_anomaly_detected": true,
+    "correct_topic": true
+  },
+  "expected_frequency_hz": 10.0,
+  "ground_truth_frequency_hz": 2.5,
+  "actual_detector_output": {
+    "kind": "hz_drop_critical",
+    "topic": "/scan",
+    "severity": "high",
+    "tSec": 645.0,
+    "endSec": 735.0,
+    "evidence": {
+      "expected_hz": 9.901,
+      "actual_hz": 2.4938,
+      "drop_pct": 0.7481,
+      "window_sec": 5.0,
+      "window_count": 18
+    }
+  },
+  "all_scan_frequency_detections": [
+    {
+      "kind": "frequency_gap",
+      "topic": "/scan",
+      "severity": "medium",
+      "tSec": 661.53,
+      "endSec": 661.97,
+      "evidence": {
+        "interval_sec": 0.44,
+        "threshold_sec": 0.1515
+      }
+    },
+    {
+      "kind": "hz_drop_critical",
+      "topic": "/scan",
+      "severity": "high",
+      "tSec": 645.0,
+      "endSec": 735.0,
+      "evidence": {
+        "expected_hz": 9.901,
+        "actual_hz": 2.4938,
+        "drop_pct": 0.7481,
+        "window_sec": 5.0,
+        "window_count": 18
+      }
+    }
+  ],
+  "started_at": "2026-08-12T10:01:07.262238+00:00",
+  "finished_at": "2026-08-12T10:01:15.030314+00:00",
+  "execution_time_sec": 7.768,
+  "timings": {
+    "upload_sec": 0.871,
+    "analysis_sec": 6.866,
+    "detail_sec": 0.016,
+    "health_sec": 0.007
+  },
+  "dataset_id": "F1_02_0",
+  "run_id": "run_F1_02_0"
+}

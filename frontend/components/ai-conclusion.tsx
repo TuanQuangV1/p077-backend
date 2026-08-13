@@ -134,7 +134,7 @@ export function AIConclusion({
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between gap-3">
             <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              Model confidence
+              Độ tin cậy của AI (Model confidence)
             </span>
             <span className="font-mono text-xs tabular-nums">{(result.confidence * 100).toFixed(0)}%</span>
           </div>
@@ -142,12 +142,12 @@ export function AIConclusion({
         </div>
 
         <div className="flex flex-col gap-1">
-          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Root cause</span>
+          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Nguyên nhân gốc rễ (Root cause)</span>
           {editing ? (
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor={`rc-${result.id}`} className="sr-only">
-                  Corrected root cause
+                  Nguyên nhân đã sửa
                 </FieldLabel>
                 <Textarea
                   id={`rc-${result.id}`}
@@ -157,19 +157,19 @@ export function AIConclusion({
                   className="text-xs"
                 />
                 <FieldDescription className="text-[11px]">
-                  Corrections are stored as labelled training data for the next fine-tune.
+                  Các chỉnh sửa sẽ được lưu lại làm dữ liệu huấn luyện có nhãn cho lần tinh chỉnh tiếp theo.
                 </FieldDescription>
               </Field>
               <Field>
                 <FieldLabel htmlFor={`nt-${result.id}`} className="text-xs">
-                  Reviewer notes
+                  Ghi chú của người duyệt
                 </FieldLabel>
                 <Textarea
                   id={`nt-${result.id}`}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={2}
-                  placeholder="What did the model miss?"
+                  placeholder="Mô hình AI đã bỏ sót điều gì?"
                   className="text-xs"
                 />
               </Field>
@@ -187,7 +187,7 @@ export function AIConclusion({
 
         <div className="flex flex-col gap-1.5">
           <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            Evidence chain
+            Chuỗi bằng chứng (Evidence chain)
           </span>
           <ul className="flex flex-col gap-1">
             {result.evidence.map((e, i) => (
@@ -211,7 +211,7 @@ export function AIConclusion({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Suggested fix</span>
+          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Đề xuất hướng khắc phục (Suggested fix)</span>
           <ol className="flex list-decimal flex-col gap-1 pl-4">
             {result.suggestedFix.map((f) => (
               <li key={f} className="text-xs leading-relaxed text-foreground/90">
@@ -224,7 +224,7 @@ export function AIConclusion({
         {reviewed && result.reviewerNote ? (
           <div className="flex flex-col gap-1 border-l-2 border-primary/40 pl-2.5">
             <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              Reviewer note
+              Ghi chú người duyệt
             </span>
             <p className="text-xs leading-relaxed text-foreground/85">{result.reviewerNote}</p>
           </div>
@@ -236,10 +236,10 @@ export function AIConclusion({
           <>
             <Button size="sm" onClick={() => submit("edited")} disabled={busy}>
               <CheckIcon data-icon="inline-start" />
-              Save correction
+              Lưu chỉnh sửa
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={busy}>
-              Cancel
+              Hủy
             </Button>
           </>
         ) : (
@@ -247,15 +247,15 @@ export function AIConclusion({
             <ButtonGroup>
               <Button size="sm" variant="outline" onClick={() => submit("approved")} disabled={busy}>
                 <CheckIcon data-icon="inline-start" className="text-ok" />
-                Approve
+                Phê duyệt (Approve)
               </Button>
               <Button size="sm" variant="outline" onClick={() => submit("rejected")} disabled={busy}>
                 <XIcon data-icon="inline-start" className="text-critical" />
-                Reject
+                Từ chối (Reject)
               </Button>
               <Button size="sm" variant="outline" onClick={() => setEditing(true)} disabled={busy}>
                 <PencilIcon data-icon="inline-start" />
-                Correct
+                Sửa đổi (Correct)
               </Button>
             </ButtonGroup>
             <span className="ml-auto font-mono text-[10px] text-muted-foreground">{result.vllmRequestId}</span>
