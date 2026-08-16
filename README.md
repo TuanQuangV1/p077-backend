@@ -33,8 +33,8 @@ Robot ghi lại dữ liệu cảm biến dưới dạng rosbag, nhưng việc t�
 | Backend | Python 3.11+, FastAPI, Pydantic v2, uvicorn, httpx, numpy |
 | Frontend | Next.js 16 (App Router), React 19, TypeScript, shadcn/ui, Tailwind CSS v4, Recharts, SWR |
 | Testing | pytest + pytest-asyncio + pytest-cov, Vitest, Playwright |
-| Code quality | Ruff, mypy, black |
-| CI/CD | GitHub Actions (backend lint/test/coverage, frontend lint/test, Playwright e2e) |
+| Infrastructure | Terraform (IaC AWS ECR/ECS Fargate/ALB), Docker Multi-stage, Nginx |
+| CI/CD | GitHub Actions (`staging.yml`, `production.yml`, `ci.yml`) |
 
 ## 📁 Cấu trúc dự án
 
@@ -53,169 +53,214 @@ Robot ghi lại dữ liệu cảm biến dưới dạng rosbag, nhưng việc t�
 │   ├── app/                     # Next.js App Router (console, runs, dashboard...)
 │   ├── components/              # RAV Console, analysis UI, shadcn/ui
 │   └── lib/                     # api client, types, mock store
-├── data/
-│   ├── rosbag-vllm-explainability/  # Dataset mẫu: metadata.yaml + *.db3
-│   └── diagnostics/             # thresholds.json
-├── tests/                       # pytest (API + services)
-├── docs/                        # Tài liệu kiến trúc, hướng dẫn, evaluation
-└── .github/workflows/ci.yml     # CI/CD
+├── terraform/                   # Infrastructure as Code (AWS ECR, ECS Fargate, ALB)
+│   ├── main.tf                  # Định nghĩa VPC, Load Balancer, ECS Service
+│   ├── variables.tf             # Biến cấu hình (region, app_name, ports)
+│   ├── outputs.tf               # Load Balancer DNS, ECR URLs
+│   ├── providers.tf             # AWS Provider & State Lock
+│   └── environments/            # File cấu hình riêng biệt cho Staging & Production
+├── env/                         # Mẫu cấu hình môi trường biệt lập
+│   ├── staging.env.example      # Variable mẫu cho Staging
+│   └── production.env.example   # Variable mẫu cho Production
+├── nginx/                       # Reverse proxy SSL/TLS & API routing config
+├── .github/workflows/
+│   ├── staging.yml              # CI/CD tự động deploy Staging khi merge vào develop
+│   ├── production.yml           # CI/CD tự động deploy Production khi merge vào main
+│   └── ci.yml                   # CI PR Gatekeeper Tests
+├── data/                        # Local storage data & thresholds
+├── tests/                       # Pytest test suite
+└── Dockerfile                   # Multi-stage Docker build
 ```
 
-## 🚀 Setup & Chạy
+---
 
-### Yêu cầu
-- Python 3.11+ (khuyến nghị cài bằng [uv](https://docs.astral.sh/uv/) hoặc venv chuẩn)
-- Node.js 20+ và pnpm (bắt buộc — script root `npm run frontend:dev` gọi `pnpm` nội bộ)
+## 🚀 Deployment & CI/CD Guide
 
-### Backend
+### 🌐 1. Kiến Trúc Deployment
 
-**Cách 1 — venv + uvicorn (khuyến nghị):**
+Hệ thống được thiết kế với 2 môi trường biệt lập (**Staging** và **Production**) đảm bảo không có rủi ro khi deploy tính năng mới:
 
+```mermaid
+graph TD
+    DEV[Developer Code] --> FEATURE[Feature Branch: feature/*]
+    FEATURE --> PR_DEV[Pull Request / Merge]
+    PR_DEV --> BRANCH_DEV[Branch: develop]
+    BRANCH_DEV --> CI_STG[GitHub Actions: staging.yml]
+    CI_STG --> TEST_STG[Run Tests & Build Docker]
+    TEST_STG --> TF_STG[Terraform Apply Staging]
+    TF_STG --> DEPLOY_STG[Deploy to STAGING]
+    DEPLOY_STG --> HEALTH_STG[Health Check: https://staging-api.yourdomain.com/health]
+
+    BRANCH_DEV --> PR_MAIN[Pull Request / Merge]
+    PR_MAIN --> BRANCH_MAIN[Branch: main]
+    BRANCH_MAIN --> CI_PROD[GitHub Actions: production.yml]
+    CI_PROD --> TEST_PROD[Run Full Tests & E2E]
+    TEST_PROD --> TF_PROD[Terraform Apply Production]
+    TF_PROD --> DEPLOY_PROD[Deploy to PRODUCTION]
+    DEPLOY_PROD --> HEALTH_PROD[Health Check: https://api.yourdomain.com/health]
+```
+
+#### Endpoints & Domains:
+- **Staging Environment**:
+  - Web UI: `https://staging.yourdomain.com`
+  - Backend API: `https://staging-api.yourdomain.com/api/v1`
+  - Health Check: `https://staging-api.yourdomain.com/health`
+- **Production Environment**:
+  - Web UI: `https://yourdomain.com`
+  - Backend API: `https://api.yourdomain.com/api/v1`
+  - Health Check: `https://api.yourdomain.com/health`
+
+---
+
+### 💻 2. Cách Chạy Local
+
+#### Option A: Uvicorn + Node (Khuyến nghị cho Dev)
 ```powershell
-# 1. Cài dependencies lần đầu (tạo .venv)
+# 1. Backend:
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
-
-# 2. Cấu hình .env (xem .env.example)
 Copy-Item .env.example .env
-#    - LLM_PROVIDER: "vllm" (mặc định kèm VLLM_BASE_URL/VLLM_API_KEY) hoặc "openai"
-#    - OPENAI_API_KEY: dùng khi LLM_PROVIDER=openai
-
-# 3. Chạy server
 uvicorn src.main:app --reload --port 8000
+
+# 2. Frontend:
+cd frontend
+pnpm install
+pnpm dev
 ```
 
-**Cách 2 — uv:**
-
+#### Option B: Docker Compose (Local & Production Simulation)
 ```bash
-uv sync --extra dev
-uv run --extra dev --with python-multipart uvicorn src.main:app --port 8000
-```
-
-### Frontend
-
-```bash
-npm install   # cài dependencies root lần đầu
-npm run frontend:dev
-```
-
-Mở `http://localhost:3000` — frontend rewrite mọi request `/api/v1/*` về backend tại `127.0.0.1:8000`. Tương đương: `cd frontend && pnpm install && pnpm dev`.
-
-### 🐳 Chạy bằng Docker
-
-Cần có Docker + file `.env` (xem `.env.example`) trước khi chạy:
-
-```bash
-# Production: backend :8000 + frontend :3000
-docker compose up --build
-
-# Development (hot-reload, mount src/ và frontend/)
+# Development (Hot reload):
 docker compose --profile dev up --build
 
-# Dừng
-docker compose down
+# Production Simulation Local:
+docker compose -f docker-compose.prod.yml up --build
 ```
 
-Lưu ý: volume `./data:/app/data` chia sẻ dữ liệu rosbag giữa host và container; healthcheck cho phép frontend chỉ start sau khi backend sẵn sàng.
+---
 
-### Dữ liệu mẫu
-Đặt rosbag thật vào `data/<dataset_id>/` (kèm `metadata.yaml` hoặc chỉ cần file `.db3`/`.mcap`/`.bag`), hoặc upload trực tiếp từ UI. Dataset mẫu: `data/rosbag-vllm-explainability/` (rosbag2 2024-03-26, 1 bag).
+### 🧪 3. Quy Trình Deploy Staging
+
+Deployment cho Staging diễn ra **hoàn toàn tự động** khi code được merge vào nhánh `develop`.
+
+#### Các bước thực hiện thủ công bằng Terraform (nếu cần):
+```bash
+cd terraform
+# 1. Khởi tạo Terraform
+terraform init
+
+# 2. Kiểm tra kế hoạch thay đổi hạ tầng Staging
+terraform plan -var-file=environments/staging.tfvars
+
+# 3. Apply hạ tầng Staging
+terraform apply -var-file=environments/staging.tfvars -auto-approve
+```
+
+---
+
+### 🏭 4. Quy Trình Deploy Production
+
+Deployment cho Production diễn ra **hoàn toàn tự động** khi code từ `develop` được merge vào nhánh `main`.
+
+#### Các bước thực hiện thủ công bằng Terraform:
+```bash
+cd terraform
+# 1. Khởi tạo Terraform
+terraform init
+
+# 2. Kiểm tra kế hoạch thay đổi hạ tầng Production
+terraform plan -var-file=environments/production.tfvars
+
+# 3. Apply hạ tầng Production
+terraform apply -var-file=environments/production.tfvars -auto-approve
+```
+
+---
+
+### 🔄 5. Quy Trình Rollback (Khôi Phục Phân Cấp)
+
+Trong trường hợp có sự cố phiên bản mới:
+
+#### A. Rollback Docker Image Tag (Ứng cứu sự cố tức thì < 2 phút):
+1. Mở GitHub Actions hoặc AWS ECS Console.
+2. Cập nhật Task Definition về tag commit SHA trước đó (ví dụ: `ai20k-rosbag-production-backend:<previous_sha>`).
+3. Chạy lệnh cập nhật ECS Service:
+   ```bash
+   aws ecs update-service --cluster ai20k-rosbag-production-cluster --service ai20k-rosbag-production-backend-service --force-new-deployment
+   ```
+
+#### B. Rollback Hạ Tầng Terraform:
+1. Revert commit thay đổi cấu hình trên Git.
+2. Chạy lệnh:
+   ```bash
+   cd terraform
+   terraform apply -var-file=environments/production.tfvars -auto-approve
+   ```
+
+---
+
+### 🔑 6. Danh Mục Biến Môi Trường (Environment Variables)
+
+| Biến Môi Trường | Mô Tả | Mặc Định Staging | Mặc Định Production |
+|---|---|---|---|
+| `APP_ENV` | Môi trường ứng dụng | `staging` | `production` |
+| `APP_PORT` | Port lắng nghe Backend | `8000` | `8000` |
+| `CORS_ORIGINS` | Tên miền CORS được phép | `https://staging.yourdomain.com` | `https://yourdomain.com` |
+| `API_AUTH_TOKEN` | Bearer Token bảo vệ API | Staging Secret | Production Secret |
+| `RUN_DB_PATH` | File đường dẫn SQLite | `data/staging_runs.db` | `data/prod_runs.db` |
+| `OPENAI_API_KEY` | Key gọi LLM | Staging OpenAI Key | Production OpenAI Key |
+| `LOG_LEVEL` | Cấp độ ghi Log | `DEBUG` | `INFO` |
+| `NEXT_PUBLIC_API_BASE_URL` | Endpoint API cho Frontend | `https://staging-api.yourdomain.com` | `https://api.yourdomain.com` |
+
+---
+
+### 🔀 7. Quy Trình Thử Nghiệm CI/CD Flow Chi Tiết
+
+Để kiểm thử quy trình thực tế từ Feature branch đến Production:
+
+1. **Feature Branch Work**:
+   ```bash
+   git checkout -b feature/terraform-deploy-model
+   # Thực hiện các cập nhật code...
+   git add .
+   git commit -m "feat: setup terraform and staging/production ci/cd"
+   git push origin feature/terraform-deploy-model
+   ```
+
+2. **Deploy STAGING (Merge vào `develop`)**:
+   - Tạo Pull Request từ `feature/terraform-deploy-model` vào `develop`.
+   - Khi merge vào `develop`, `.github/workflows/staging.yml` sẽ tự động kích hoạt:
+     - Tự động chạy Unit Test / Lint.
+     - Build Docker image Staging.
+     - Deploy hạ tầng Staging via Terraform.
+     - Thực hiện Health Check tại `https://staging-api.yourdomain.com/health`.
+
+3. **Deploy PRODUCTION (Merge vào `main`)**:
+   - Tạo Pull Request từ `develop` vào `main`.
+   - Khi merge vào `main`, `.github/workflows/production.yml` sẽ tự động kích hoạt:
+     - Chạy toàn bộ Gatekeeper Test Suite (Pytest + Typecheck + E2E).
+     - Build Docker image Production.
+     - Deploy hạ tầng Production via Terraform.
+     - Thực hiện Health Check tại `https://api.yourdomain.com/health`.
+
+---
 
 ## 🧪 Testing
 
 ```powershell
-# Backend (venv): 52 tests, coverage ≥ 75%
+# Backend (venv):
 .\.venv\Scripts\Activate.ps1
 pytest tests -q
 
 # Lint
 ruff check src tests
 
-# Backend (uv)
-uv run --extra dev --with python-multipart pytest tests -q
-uv run --extra dev --with python-multipart ruff check src tests
-
-# Frontend: unit (Vitest) + typecheck + build
+# Frontend: unit + typecheck
 npm run frontend:lint
-npm run frontend:build
 
-# E2E (cần backend @8000 + frontend @3000 đang chạy)
-pnpm test:e2e
+# Docker Compose Production Simulation:
+docker compose -f docker-compose.prod.yml config
 ```
 
 Chi tiết kết quả kiểm thử và bằng chứng chạy thật trên dữ liệu rosbag: [docs/evaluation.md](docs/evaluation.md).
-
-## 🔌 API chính
-
-| Method | Endpoint | Mô tả |
-|--------|----------|-------|
-| `GET` | `/api/v1/datasets` | Danh sách dataset |
-| `POST` | `/api/v1/datasets/upload` | Upload rosbag (.db3/.mcap/.bag/zip) |
-| `DELETE` | `/api/v1/datasets/{id}` | Xoá dataset |
-| `POST` | `/api/v1/analysis` | Chạy phân tích thật (`{"rosbag_id": "..."}`) |
-| `GET` | `/api/v1/analysis/{run_id}` | Chi tiết run: anomalies + AI results |
-| `GET/POST` | `/api/v1/analysis/thresholds` | Đọc/cập nhật ngưỡng phát hiện |
-| `POST` | `/api/v1/analysis/diagnose` | Chạy diagnostics trên inline/file input |
-| `POST` | `/api/v1/analysis/explain` | LLM giải thích kết quả diagnostics |
-| `POST` | `/api/v1/chat` | Chat với LLM (vLLM/OpenAI) |
-| `GET` | `/api/v1/dashboard/overview` | Số liệu dashboard + recent runs |
-| `POST` | `/api/v1/review/{id}/decision` | Approve/reject kết quả AI |
-
-## 💻 CLI (raV13)
-
-CLI gọi thẳng service layer (không qua HTTP), kết quả y hệt web API. Mặc định output **JSON** (dễ parse cho script), dùng `-o table` cho người đọc.
-
-```bash
-# Cài entrypoint (nếu chưa): pip install -e .
-# Hoặc chạy trực tiếp: python -m src.cli <command>
-
-# Datasets
-rav13 datasets list                    # JSON
-rav13 datasets list -o table           # Bảng
-rav13 datasets upload path/to/bag.db3  # Upload .db3/.mcap/.bag/.zip
-rav13 datasets delete <id>
-
-# Chạy phân tích thật trên dataset đã upload (persist run vào SQLite)
-rav13 analyze <dataset_id> [--model MODEL]
-
-# Diagnostics nhanh trên file (không persist)
-rav13 diagnose path/to/file.jsonl [--threshold KEY=VALUE ...]
-
-# Thresholds
-rav13 thresholds show
-rav13 thresholds set frequency_gap_min_threshold_sec=0.1
-
-# Xem run / review queue
-rav13 runs list
-rav13 runs show <run_id>
-rav13 review list
-rav13 review decide <review_id> approved --reviewer alice --notes "ok"
-
-# Export windowed JSONL (cho LLM context nhỏ gọn)
-rav13 export windows <dataset_id> --window 10 --out windows.jsonl
-
-# Human-in-the-loop: review dự đoán AI
-rav13 hilt review <run_id>                     # Tương tác (prompt 1/2/3)
-rav13 hilt review <run_id> --label correct     # Non-interactive
-rav13 hilt list <run_id>
-
-# Chat / explain (cần LLM config trong .env)
-rav13 chat "Tại sao /scan bị drop?"
-rav13 explain summary.json
-```
-
-Mặc định exit code: `0` thành công, `1` runtime error, `2` sai argument. Errors ra stderr, JSON ra stdout.
-
-## ⚠️ Giới hạn hiện tại
-
-- Run lưu **in-memory** — mất khi restart backend (chưa có database)
-- AI results cho run là **canned** theo loại anomaly (chưa gọi LLM live cho phân tích)
-- Timeline/simulation trên frontend vẫn dùng mock server (`frontend/lib/server/store.ts`)
-- Dataset có `metadata.yaml` lồng trong folder con (E2-*) chưa được scan
-
-## 📚 Tài liệu
-
-- [ARCHITECTURE.md](ARCHITECTURE.md) — kiến trúc hệ thống
-- [docs/evaluation.md](docs/evaluation.md) — bằng chứng kiểm thử & đánh giá
-- [docs/guide/](docs/guide/) — tài liệu kỹ thuật tham khảo

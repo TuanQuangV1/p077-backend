@@ -1,0 +1,12 @@
+aws_region               = "us-east-1"
+environment              = "production"
+app_name                 = "ai20k-rosbag"
+domain_name              = "yourdomain.com"
+backend_container_image  = "ai20k-rosbag-production-backend:latest"
+frontend_container_image = "ai20k-rosbag-production-frontend:latest"
+backend_port             = 8000
+frontend_port            = 3000
+desired_count            = 2
+cpu                      = 1024
+memory                   = 2048
+cors_origins             = "https://yourdomain.com,https://api.yourdomain.com"

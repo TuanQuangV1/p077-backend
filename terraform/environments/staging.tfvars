@@ -1,0 +1,12 @@
+aws_region               = "us-east-1"
+environment              = "staging"
+app_name                 = "ai20k-rosbag"
+domain_name              = "staging.yourdomain.com"
+backend_container_image  = "ai20k-rosbag-staging-backend:latest"
+frontend_container_image = "ai20k-rosbag-staging-frontend:latest"
+backend_port             = 8000
+frontend_port            = 3000
+desired_count            = 1
+cpu                      = 512
+memory                   = 1024
+cors_origins             = "https://staging.yourdomain.com,http://localhost:3000"
