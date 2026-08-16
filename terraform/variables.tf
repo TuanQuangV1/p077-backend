@@ -1,7 +1,7 @@
-variable "aws_region" {
-  description = "AWS region to deploy resources"
+variable "azure_location" {
+  description = "Azure datacenter location"
   type        = string
-  default     = "us-east-1"
+  default     = "eastus"
 }
 
 variable "environment" {
@@ -16,7 +16,7 @@ variable "environment" {
 variable "app_name" {
   description = "Application name prefix"
   type        = string
-  default     = "ai20k-rosbag"
+  default     = "ai20krosbag"
 }
 
 variable "domain_name" {
@@ -28,13 +28,13 @@ variable "domain_name" {
 variable "backend_container_image" {
   description = "Docker image repository URI for backend"
   type        = string
-  default     = "ai20k-rosbag-backend:latest"
+  default     = "mcr.microsoft.com/azuredocs/aci-helloworld:latest"
 }
 
 variable "frontend_container_image" {
   description = "Docker image repository URI for frontend"
   type        = string
-  default     = "ai20k-rosbag-frontend:latest"
+  default     = "mcr.microsoft.com/azuredocs/aci-helloworld:latest"
 }
 
 variable "backend_port" {
@@ -49,22 +49,16 @@ variable "frontend_port" {
   default     = 3000
 }
 
-variable "desired_count" {
-  description = "Number of ECS task instances to run"
-  type        = number
-  default     = 1
-}
-
 variable "cpu" {
-  description = "CPU units for ECS task (e.g. 512 = 0.5 vCPU, 1024 = 1 vCPU)"
+  description = "CPU cores for Container App (e.g. 0.25, 0.5, 1.0)"
   type        = number
-  default     = 512
+  default     = 0.5
 }
 
 variable "memory" {
-  description = "Memory (MB) for ECS task (e.g. 1024 = 1GB, 2048 = 2GB)"
-  type        = number
-  default     = 1024
+  description = "Memory for Container App (e.g. 0.5Gi, 1.0Gi, 2.0Gi)"
+  type        = string
+  default     = "1.0Gi"
 }
 
 variable "cors_origins" {
@@ -73,8 +67,26 @@ variable "cors_origins" {
   default     = "http://localhost:3000"
 }
 
-variable "enable_efs_persistence" {
-  description = "Enable AWS EFS persistent volume for SQLite and Rosbag uploads"
+variable "enable_persistent_storage" {
+  description = "Enable Azure Storage File Share for SQLite and Rosbag persistent storage"
   type        = bool
   default     = true
+}
+
+variable "acr_sku" {
+  description = "Azure Container Registry SKU (Basic for MVP/Demo cost optimization, Standard for production)"
+  type        = string
+  default     = "Basic"
+}
+
+variable "min_replicas" {
+  description = "Minimum replicas for Azure Container App (0 enables scale-to-zero for max cost savings)"
+  type        = number
+  default     = 0
+}
+
+variable "max_replicas" {
+  description = "Maximum replicas for Azure Container App"
+  type        = number
+  default     = 2
 }

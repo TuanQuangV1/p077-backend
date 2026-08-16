@@ -33,7 +33,7 @@ Robot ghi lại dữ liệu cảm biến dưới dạng rosbag, nhưng việc t�
 | Backend | Python 3.11+, FastAPI, Pydantic v2, uvicorn, httpx, numpy |
 | Frontend | Next.js 16 (App Router), React 19, TypeScript, shadcn/ui, Tailwind CSS v4, Recharts, SWR |
 | Testing | pytest + pytest-asyncio + pytest-cov, Vitest, Playwright |
-| Infrastructure | Terraform (IaC AWS ECR/ECS Fargate/ALB), Docker Multi-stage, Nginx |
+| Infrastructure | Terraform (Azure Container Apps, Azure Container Registry, Azure Storage File Share) |
 | CI/CD | GitHub Actions (`staging.yml`, `production.yml`, `ci.yml`) |
 
 ## 📁 Cấu trúc dự án
@@ -53,19 +53,19 @@ Robot ghi lại dữ liệu cảm biến dưới dạng rosbag, nhưng việc t�
 │   ├── app/                     # Next.js App Router (console, runs, dashboard...)
 │   ├── components/              # RAV Console, analysis UI, shadcn/ui
 │   └── lib/                     # api client, types, mock store
-├── terraform/                   # Infrastructure as Code (AWS ECR, ECS Fargate, ALB)
-│   ├── main.tf                  # Định nghĩa VPC, Load Balancer, ECS Service
-│   ├── variables.tf             # Biến cấu hình (region, app_name, ports)
-│   ├── outputs.tf               # Load Balancer DNS, ECR URLs
-│   ├── providers.tf             # AWS Provider & State Lock
+├── terraform/                   # Infrastructure as Code (AzureRM Provider)
+│   ├── main.tf                  # Resource Group, ACR, Azure Storage Share, Azure Container Apps
+│   ├── variables.tf             # Biến cấu hình (azure_location, app_name, ports)
+│   ├── outputs.tf               # Azure Container App FQDNs, ACR login server
+│   ├── providers.tf             # AzureRM Provider configuration
 │   └── environments/            # File cấu hình riêng biệt cho Staging & Production
 ├── env/                         # Mẫu cấu hình môi trường biệt lập
 │   ├── staging.env.example      # Variable mẫu cho Staging
 │   └── production.env.example   # Variable mẫu cho Production
 ├── nginx/                       # Reverse proxy SSL/TLS & API routing config
 ├── .github/workflows/
-│   ├── staging.yml              # CI/CD tự động deploy Staging khi merge vào develop
-│   ├── production.yml           # CI/CD tự động deploy Production khi merge vào main
+│   ├── staging.yml              # CI/CD tự động deploy Azure Staging khi merge vào develop
+│   ├── production.yml           # CI/CD tự động deploy Azure Production khi merge vào main
 │   └── ci.yml                   # CI PR Gatekeeper Tests
 ├── data/                        # Local storage data & thresholds
 ├── tests/                       # Pytest test suite
@@ -74,11 +74,11 @@ Robot ghi lại dữ liệu cảm biến dưới dạng rosbag, nhưng việc t�
 
 ---
 
-## 🚀 Deployment & CI/CD Guide
+## 🚀 Deployment & CI/CD Guide (Microsoft Azure)
 
-### 🌐 1. Kiến Trúc Deployment
+### 🌐 1. Kiến Trúc Deployment Azure
 
-Hệ thống được thiết kế với 2 môi trường biệt lập (**Staging** và **Production**) đảm bảo không có rủi ro khi deploy tính năng mới:
+Hệ thống được triển khai trên hạ tầng **Microsoft Azure** với 2 môi trường biệt lập (**Staging** và **Production**):
 
 ```mermaid
 graph TD
@@ -86,29 +86,25 @@ graph TD
     FEATURE --> PR_DEV[Pull Request / Merge]
     PR_DEV --> BRANCH_DEV[Branch: develop]
     BRANCH_DEV --> CI_STG[GitHub Actions: staging.yml]
-    CI_STG --> TEST_STG[Run Tests & Build Docker]
-    TEST_STG --> TF_STG[Terraform Apply Staging]
-    TF_STG --> DEPLOY_STG[Deploy to STAGING]
-    DEPLOY_STG --> HEALTH_STG[Health Check: https://staging-api.yourdomain.com/health]
+    CI_STG --> AZ_STG[Azure Login & Docker Push to ACR]
+    AZ_STG --> TF_STG[Terraform Apply Staging]
+    TF_STG --> DEPLOY_STG[Deploy to Azure Container Apps STAGING]
+    DEPLOY_STG --> HEALTH_STG[Health Check: https://app-ai20krosbag-staging-backend.eastus.azurecontainerapps.io/health]
 
     BRANCH_DEV --> PR_MAIN[Pull Request / Merge]
     PR_MAIN --> BRANCH_MAIN[Branch: main]
     BRANCH_MAIN --> CI_PROD[GitHub Actions: production.yml]
-    CI_PROD --> TEST_PROD[Run Full Tests & E2E]
-    TEST_PROD --> TF_PROD[Terraform Apply Production]
-    TF_PROD --> DEPLOY_PROD[Deploy to PRODUCTION]
-    DEPLOY_PROD --> HEALTH_PROD[Health Check: https://api.yourdomain.com/health]
+    CI_PROD --> AZ_PROD[Azure Login & Docker Push to ACR]
+    AZ_PROD --> TF_PROD[Terraform Apply Production]
+    TF_PROD --> DEPLOY_PROD[Deploy to Azure Container Apps PRODUCTION]
+    DEPLOY_PROD --> HEALTH_PROD[Health Check: https://app-ai20krosbag-production-backend.eastus.azurecontainerapps.io/health]
 ```
 
-#### Endpoints & Domains:
-- **Staging Environment**:
-  - Web UI: `https://staging.yourdomain.com`
-  - Backend API: `https://staging-api.yourdomain.com/api/v1`
-  - Health Check: `https://staging-api.yourdomain.com/health`
-- **Production Environment**:
-  - Web UI: `https://yourdomain.com`
-  - Backend API: `https://api.yourdomain.com/api/v1`
-  - Health Check: `https://api.yourdomain.com/health`
+#### Ánh Xạ Dịch Vụ Hạ Tầng:
+- **Compute Platform**: **Azure Container Apps (ACA)** — serverless container execution với auto-scaling & ingress HTTP/HTTPS.
+- **Container Registry**: **Azure Container Registry (ACR)** — lưu trữ & bảo mật các Docker image Backend & Frontend.
+- **Persistent Data Volume**: **Azure Files Share** — mount trực tiếp vào Container App tại `/app/data` bảo toàn dữ liệu SQLite (`runs.db`) và rosbag upload.
+- **Logging**: **Azure Log Analytics Workspace** — thu thập log ứng dụng tập trung.
 
 ---
 
@@ -140,63 +136,57 @@ docker compose -f docker-compose.prod.yml up --build
 
 ---
 
-### 🧪 3. Quy Trình Deploy Staging
+### 🧪 3. Quy Trình Deploy Staging (Azure)
 
 Deployment cho Staging diễn ra **hoàn toàn tự động** khi code được merge vào nhánh `develop`.
 
-#### Các bước thực hiện thủ công bằng Terraform (nếu cần):
+#### Các bước thực hiện thủ công bằng Terraform:
 ```bash
+# Đăng nhập Azure CLI
+az login
+
 cd terraform
-# 1. Khởi tạo Terraform
+# Khởi tạo Terraform Azure Provider
 terraform init
 
-# 2. Kiểm tra kế hoạch thay đổi hạ tầng Staging
+# Kiểm tra kế hoạch thay đổi hạ tầng Staging trên Azure
 terraform plan -var-file=environments/staging.tfvars
 
-# 3. Apply hạ tầng Staging
+# Apply hạ tầng Staging
 terraform apply -var-file=environments/staging.tfvars -auto-approve
 ```
 
 ---
 
-### 🏭 4. Quy Trình Deploy Production
+### 🏭 4. Quy Trình Deploy Production (Azure)
 
 Deployment cho Production diễn ra **hoàn toàn tự động** khi code từ `develop` được merge vào nhánh `main`.
 
 #### Các bước thực hiện thủ công bằng Terraform:
 ```bash
 cd terraform
-# 1. Khởi tạo Terraform
+# Khởi tạo & Apply hạ tầng Production trên Azure
 terraform init
-
-# 2. Kiểm tra kế hoạch thay đổi hạ tầng Production
 terraform plan -var-file=environments/production.tfvars
-
-# 3. Apply hạ tầng Production
 terraform apply -var-file=environments/production.tfvars -auto-approve
 ```
 
 ---
 
-### 🔄 5. Quy Trình Rollback (Khôi Phục Phân Cấp)
+### 🔄 5. Quy Trình Rollback Trên Azure Container Apps
 
 Trong trường hợp có sự cố phiên bản mới:
 
-#### A. Rollback Docker Image Tag (Ứng cứu sự cố tức thì < 2 phút):
-1. Mở GitHub Actions hoặc AWS ECS Console.
-2. Cập nhật Task Definition về tag commit SHA trước đó (ví dụ: `ai20k-rosbag-production-backend:<previous_sha>`).
-3. Chạy lệnh cập nhật ECS Service:
-   ```bash
-   aws ecs update-service --cluster ai20k-rosbag-production-cluster --service ai20k-rosbag-production-backend-service --force-new-deployment
-   ```
+#### Rollback Instant Revision (Ứng cứu sự cố < 1 phút):
+Azure Container Apps tự động lưu vết toàn bộ các Revision trước đó. Để chuyển sang Revision ổn định cũ:
+```bash
+# Xem danh sách revisions hiện tại
+az containerapp revision list --name app-ai20krosbag-production-backend --resource-group rg-ai20krosbag-production -o table
 
-#### B. Rollback Hạ Tầng Terraform:
-1. Revert commit thay đổi cấu hình trên Git.
-2. Chạy lệnh:
-   ```bash
-   cd terraform
-   terraform apply -var-file=environments/production.tfvars -auto-approve
-   ```
+# Switch 100% traffic về revision cũ
+az containerapp revision set-mode --name app-ai20krosbag-production-backend --resource-group rg-ai20krosbag-production --mode single
+az containerapp revision activate --name app-ai20krosbag-production-backend --resource-group rg-ai20krosbag-production --revision <previous_revision_name>
+```
 
 ---
 
@@ -208,41 +198,29 @@ Trong trường hợp có sự cố phiên bản mới:
 | `APP_PORT` | Port lắng nghe Backend | `8000` | `8000` |
 | `CORS_ORIGINS` | Tên miền CORS được phép | `https://staging.yourdomain.com` | `https://yourdomain.com` |
 | `API_AUTH_TOKEN` | Bearer Token bảo vệ API | Staging Secret | Production Secret |
-| `RUN_DB_PATH` | File đường dẫn SQLite | `data/staging_runs.db` | `data/prod_runs.db` |
-| `OPENAI_API_KEY` | Key gọi LLM | Staging OpenAI Key | Production OpenAI Key |
+| `RUN_DB_PATH` | File đường dẫn SQLite | `data/runs.db` | `data/runs.db` |
+| `OPENAI_API_KEY` | Key gọi LLM | Staging Key | Production Key |
 | `LOG_LEVEL` | Cấp độ ghi Log | `DEBUG` | `INFO` |
-| `NEXT_PUBLIC_API_BASE_URL` | Endpoint API cho Frontend | `https://staging-api.yourdomain.com` | `https://api.yourdomain.com` |
 
 ---
 
 ### 🔀 7. Quy Trình Thử Nghiệm CI/CD Flow Chi Tiết
 
-Để kiểm thử quy trình thực tế từ Feature branch đến Production:
-
 1. **Feature Branch Work**:
    ```bash
    git checkout -b feature/terraform-deploy-model
-   # Thực hiện các cập nhật code...
    git add .
-   git commit -m "feat: setup terraform and staging/production ci/cd"
+   git commit -m "feat: migrate terraform infrastructure to azure container apps"
    git push origin feature/terraform-deploy-model
    ```
 
 2. **Deploy STAGING (Merge vào `develop`)**:
-   - Tạo Pull Request từ `feature/terraform-deploy-model` vào `develop`.
-   - Khi merge vào `develop`, `.github/workflows/staging.yml` sẽ tự động kích hoạt:
-     - Tự động chạy Unit Test / Lint.
-     - Build Docker image Staging.
-     - Deploy hạ tầng Staging via Terraform.
-     - Thực hiện Health Check tại `https://staging-api.yourdomain.com/health`.
+   - Tạo PR từ `feature/terraform-deploy-model` vào `develop`.
+   - Workflow `.github/workflows/staging.yml` tự động chạy test, push Docker image lên ACR `acrai20krosbagstaging.azurecr.io`, apply Terraform Azure và verify healthcheck.
 
 3. **Deploy PRODUCTION (Merge vào `main`)**:
-   - Tạo Pull Request từ `develop` vào `main`.
-   - Khi merge vào `main`, `.github/workflows/production.yml` sẽ tự động kích hoạt:
-     - Chạy toàn bộ Gatekeeper Test Suite (Pytest + Typecheck + E2E).
-     - Build Docker image Production.
-     - Deploy hạ tầng Production via Terraform.
-     - Thực hiện Health Check tại `https://api.yourdomain.com/health`.
+   - Tạo PR từ `develop` vào `main`.
+   - Workflow `.github/workflows/production.yml` tự động chạy testsuite, push Docker image lên ACR `acrai20krosbagprod.azurecr.io`, apply Terraform Azure và verify healthcheck.
 
 ---
 
@@ -258,9 +236,4 @@ ruff check src tests
 
 # Frontend: unit + typecheck
 npm run frontend:lint
-
-# Docker Compose Production Simulation:
-docker compose -f docker-compose.prod.yml config
 ```
-
-Chi tiết kết quả kiểm thử và bằng chứng chạy thật trên dữ liệu rosbag: [docs/evaluation.md](docs/evaluation.md).

@@ -63,3 +63,11 @@ out/
 .kiro/
 .kilo/
 .next-builds/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.exe
+LICENSE.txt

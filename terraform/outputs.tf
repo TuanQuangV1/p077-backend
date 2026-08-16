@@ -1,21 +1,21 @@
-output "alb_dns_name" {
-  description = "Public DNS address of the Load Balancer"
-  value       = aws_lb.main.dns_name
+output "resource_group_name" {
+  description = "Azure Resource Group name"
+  value       = azurerm_resource_group.main.name
 }
 
-output "ecr_backend_repository_url" {
-  description = "URL of the ECR repository for backend Docker image"
-  value       = aws_ecr_repository.backend.repository_url
+output "acr_login_server" {
+  description = "Azure Container Registry login server host"
+  value       = azurerm_container_registry.acr.login_server
 }
 
-output "ecr_frontend_repository_url" {
-  description = "URL of the ECR repository for frontend Docker image"
-  value       = aws_ecr_repository.frontend.repository_url
+output "backend_container_app_fqdn" {
+  description = "Public Fully Qualified Domain Name of Backend Container App"
+  value       = azurerm_container_app.backend.ingress[0].fqdn
 }
 
-output "ecs_cluster_name" {
-  description = "ECS cluster name"
-  value       = aws_ecs_cluster.main.name
+output "frontend_container_app_fqdn" {
+  description = "Public Fully Qualified Domain Name of Frontend Container App"
+  value       = azurerm_container_app.frontend.ingress[0].fqdn
 }
 
 output "environment" {
