@@ -1,0 +1,40 @@
+name: Docker Security
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+
+jobs:
+  docker-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: |
+          docker build --target backend -t app-backend:${{ github.sha }} .
+
+      - name: Scan backend image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: app-backend:${{ github.sha }}
+          format: table
+          exit-code: 1
+          severity: HIGH,CRITICAL
+
+      - name: Build frontend image
+        run: |
+          docker build --target frontend -t app-frontend:${{ github.sha }} .
+
+      - name: Scan frontend image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: app-frontend:${{ github.sha }}
+          format: table
+          exit-code: 1
+          severity: HIGH,CRITICAL
