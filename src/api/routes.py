@@ -77,14 +77,14 @@ from src.services.experiments import (
     list_experiments,
     save_uploaded_rosbag,
 )
-from src.services.llm import chat_completion, explain_diagnostics, is_llm_configured
+from src.services.llm import (
+    CHAT_SYSTEM_PROMPT,
+    chat_completion,
+    explain_diagnostics,
+    is_llm_configured,
+)
 
 logger = logging.getLogger(__name__)
-
-_CHAT_SYSTEM_PROMPT = (
-    "You are a robotics diagnostics assistant for the RAV-13 platform. "
-    "Answer concisely and only from the data provided in this conversation."
-)
 
 _RATE_LIMIT_MAX_REQUESTS = int(os.environ.get("RATE_LIMIT_MAX_REQUESTS", "120"))
 _RATE_LIMIT_WINDOW_SEC = float(os.environ.get("RATE_LIMIT_WINDOW_SEC", "60"))
@@ -245,7 +245,7 @@ async def chat(
         message = await anyio.to_thread.run_sync(
             chat_completion,
             [
-                {"role": "system", "content": _CHAT_SYSTEM_PROMPT},
+                {"role": "system", "content": CHAT_SYSTEM_PROMPT},
                 {"role": "user", "content": request.message},
             ],
         )

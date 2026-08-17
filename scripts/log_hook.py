@@ -16,9 +16,9 @@ VN_TZ = timezone(timedelta(hours=7))
 # Resolve project root from this script's location: scripts/../ = project root
 _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 
-def git(cmd):
+def git(args):
     try:
-        return subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL, cwd=_PROJECT_ROOT).strip()
+        return subprocess.check_output(args, shell=False, text=True, stderr=subprocess.DEVNULL, cwd=_PROJECT_ROOT).strip()
     except Exception:
         return ""
 
@@ -73,7 +73,7 @@ def normalize(data: dict, tool: str) -> dict | None:
     # origin isn't set), skip the event entirely — these entries can't be
     # tied back to a team on the server and would just clutter the pending
     # queue forever.
-    origin = git("git remote get-url origin")
+    origin = git(["git", "remote", "get-url", "origin"])
     if not origin:
         return None
     repo = origin.rstrip("/").split("/")[-1]
@@ -91,9 +91,9 @@ def normalize(data: dict, tool: str) -> dict | None:
         ),
         "model": data.get("model", ""),
         "repo": repo,
-        "branch": git("git rev-parse --abbrev-ref HEAD"),
-        "commit": git("git rev-parse --short HEAD"),
-        "student": git("git config user.name"),
+        "branch": git(["git", "rev-parse", "--abbrev-ref", "HEAD"]),
+        "commit": git(["git", "rev-parse", "--short", "HEAD"]),
+        "student": git(["git", "config", "user.name"]),
     }
 
     if tool == "claude":

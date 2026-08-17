@@ -63,3 +63,5 @@ out/
 .kiro/
 .kilo/
 .next-builds/
+.npmrc
+frontend/.npmrc

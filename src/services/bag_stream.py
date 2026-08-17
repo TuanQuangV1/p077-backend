@@ -126,10 +126,16 @@ def iter_rosbag2_messages(path: str | Path, include_size: bool = False) -> Itera
     file_path = Path(path)
     conn = sqlite3.connect(f"file:{file_path.resolve()}?mode=ro", uri=True)
     try:
-        select = "SELECT t.name, t.type, m.timestamp"
         if include_size:
-            select += ", LENGTH(m.data)"
-        rows = conn.execute(f"{select} FROM messages m JOIN topics t ON m.topic_id = t.id").fetchall()
+            rows = conn.execute(
+                "SELECT t.name, t.type, m.timestamp, LENGTH(m.data) "
+                "FROM messages m JOIN topics t ON m.topic_id = t.id"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT t.name, t.type, m.timestamp "
+                "FROM messages m JOIN topics t ON m.topic_id = t.id"
+            ).fetchall()
     finally:
         conn.close()
 

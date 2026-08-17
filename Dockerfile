@@ -41,8 +41,8 @@ RUN pnpm install --no-frozen-lockfile --ignore-scripts
 # ---- Frontend production build ----
 FROM frontend-deps AS frontend-builder
 
-ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+ARG API_PROXY_TARGET=http://127.0.0.1:8000
+ENV API_PROXY_TARGET=$API_PROXY_TARGET
 
 COPY frontend ./
 RUN pnpm build

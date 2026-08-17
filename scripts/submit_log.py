@@ -14,6 +14,7 @@ import os
 import shutil
 import sys
 import time
+import urllib.parse
 import urllib.request
 import urllib.error
 from datetime import datetime, timezone
@@ -35,6 +36,18 @@ ARCHIVE_DIR = LOG_DIR / "archive"
 # If the local file has more than this, we submit the oldest BATCH_LIMIT
 # and leave the rest for the next push.
 BATCH_LIMIT = 500
+
+
+def _validate_server_url(raw: str) -> str:
+    """Allow only http/https URLs. urllib also supports file://, which could
+    read arbitrary files if AI_LOG_SERVER were ever attacker-controlled, so
+    the scheme is checked before any request is made."""
+    parsed = urllib.parse.urlsplit(raw)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise ValueError(
+            f"AI_LOG_SERVER must be an http(s) URL, got scheme={parsed.scheme!r}"
+        )
+    return raw
 
 
 def _archive(pending: Path) -> None:
@@ -70,6 +83,12 @@ def _restore_pending(pending: Path) -> None:
 def main():
     if not SERVER_URL:
         print("[ai-log] AI_LOG_SERVER not set — skipping submission.", file=sys.stderr)
+        sys.exit(0)
+
+    try:
+        server_url = _validate_server_url(SERVER_URL)
+    except ValueError as e:
+        print(f"[ai-log] {e} — skipping submission.", file=sys.stderr)
         sys.exit(0)
 
     if not LOG_FILE.exists() or LOG_FILE.stat().st_size == 0:
@@ -112,13 +131,15 @@ def main():
     if API_KEY:
         headers["Authorization"] = f"Bearer {API_KEY}"
     req = urllib.request.Request(
-        SERVER_URL,
+        server_url,
         data=payload,
         headers=headers,
         method="POST",
     )
 
     try:
+        # server_url is validated to be http(s) only by _validate_server_url above.
+        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
         with urllib.request.urlopen(req, timeout=10) as resp:
             print(f"[ai-log] Submitted {len(entries)} entries → {resp.status}", file=sys.stderr)
     except urllib.error.URLError as e:

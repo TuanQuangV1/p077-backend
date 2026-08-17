@@ -26,7 +26,6 @@ export default defineConfig({
             command: "pnpm dev",
             url: "http://localhost:3000",
             timeout: 120_000,
-            env: { NEXT_PUBLIC_API_BASE_URL: "http://localhost:8000" },
             reuseExistingServer: !process.env.CI,
         },
     ],

@@ -19,6 +19,11 @@ logger = logging.getLogger(__name__)
 _LLM_MAX_RETRIES = 2
 _LLM_RETRY_BACKOFF_SEC = 1.0
 
+CHAT_SYSTEM_PROMPT = (
+    "You are a robotics diagnostics assistant for the RAV-13 platform. "
+    "Answer concisely and only from the data provided in this conversation."
+)
+
 
 def validate_llm_config() -> Settings:
     """Validate LLM provider configuration and return resolved settings.

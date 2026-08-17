@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { AIResult, Anomaly, AnalysisRun, Rosbag } from "./types"
 import { fetcher, post } from "./api"
 
-const BASE = "http://localhost:8000/api/v1"
+const BASE = "/api/v1"
 
 interface Overview {
     totals: Record<string, number>
