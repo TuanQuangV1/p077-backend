@@ -6,10 +6,9 @@ survives restarts and tests stay isolated. Optional API-token auth and
 in-memory rate limiting protect the public endpoints.
 """
 
+import functools
 import logging
 import os
-import threading
-import time
 import json
 from collections import Counter, defaultdict
 from collections.abc import Iterator
@@ -89,35 +88,7 @@ logger = logging.getLogger(__name__)
 _RATE_LIMIT_MAX_REQUESTS = int(os.environ.get("RATE_LIMIT_MAX_REQUESTS", "120"))
 _RATE_LIMIT_WINDOW_SEC = float(os.environ.get("RATE_LIMIT_WINDOW_SEC", "60"))
 
-_DATASETS_CACHE_TTL_SEC = 5.0
-
 _rate_limiter = SlidingWindowRateLimiter(_RATE_LIMIT_MAX_REQUESTS, _RATE_LIMIT_WINDOW_SEC)
-
-
-class _DatasetsCache:
-    """Short-lived thread-safe cache of the scanned dataset list."""
-
-    def __init__(self, ttl_sec: float) -> None:
-        self._ttl_sec = ttl_sec
-        self._state: tuple[float, list[DatasetItem]] | None = None
-        self._lock = threading.Lock()
-
-    def get(self) -> list[DatasetItem] | None:
-        with self._lock:
-            if self._state is not None and time.monotonic() - self._state[0] < self._ttl_sec:
-                return self._state[1]
-            return None
-
-    def set(self, items: list[DatasetItem]) -> None:
-        with self._lock:
-            self._state = (time.monotonic(), items)
-
-    def invalidate(self) -> None:
-        with self._lock:
-            self._state = None
-
-
-_datasets_cache = _DatasetsCache(_DATASETS_CACHE_TTL_SEC)
 
 
 def _require_auth(authorization: str | None = Header(default=None)) -> None:
@@ -174,13 +145,9 @@ def _resolve_diagnostics_file_path(file_path: str) -> Path:
     return resolved
 
 
-def _load_datasets(use_cache: bool = True) -> list[DatasetItem]:
-    """Scan data/ subfolders for rosbag datasets, cached briefly between scans."""
-    if use_cache:
-        cached = _datasets_cache.get()
-        if cached is not None:
-            return cached
-    items = [
+def _load_datasets() -> list[DatasetItem]:
+    """Scan data/ subfolders for rosbag datasets (cached by :func:`list_experiments`)."""
+    return [
         DatasetItem(
             id=exp["id"],
             name=exp["name"],
@@ -197,12 +164,6 @@ def _load_datasets(use_cache: bool = True) -> list[DatasetItem]:
         )
         for exp in list_experiments()
     ]
-    _datasets_cache.set(items)
-    return items
-
-
-def _invalidate_datasets_cache() -> None:
-    _datasets_cache.invalidate()
 
 
 def _p95(values: list[int]) -> int:
@@ -278,7 +239,7 @@ async def datasets(
     Returns:
         ``DatasetListResponse`` with the dataset list and the total count.
     """
-    items = _load_datasets()
+    items = await anyio.to_thread.run_sync(_load_datasets)
     total = len(items)
     if offset is not None:
         items = items[offset:]
@@ -318,7 +279,6 @@ async def upload_dataset(
         if "size limit" in str(e):
             raise HTTPException(status_code=413, detail=str(e)) from e
         raise HTTPException(status_code=400, detail=str(e)) from e
-    _invalidate_datasets_cache()
     logger.info(
         "datasets.uploaded",
         extra={
@@ -345,9 +305,9 @@ async def delete_dataset(dataset_id: str) -> dict[str, str | bool]:
     Raises:
         HTTPException 404: No dataset found with the given ID.
     """
-    if not delete_experiment(dataset_id):
+    deleted = await anyio.to_thread.run_sync(delete_experiment, dataset_id)
+    if not deleted:
         raise HTTPException(status_code=404, detail="dataset not found")
-    _invalidate_datasets_cache()
     logger.info(
         "datasets.deleted",
         extra={
@@ -371,12 +331,15 @@ async def dashboard_overview() -> DashboardOverviewResponse:
     Returns:
         ``DashboardOverviewResponse`` containing all overview data.
     """
-    datasets = _load_datasets()
-    runs = run_store.list_runs()
-    all_anomalies: list[dict[str, Any]] = []
-    for run in runs:
-        all_anomalies.extend(run_store.get_run_anomalies(run["id"]))
-    review_items = run_store.list_review_items()
+    datasets = await anyio.to_thread.run_sync(_load_datasets)
+    runs = await anyio.to_thread.run_sync(run_store.list_runs)
+    anomalies_by_run = await anyio.to_thread.run_sync(
+        run_store.get_runs_anomalies, [run["id"] for run in runs]
+    )
+    all_anomalies: list[dict[str, Any]] = [
+        anomaly for run in runs for anomaly in anomalies_by_run.get(run["id"], [])
+    ]
+    review_items = await anyio.to_thread.run_sync(run_store.list_review_items)
 
     succeeded = [r for r in runs if r["status"] == "succeeded"]
     runs_with_issues = [r for r in succeeded if r["anomalyCount"] > 0]
@@ -459,7 +422,7 @@ async def create_analysis(
     Raises:
         HTTPException 404: No dataset found with the given ID.
     """
-    datasets = _load_datasets(use_cache=False)
+    datasets = await anyio.to_thread.run_sync(_load_datasets)
     match = next((ds for ds in datasets if ds.id == request.rosbag_id), None)
     if not match:
         raise HTTPException(status_code=404, detail="dataset not found")
@@ -479,7 +442,7 @@ async def get_thresholds() -> DiagnosticsThresholdsResponse:
     Returns:
         ``DiagnosticsThresholdsResponse`` with all thresholds in effect.
     """
-    thresholds = get_diagnostics_thresholds()
+    thresholds = await anyio.to_thread.run_sync(get_diagnostics_thresholds)
     logger.debug(
         "diagnostics.thresholds.read",
         extra={
@@ -505,7 +468,7 @@ async def update_thresholds(
     Returns:
         ``DiagnosticsThresholdsResponse`` with the thresholds after saving.
     """
-    thresholds = save_diagnostics_thresholds(payload.thresholds)
+    thresholds = await anyio.to_thread.run_sync(save_diagnostics_thresholds, payload.thresholds)
     logger.info(
         "diagnostics.thresholds.updated",
         extra={
@@ -533,14 +496,14 @@ async def get_analysis(run_id: str) -> AnalysisDetailResponse:
     Raises:
         HTTPException 404: No run found with the given ID.
     """
-    run_row = run_store.get_run(run_id)
+    run_row = await anyio.to_thread.run_sync(run_store.get_run, run_id)
     if run_row is None:
         raise HTTPException(status_code=404, detail="run not found")
     run = AnalysisRun(**run_row)
-    datasets = _load_datasets()
+    datasets = await anyio.to_thread.run_sync(_load_datasets)
     rosbag = next((ds for ds in datasets if ds.id == run.rosbagId), None)
-    detections = run_store.get_run_anomalies(run_id)
-    persisted_ai = run_store.get_run_ai_results(run_id)
+    detections = await anyio.to_thread.run_sync(run_store.get_run_anomalies, run_id)
+    persisted_ai = await anyio.to_thread.run_sync(run_store.get_run_ai_results, run_id)
     if persisted_ai:
         ai_results = [AIResultSummary(**result) for result in persisted_ai]
     else:
@@ -575,12 +538,12 @@ async def get_analysis_health(run_id: str) -> HealthSummaryResponse:
     Raises:
         HTTPException 404: No run found with the given ID.
     """
-    run_row = run_store.get_run(run_id)
+    run_row = await anyio.to_thread.run_sync(run_store.get_run, run_id)
     if run_row is None:
         raise HTTPException(status_code=404, detail="run not found")
-    datasets = _load_datasets()
+    datasets = await anyio.to_thread.run_sync(_load_datasets)
     rosbag = next((ds for ds in datasets if ds.id == run_row["rosbagId"]), None)
-    detections = run_store.get_run_anomalies(run_id)
+    detections = await anyio.to_thread.run_sync(run_store.get_run_anomalies, run_id)
     total_messages = rosbag.messageCount if rosbag else 0
     health = compute_health_summary(detections, total_messages=total_messages)
     return HealthSummaryResponse(health=health)
@@ -609,12 +572,12 @@ async def analysis_deep_dive(
     Raises:
         HTTPException 404: No run found with the given ID.
     """
-    run_row = run_store.get_run(run_id)
+    run_row = await anyio.to_thread.run_sync(run_store.get_run, run_id)
     if run_row is None:
         raise HTTPException(status_code=404, detail="run not found")
-    datasets = _load_datasets()
+    datasets = await anyio.to_thread.run_sync(_load_datasets)
     rosbag = next((ds for ds in datasets if ds.id == run_row["rosbagId"]), None)
-    detections = run_store.get_run_anomalies(run_id)
+    detections = await anyio.to_thread.run_sync(run_store.get_run_anomalies, run_id)
     total_messages = rosbag.messageCount if rosbag else 0
     health = compute_health_summary(detections, total_messages=total_messages)
     score = float(health.get("health_score", 0.0))
@@ -650,14 +613,14 @@ async def export_analysis_windows(
     Raises:
         HTTPException 404: The run, its dataset or its bag files are not found.
     """
-    run_row = run_store.get_run(run_id)
+    run_row = await anyio.to_thread.run_sync(run_store.get_run, run_id)
     if run_row is None:
         raise HTTPException(status_code=404, detail="run not found")
-    datasets = _load_datasets()
+    datasets = await anyio.to_thread.run_sync(_load_datasets)
     dataset = next((ds for ds in datasets if ds.id == run_row["rosbagId"]), None)
     if dataset is None:
         raise HTTPException(status_code=404, detail="dataset not found")
-    bag_files = experiment_bag_files(dataset.id)
+    bag_files = await anyio.to_thread.run_sync(experiment_bag_files, dataset.id)
     if not bag_files:
         raise HTTPException(status_code=404, detail="bag files not found")
 
@@ -682,7 +645,9 @@ async def review_queue(
     Returns:
         ``ReviewListResponse`` with the matching review items and total count.
     """
-    rows = run_store.list_review_items(status=None if status_filter == "all" else status_filter)
+    rows = await anyio.to_thread.run_sync(
+        run_store.list_review_items, None if status_filter == "all" else status_filter
+    )
     items = [ReviewItem(**item) for item in rows]
     return ReviewListResponse(items=items, total=len(items))
 
@@ -702,7 +667,7 @@ async def review_statistics() -> ReviewStatsResponse:
     def _accuracy(approved: int, reviewed: int) -> float | None:
         return round(approved / reviewed, 4) if reviewed else None
 
-    per_run = run_store.review_stats()
+    per_run = await anyio.to_thread.run_sync(run_store.review_stats)
     runs = []
     for row in per_run:
         reviewed = row["approved"] + row["rejected"] + row["edited"]
@@ -831,18 +796,18 @@ async def get_hilt_summary(
     Raises:
         HTTPException 404: Run or anomaly not found.
     """
-    run_row = run_store.get_run(run_id)
+    run_row = await anyio.to_thread.run_sync(run_store.get_run, run_id)
     if run_row is None:
         raise HTTPException(status_code=404, detail="run not found")
 
-    anomalies = run_store.get_run_anomalies(run_id)
+    anomalies = await anyio.to_thread.run_sync(run_store.get_run_anomalies, run_id)
     anomaly = next((a for a in anomalies if a.get("id") == anomaly_id.replace("anomaly_", "")), None)
     if anomaly is None:
         raise HTTPException(status_code=404, detail="anomaly not found")
 
     debugger = IterativeDebugger(run_id, anomaly_id, anomaly)
-    triggers = debugger.evaluate_triggers({})
-    hilt_payload = debugger.build_hilt_payload(triggers)
+    triggers = await anyio.to_thread.run_sync(debugger.evaluate_triggers, {})
+    hilt_payload = await anyio.to_thread.run_sync(debugger.build_hilt_payload, triggers)
 
     return HiltSummary(**hilt_payload)
 
@@ -871,18 +836,18 @@ async def hilt_iterate(
     Raises:
         HTTPException 404: Run or anomaly not found.
     """
-    run_row = run_store.get_run(run_id)
+    run_row = await anyio.to_thread.run_sync(run_store.get_run, run_id)
     if run_row is None:
         raise HTTPException(status_code=404, detail="run not found")
 
-    anomalies = run_store.get_run_anomalies(run_id)
+    anomalies = await anyio.to_thread.run_sync(run_store.get_run_anomalies, run_id)
     anomaly = next((a for a in anomalies if a.get("id") == anomaly_id.replace("anomaly_", "")), None)
     if anomaly is None:
         raise HTTPException(status_code=404, detail="anomaly not found")
 
     debugger = IterativeDebugger(run_id, anomaly_id, anomaly)
 
-    feedback_history = run_store.list_hilt_iterations(run_id, anomaly_id)
+    feedback_history = await anyio.to_thread.run_sync(run_store.list_hilt_iterations, run_id, anomaly_id)
     feedback_list = [
         {
             "iteration": fb["iteration"],
@@ -892,7 +857,7 @@ async def hilt_iterate(
         for fb in feedback_history
     ]
 
-    ai_result = debugger.suggest(feedback_list)
+    ai_result = await anyio.to_thread.run_sync(debugger.suggest, feedback_list)
 
     llm_output = {
         "root_cause": ai_result.rootCause,
@@ -901,26 +866,30 @@ async def hilt_iterate(
     }
 
     iteration_num = len(feedback_history) + 1
-    debugger.record_test(
-        iteration=iteration_num,
-        llm_root_cause=ai_result.rootCause,
-        llm_actions=ai_result.suggestedFix,
-        llm_explanation=ai_result.explanation,
-        llm_confidence=ai_result.confidence,
-        test_pass=test_pass,
-        test_comment=test_comment or None,
+    await anyio.to_thread.run_sync(
+        functools.partial(
+            debugger.record_test,
+            iteration=iteration_num,
+            llm_root_cause=ai_result.rootCause,
+            llm_actions=ai_result.suggestedFix,
+            llm_explanation=ai_result.explanation,
+            llm_confidence=ai_result.confidence,
+            test_pass=test_pass,
+            test_comment=test_comment or None,
+        )
     )
 
-    triggers = debugger.evaluate_triggers(llm_output)
+    triggers = await anyio.to_thread.run_sync(debugger.evaluate_triggers, llm_output)
 
     if not debugger.should_continue(iteration_num, triggers):
-        hilt_payload = debugger.build_hilt_payload(triggers)
-        run_store.save_expert_fix(
+        hilt_payload = await anyio.to_thread.run_sync(debugger.build_hilt_payload, triggers)
+        await anyio.to_thread.run_sync(
+            run_store.save_expert_fix,
             run_id,
             anomaly_id,
-            root_cause="ESCALATED: " + ", ".join(triggers),
-            actions=[],
-            notes=json.dumps(hilt_payload),
+            "ESCALATED: " + ", ".join(triggers),
+            [],
+            json.dumps(hilt_payload),
         )
         return ai_result
 
@@ -949,21 +918,22 @@ async def hilt_fix(
     Raises:
         HTTPException 404: Run or anomaly not found.
     """
-    run_row = run_store.get_run(run_id)
+    run_row = await anyio.to_thread.run_sync(run_store.get_run, run_id)
     if run_row is None:
         raise HTTPException(status_code=404, detail="run not found")
 
-    anomalies = run_store.get_run_anomalies(run_id)
+    anomalies = await anyio.to_thread.run_sync(run_store.get_run_anomalies, run_id)
     anomaly = next((a for a in anomalies if a.get("id") == anomaly_id.replace("anomaly_", "")), None)
     if anomaly is None:
         raise HTTPException(status_code=404, detail="anomaly not found")
 
-    run_store.save_expert_fix(
+    await anyio.to_thread.run_sync(
+        run_store.save_expert_fix,
         run_id,
         anomaly_id,
-        root_cause=payload.corrected_root_cause,
-        actions=payload.corrected_actions,
-        notes=payload.notes,
+        payload.corrected_root_cause,
+        payload.corrected_actions,
+        payload.notes,
     )
 
     return HiltFixResponse(ok=True, message="Expert fix recorded successfully")
@@ -986,13 +956,14 @@ async def review_decision(
     Raises:
         HTTPException 404: No review item found with the given ID.
     """
-    if run_store.get_review_item(review_id) is None:
+    if await anyio.to_thread.run_sync(run_store.get_review_item, review_id) is None:
         raise HTTPException(status_code=404, detail="review item not found")
-    run_store.update_review_item(
+    await anyio.to_thread.run_sync(
+        run_store.update_review_item,
         review_id,
-        verdict=payload.verdict,
-        reviewer=payload.reviewer or "reviewer",
-        notes=payload.notes,
+        payload.verdict,
+        payload.reviewer or "reviewer",
+        payload.notes,
     )
     return DashboardReviewDecisionResponse(
         ok=True,

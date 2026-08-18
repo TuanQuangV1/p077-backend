@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 # ---- Backend dependency layer ----
 FROM python:3.11-slim AS backend-builder
 
@@ -6,7 +8,8 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
 
-RUN python -m pip install --default-timeout=100 --retries 5 --no-cache-dir --prefix=/install .
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install --default-timeout=100 --retries 5 --prefix=/install .
 
 # ---- Backend production image ----
 FROM python:3.11-slim AS backend
@@ -36,7 +39,8 @@ WORKDIR /app/frontend
 
 RUN corepack enable
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml* frontend/.npmrc* ./
-RUN pnpm install --no-frozen-lockfile --ignore-scripts
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --no-frozen-lockfile --ignore-scripts
 
 # ---- Frontend production build ----
 FROM frontend-deps AS frontend-builder
