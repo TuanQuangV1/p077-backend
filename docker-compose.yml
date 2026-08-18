@@ -12,7 +12,6 @@ services:
       APP_ENV: production
       APP_HOST: 0.0.0.0
       APP_PORT: 8000
-      CORS_ORIGINS: http://localhost:3000
     volumes:
       - ./data:/app/data
     restart: unless-stopped
@@ -60,7 +59,6 @@ services:
       APP_ENV: development
       APP_HOST: 0.0.0.0
       APP_PORT: 8000
-      CORS_ORIGINS: http://localhost:3000
     volumes:
       - ./src:/app/src
       - ./data:/app/data

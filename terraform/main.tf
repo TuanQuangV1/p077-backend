@@ -18,13 +18,15 @@ resource "azurerm_resource_group" "main" {
   }
 }
 
-# 2. Azure Container Registry (ACR) — Basic SKU for MVP cost optimization ($5/mo)
+# 2. Azure Container Registry (ACR)
 resource "azurerm_container_registry" "acr" {
   name                = local.acr_name
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
   sku                 = var.acr_sku
-  admin_enabled       = true
+  # admin_enabled must stay false in production; use Managed Identity or
+  # Service Principal to pull images from Container Apps instead.
+  admin_enabled       = false
 
   tags = {
     Environment = var.environment

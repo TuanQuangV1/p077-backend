@@ -119,7 +119,7 @@ def compute_health_summary(
         "status_zones": {
             "green_min": GREEN_THRESHOLD,
             "yellow_min": YELLOW_THRESHOLD,
-            "red_max": YELLOW_THRESHOLD,
+            "red_max": 0.0,
         },
         "trigger_llm_deep_dive": score < DEEP_DIVE_TRIGGER_THRESHOLD,
         "summary": {

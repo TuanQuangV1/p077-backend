@@ -533,7 +533,6 @@ def _cmd_hilt_summary(args: argparse.Namespace) -> int:
         return 1
 
     debugger = IterativeDebugger(args.run_id, anomaly_id, anomaly)
-    iterations = run_store.list_hilt_iterations(args.run_id, anomaly_id)
     triggers = debugger.evaluate_triggers({})
     hilt_payload = debugger.build_hilt_payload(triggers)
 

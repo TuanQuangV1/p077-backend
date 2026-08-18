@@ -9,10 +9,8 @@ expert review:
 
 from __future__ import annotations
 
-import json
 import re
 from difflib import SequenceMatcher
-from pathlib import Path
 from typing import Any
 
 from src.config import get_settings
@@ -59,9 +57,8 @@ def detect_llm_uncertainty(text: str, confidence: float | None = None) -> float:
     regex_score = min(matches / 3.0, 1.0)
 
     confidence_penalty = 0.0
-    if confidence is not None:
-        if confidence < settings.hilt_uncertainty_threshold:
-            confidence_penalty = 0.3
+    if confidence is not None and confidence < settings.hilt_uncertainty_threshold:
+        confidence_penalty = 0.3
 
     return min(regex_score + confidence_penalty, 1.0)
 
@@ -155,3 +152,4 @@ class HiltTriggerEvaluator:
             triggers.append("user_failures")
 
         return triggers
+

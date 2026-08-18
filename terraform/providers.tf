@@ -18,7 +18,9 @@ terraform {
 }
 
 provider "azurerm" {
-  subscription_id = "bea3db28-8916-4dc6-928c-8fcd12742c3a"
+  # subscription_id is read from the ARM_SUBSCRIPTION_ID environment variable
+  # (set via GitHub Secret AZURE_SUBSCRIPTION_ID in CI/CD workflows).
+  # Do not hardcode the subscription ID here.
 
   features {
     resource_group {

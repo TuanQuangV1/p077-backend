@@ -6,9 +6,9 @@ survives restarts and tests stay isolated. Optional API-token auth and
 in-memory rate limiting protect the public endpoints.
 """
 
+import asyncio
 import logging
 import os
-import threading
 import time
 import json
 from collections import Counter, defaultdict
@@ -95,26 +95,24 @@ _rate_limiter = SlidingWindowRateLimiter(_RATE_LIMIT_MAX_REQUESTS, _RATE_LIMIT_W
 
 
 class _DatasetsCache:
-    """Short-lived thread-safe cache of the scanned dataset list."""
+    """Short-lived async-safe cache of the scanned dataset list."""
 
     def __init__(self, ttl_sec: float) -> None:
         self._ttl_sec = ttl_sec
         self._state: tuple[float, list[DatasetItem]] | None = None
-        self._lock = threading.Lock()
+        self._lock = asyncio.Lock()
 
     def get(self) -> list[DatasetItem] | None:
-        with self._lock:
-            if self._state is not None and time.monotonic() - self._state[0] < self._ttl_sec:
-                return self._state[1]
-            return None
+        # Lock-free read: monotonic check is atomic enough for a TTL cache.
+        if self._state is not None and time.monotonic() - self._state[0] < self._ttl_sec:
+            return self._state[1]
+        return None
 
     def set(self, items: list[DatasetItem]) -> None:
-        with self._lock:
-            self._state = (time.monotonic(), items)
+        self._state = (time.monotonic(), items)
 
     def invalidate(self) -> None:
-        with self._lock:
-            self._state = None
+        self._state = None
 
 
 _datasets_cache = _DatasetsCache(_DATASETS_CACHE_TTL_SEC)
@@ -134,8 +132,16 @@ def _require_auth(authorization: str | None = Header(default=None)) -> None:
 
 
 def _check_rate_limit(request: Request) -> None:
-    """Sliding-window in-memory rate limit keyed by client IP."""
-    key = request.client.host if request.client else "unknown"
+    """Sliding-window in-memory rate limit keyed by client IP.
+
+    When the direct client address is unavailable (e.g. behind a proxy that
+    strips headers), each forwarded IP from ``X-Forwarded-For`` is used so that
+    anonymous traffic does not share a single "unknown" bucket that could be
+    exhausted by a single abusive client.
+    """
+    client_host = request.client.host if request.client else None
+    forwarded_for = request.headers.get("x-forwarded-for")
+    key = forwarded_for.split(",")[0].strip() or client_host or "unknown" if forwarded_for else client_host or "unknown"
     if not _rate_limiter.allow(key):
         raise HTTPException(status_code=429, detail="rate limit exceeded")
 
@@ -251,7 +257,17 @@ async def chat(
         )
         return ChatResponse(response=message.get("content", ""), analysis="")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        logger.warning(
+            "chat.upstream_failed",
+            extra={
+                "diagnostics": {
+                    "event": "chat.upstream_failed",
+                    "level": "warning",
+                    "details": {"error_type": type(e).__name__},
+                }
+            },
+        )
+        raise HTTPException(status_code=500, detail="LLM request failed; please try again later") from e
 
 
 @router.get("/status")
@@ -836,7 +852,14 @@ async def get_hilt_summary(
         raise HTTPException(status_code=404, detail="run not found")
 
     anomalies = run_store.get_run_anomalies(run_id)
-    anomaly = next((a for a in anomalies if a.get("id") == anomaly_id.replace("anomaly_", "")), None)
+    # Raw anomaly dicts do not carry an "id" field; the "anomaly_<idx>" id is
+    # assigned synthetically by _anomaly_summaries(). Reconstruct the index
+    # from the anomaly_id string so we can look up the correct raw dict.
+    try:
+        anomaly_idx = int(anomaly_id.replace("anomaly_", ""))
+        anomaly = anomalies[anomaly_idx] if 0 <= anomaly_idx < len(anomalies) else None
+    except (ValueError, TypeError):
+        anomaly = None
     if anomaly is None:
         raise HTTPException(status_code=404, detail="anomaly not found")
 
@@ -876,7 +899,11 @@ async def hilt_iterate(
         raise HTTPException(status_code=404, detail="run not found")
 
     anomalies = run_store.get_run_anomalies(run_id)
-    anomaly = next((a for a in anomalies if a.get("id") == anomaly_id.replace("anomaly_", "")), None)
+    try:
+        anomaly_idx = int(anomaly_id.replace("anomaly_", ""))
+        anomaly = anomalies[anomaly_idx] if 0 <= anomaly_idx < len(anomalies) else None
+    except (ValueError, TypeError):
+        anomaly = None
     if anomaly is None:
         raise HTTPException(status_code=404, detail="anomaly not found")
 
@@ -954,7 +981,11 @@ async def hilt_fix(
         raise HTTPException(status_code=404, detail="run not found")
 
     anomalies = run_store.get_run_anomalies(run_id)
-    anomaly = next((a for a in anomalies if a.get("id") == anomaly_id.replace("anomaly_", "")), None)
+    try:
+        anomaly_idx = int(anomaly_id.replace("anomaly_", ""))
+        anomaly = anomalies[anomaly_idx] if 0 <= anomaly_idx < len(anomalies) else None
+    except (ValueError, TypeError):
+        anomaly = None
     if anomaly is None:
         raise HTTPException(status_code=404, detail="anomaly not found")
 

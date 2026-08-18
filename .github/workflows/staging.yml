@@ -136,4 +136,4 @@ jobs:
       - name: Staging Automated Health Check Gate
         run: |
           echo "Executing Azure Staging Health Check Gate..."
-          curl --fail --connect-timeout 10 --max-time 15 --retry 6 --retry-delay 10 ${{ env.STAGING_HEALTH_URL }} || echo "Staging health check verified!"
+          curl --fail --connect-timeout 10 --max-time 15 --retry 6 --retry-delay 10 ${{ env.STAGING_HEALTH_URL }}

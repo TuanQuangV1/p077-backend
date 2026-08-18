@@ -19,10 +19,10 @@ export function resolveApiUrl(url: string): string {
     if (route === "analysis/explain") return `${API_V1_BASE}/analysis/explain`
     if (route.startsWith("runs/")) {
         const suffix = route.slice("runs/".length)
-        if (suffix.includes("/simulation")) return url
-        if (suffix.includes("/timeline")) return url
-        if (suffix.includes("/ai")) return url
-        if (suffix.includes("/logs")) return url
+        if (suffix.includes("/simulation")) return `${API_V1_BASE}/analysis/${suffix}`
+        if (suffix.includes("/timeline")) return `${API_V1_BASE}/analysis/${suffix}`
+        if (suffix.includes("/ai")) return `${API_V1_BASE}/analysis/${suffix}`
+        if (suffix.includes("/logs")) return `${API_V1_BASE}/analysis/${suffix}`
         if (suffix.includes("/health")) return `${API_V1_BASE}/analysis/${suffix}`
         const [runId] = suffix.split("/")
         return `${API_V1_BASE}/analysis/${runId}`
@@ -30,9 +30,9 @@ export function resolveApiUrl(url: string): string {
     if (route === "review") return `${API_V1_BASE}/review`
     if (route === "review/stats") return `${API_V1_BASE}/review/stats`
     if (route.startsWith("review/")) return `${API_V1_BASE}/${route}`
-    if (route.startsWith("reports")) return url
-    if (route.startsWith("vllm/")) return url
-    if (route.startsWith("stream")) return url
+    if (route.startsWith("reports")) return `${API_V1_BASE}/${route}`
+    if (route.startsWith("vllm/")) return `${API_V1_BASE}/${route}`
+    if (route.startsWith("stream")) return `${API_V1_BASE}/${route}`
 
     return url
 }

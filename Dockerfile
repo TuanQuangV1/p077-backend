@@ -1,4 +1,6 @@
 # ---- Backend dependency layer ----
+# Pin to a specific digest for reproducible builds.
+# To update: docker pull python:3.11-slim && docker inspect python:3.11-slim --format '{{index .RepoDigests 0}}'
 FROM python:3.11-slim AS backend-builder
 
 WORKDIR /app
@@ -36,7 +38,7 @@ WORKDIR /app/frontend
 
 RUN corepack enable
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml* frontend/.npmrc* ./
-RUN pnpm install --no-frozen-lockfile --ignore-scripts
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # ---- Frontend production build ----
 FROM frontend-deps AS frontend-builder

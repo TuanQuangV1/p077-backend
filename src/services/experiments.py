@@ -350,25 +350,7 @@ def save_uploaded_rosbag(filename: str, source: BinaryIO) -> dict[str, Any]:
     Raises:
         ValueError: Unsupported extension, unsafe zip content or upload too large.
     """
-    # #region agent debug log
-    _debug_log_path = Path(__file__).resolve().parent.parent.parent / "debug-b95897.log"
-    with _debug_log_path.open("a") as _f:
-        import json
-        _f.write(json.dumps({
-            "sessionId": "b95897", "location": "experiments.py:save_uploaded_rosbag:entry",
-            "message": "save_uploaded_rosbag called", "data": {"filename": filename},
-            "timestamp": int(datetime.now(UTC).timestamp() * 1000), "hypothesisId": "H3,H4"
-        }) + "\n")
-    # #endregion
     suffix = Path(filename).suffix.lower()
-    # #region agent debug log
-    with _debug_log_path.open("a") as _f:
-        _f.write(json.dumps({
-            "sessionId": "b95897", "location": "experiments.py:save_uploaded_rosbag:suffix_check",
-            "message": "suffix check", "data": {"suffix": suffix, "allowed": list(ALLOWED_BAG_EXTENSIONS)},
-            "timestamp": int(datetime.now(UTC).timestamp() * 1000), "hypothesisId": "H3,H4"
-        }) + "\n")
-    # #endregion
     if suffix not in ALLOWED_BAG_EXTENSIONS and suffix != ".zip":
         raise ValueError(f"unsupported file type: {suffix}")
 
