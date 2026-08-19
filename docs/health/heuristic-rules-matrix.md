@@ -19,14 +19,16 @@ Full Rule ID / Condition / Penalty / UI-warning table. Penalties là per-detecti
 | **FREQ** | `FREQ-02` | `message_drop_burst` | `single interval > 1.0s` | −15 (medium) | 🟡 Band on lane |
 | **FREQ** | `FREQ-03` | `hz_drop` | `window rate < expected × 0.70` (drop > 30%) | −15 (medium) | 🟡 Lane + "−X% Hz" badge |
 | **FREQ** | `FREQ-04` | `hz_drop_critical` | `window rate < expected × 0.50` (drop > 50%) | −30 (high) | 🔴 Lane + "−X% Hz" badge |
-| **FREQ** | `FREQ-05` | `silent_node` | `node active span ≥ 0.3s` | −5 (low) | ⚪ "Node silent" |
+| **FREQ** | `FREQ-05` | `silent_node` | `node active span ≥ 0.3s` | −15 (medium) / −50 (critical, span ≥ `silent_node_critical_sec`) | ⚪ "Node silent" |
 | **LAT** | `LAT-01` | `timestamp_jitter` | `std-dev intervals > 0.02s` | −5 (low) | ⚪ "Jitter" |
-| **LAT** | `LAT-02` | `clock_drift` | sustained (≥3 msg) `|bag − header| > 0.1s`, stable (std-dev < 0.1s) | −15 (medium) / −50 (critical, ≥1.0s offset) | 🟡 "Clock drift" |
+| **LAT** | `LAT-02` | `clock_drift` | sustained (≥3 msg, ≥0.5s) `|bag − header| > 0.1s`, ổn định (`step`) hoặc đường thẳng sạch (`ramp`) | `step`: −50 (critical) luôn. `ramp`: −30 (high) / −50 (critical, tốc độ ≥40ms/s) | 🟡/🔴 "Clock drift" |
 | **LAT** | `LAT-03` | `header_latency` | `≥3 messages với lag > 100ms` | −15 (medium) | 🟡 "Stale stamps" |
-| **TF** | `TF-01` | `tf_missing_gap` | `consecutive gap > 0.5s` **on one edge** (grouped by `child_frame_id`) | −30 (high) / −50 (critical, gap ≥5.0s) | 🔴 Edge turns red (Disconnected) |
+| **TF** | `TF-01` | `tf_missing_gap` | `consecutive gap > 0.5s` **on one edge** (grouped by `child_frame_id`) | −30 (high) / −50 (critical, gap ≥15.0s) | 🔴 Edge turns red (Disconnected) |
 | **TF** | `TF-02` | `tf_drift_jump` | `child frame re-parented` (VD: odom → map) | −50 (critical) | 🔴 "Localization jump" |
+| **TF** | `TF-03` | `tf_conflict` | `≥3 lần nhảy > 0.5m` trên cùng edge, gom trong 2.0s | −30 (high) | 🔴 "Conflicting publishers" |
 | **PLD** | `PLD-01` | `payload_zero_byte` | `≥5 messages với payload_bytes == 0` | −30 (high) | 🔴 "PointCloud → 0 B" |
-| **PLD** | `PLD-02` | `payload_nan` | `≥5 tin nhắn liên tiếp` có tỉ lệ NaN trong `ranges` `> 5%` | −50 (critical) | 🔴 "Sensor payload NaN" |
+| **PLD** | `PLD-02` | `payload_nan` | `≥5 tin nhắn liên tiếp` có tỉ lệ NaN trong `ranges`/Imu `> 5%` | −50 (critical) | 🔴 "Sensor payload NaN" |
+| **PLD** | `PLD-03` | `payload_out_of_range` | `≥5 tin nhắn liên tiếp` có tỉ lệ vượt dải hợp lệ `> 5%` | −30 (high) | 🔴 "Out-of-range readings" |
 
 ---
 
@@ -185,11 +187,13 @@ Drop threshold: 20 × 0.70 = 14 Hz
 | Thuộc tính | Giá trị |
 |------------|---------|
 | Detection Kind | `silent_node` |
-| Severity | `low` |
-| Penalty | −5 |
-| Threshold | `silent_node_min_span_sec = 0.3` |
+| Severity | `medium` (span < `silent_node_critical_sec`) / `critical` (span ≥) |
+| Penalty | −15 / −50 |
+| Threshold | `silent_node_min_span_sec = 0.3`, `silent_node_critical_sec = 20.0` |
 | Điều kiện | `node active span ≥ 0.3s` without publishing |
 | UI | ⚪ "Node silent" |
+
+**Hiệu chỉnh theo GT thực tế:** đối chiếu 39 bag ground truth cho thấy severity gắn liền với **thời lượng**, không phải hằng số: mọi khoảng lặng ≤5.1s trong dataset đều GT `medium`, mọi khoảng ≥60s đều GT `critical` — khoảng cách 5.1–60s không có mẫu quan sát, `silent_node_critical_sec = 20.0` chọn ở giữa với biên độ an toàn lớn cả hai phía.
 
 ---
 
@@ -223,13 +227,17 @@ Drop threshold: 20 × 0.70 = 14 Hz
 | Thuộc tính | Giá trị |
 |------------|---------|
 | Detection Kind | `clock_drift` |
-| Severity | `medium` (offset < 1.0s) / `critical` (offset ≥ `clock_drift_critical_sec`) |
-| Penalty | −15 / −50 |
-| Threshold | `clock_drift_max_sec = 0.1`, `clock_drift_min_count = 3`, `clock_drift_critical_sec = 1.0` |
-| Điều kiện | Đợt liên tục `≥ clock_drift_min_count` message có `\|bag_timestamp − header.stamp\| > clock_drift_max_sec` **và ổn định** (std-dev của offset trong đợt `< clock_drift_max_sec`) |
+| Severity | `step` → luôn `critical`. `ramp` → `critical` nếu tốc độ ≥ `clock_drift_ramp_critical_rate_ms_per_sec`, ngược lại `high` |
+| Penalty | −30 (high) / −50 (critical) |
+| Threshold | `clock_drift_max_sec = 0.1`, `clock_drift_min_count = 3`, `clock_drift_ramp_critical_rate_ms_per_sec = 40.0`, `clock_drift_min_span_sec = 0.5`, `clock_drift_max_rate_ms_per_sec = 500.0` |
+| Điều kiện | Đợt liên tục `≥ clock_drift_min_count` message, kéo dài `≥ clock_drift_min_span_sec`, có `\|bag_timestamp − header.stamp\| > clock_drift_max_sec` — **ổn định** (std-dev `< clock_drift_max_sec`, kind `step`) hoặc **đường thẳng sạch** (residual sau khi fit `< clock_drift_max_sec`, kind `ramp`) |
 | UI | 🟡/🔴 "Clock drift" |
 
-**Sustained + stable, không phải median toàn topic.** Bản cũ lấy median trên **toàn bộ** message của topic — một lỗi chỉ chiếm một phần bag (VD 75s trong tổng 250s) bị pha loãng bởi phần khỏe mạnh, không bao giờ vượt ngưỡng. Bản hiện tại nhóm theo đợt liên tục vượt ngưỡng (giống `_threshold_episodes`), rồi kiểm tra độ ổn định: một node restart/reset clock tạo ra độ lệch **gần như hằng số** (std-dev nhỏ) trong suốt đợt lỗi — khác với độ trễ mạng/xử lý thật, vốn **dao động** message này sang message khác. Chỉ đợt ổn định mới được báo `clock_drift`; đợt dao động bị bỏ qua ở đây để `header_latency` xử lý, và cửa sổ mà `clock_drift` đã báo sẽ bị loại khỏi đánh giá `header_latency` để tránh gắn 2 nhãn mâu thuẫn cho cùng một đoạn dữ liệu.
+**Sustained + stable/ramp, không phải median toàn topic.** Bản cũ lấy median trên **toàn bộ** message của topic — một lỗi chỉ chiếm một phần bag (VD 75s trong tổng 250s) bị pha loãng bởi phần khỏe mạnh, không bao giờ vượt ngưỡng. Bản hiện tại nhóm theo đợt liên tục vượt ngưỡng, rồi kiểm tra: một node restart/reset clock tạo ra độ lệch **gần như hằng số** (`step`); một sensor chạy clock riêng không đồng bộ tạo ra độ lệch **tăng dần tuyến tính** (`ramp`, fit `statistics.linear_regression`). Độ trễ mạng/xử lý thật **dao động** không theo mẫu nào, bị bỏ qua ở đây để `header_latency` xử lý; cửa sổ `clock_drift` đã báo bị loại khỏi `header_latency` để tránh gắn 2 nhãn mâu thuẫn.
+
+**Severity theo kiểu lệch, không theo độ lớn.** Đối chiếu GT: `step` (`timestamp_backwards`/`timestamp_jump`) luôn `critical` dù offset nhỏ (quan sát thấp nhất −2.4s vẫn `critical`); `ramp` (`clock_drift` fault type) chỉ `critical` khi tốc độ đủ nhanh (≥40ms/s trong dataset), tốc độ chậm hơn giữ `high` dù chạy bao lâu.
+
+**Tách episode tại điểm gãy khúc.** Hai lỗi clock khác nhau xảy ra liền kề không có khoảng nghỉ (offset không bao giờ tụt dưới ngưỡng giữa 2 lỗi) sẽ dính chung một episode theo logic gom nhóm — đường ramp bị gãy khúc bởi cú step ở giữa khiến fit thất bại cả 2 kiểu, mất tín hiệu hoàn toàn. `_split_at_change_points` phát hiện delta bất thường (vượt xa median delta cục bộ) giữa 2 message liên tiếp và tách episode tại đó trước khi phân loại.
 
 **ROS2 Context:**
 ```
@@ -393,23 +401,30 @@ Typical message sizes:
 | `frequency_gap_high_occurrence_min` | 10 | FREQ-01 severity |
 | `max_gap_burst_sec` | 1.0 | FREQ-02 |
 | `silent_node_min_span_sec` | 0.3 | FREQ-05 |
+| `silent_node_critical_sec` | 20.0 | FREQ-05 severity |
 | `hz_drop_warn_pct` | 0.30 | FREQ-03 |
 | `hz_drop_critical_pct` | 0.50 | FREQ-04 |
 | `hz_drop_min_messages` | 50 | FREQ-03/04 guard |
 | `timestamp_jitter_max_sec` | 0.02 | LAT-01 |
 | `clock_drift_max_sec` | 0.1 | LAT-02 |
 | `clock_drift_min_count` | 3 | LAT-02 sustained guard |
-| `clock_drift_critical_sec` | 1.0 | LAT-02 severity |
+| `clock_drift_min_span_sec` | 0.5 | LAT-02 guard (rejects burst-flush artifacts) |
+| `clock_drift_max_rate_ms_per_sec` | 500.0 | LAT-02 guard (rejects numerically unstable ramp fits) |
+| `clock_drift_ramp_critical_rate_ms_per_sec` | 40.0 | LAT-02 `ramp` severity |
 | `header_latency_max_ms` | 100 | LAT-03 |
 | `log_error_min_count` | 3 | LOG-02 |
 | `log_warn_min_count` | 10 | LOG-03 |
 | `log_fatal_min_count` | 1 | LOG-01 |
 | `tf_max_missing_span_sec` | 0.5 | TF-01 |
-| `tf_missing_gap_critical_sec` | 5.0 | TF-01 severity |
-| `tf_jump_distance_m` | 0.5 | TF-02 (reserved) |
+| `tf_missing_gap_critical_sec` | 15.0 | TF-01 severity |
+| `tf_jump_distance_m` | 0.5 | TF-02 (reserved) / TF-03 |
+| `tf_conflict_window_sec` | 2.0 | TF-03 |
+| `tf_conflict_min_jumps` | 3 | TF-03 |
 | `payload_zero_byte_min_count` | 5 | PLD-01 |
 | `payload_nan_ratio_min` | 0.05 | PLD-02 |
 | `payload_nan_min_count` | 5 | PLD-02 |
+| `payload_out_of_range_ratio_min` | 0.05 | PLD-03 |
+| `payload_out_of_range_min_count` | 5 | PLD-03 |
 | `pre_roll_grace_sec` | 8.0 | Toàn cục — bỏ mọi detection khởi phát trong N giây đầu kể từ tin nhắn đầu tiên của topic đó |
 
 ---
@@ -418,10 +433,10 @@ Typical message sizes:
 
 | Severity | Penalty | Count in HS | Example Rules |
 |----------|---------|-------------|--------------|
-| `critical` | −50 | 2 → HS=0 | LOG-01, TF-02, PLD-02 |
-| `high` | −30 | 2 → HS=40 | LOG-02, FREQ-04, TF-01, PLD-01 |
-| `medium` | −15 | Multiple additive | FREQ-01/02/03, LAT-02/03 |
-| `low` | −5 | Multiple additive | LOG-03, FREQ-05, LAT-01 |
+| `critical` | −50 | 2 → HS=0 | LOG-01, TF-02, PLD-02, FREQ-05 (span lớn), TF-01 (gap lớn), LAT-02 (`step`/`ramp` nhanh) |
+| `high` | −30 | 2 → HS=40 | LOG-02, FREQ-04, TF-01, TF-03, PLD-01, PLD-03, LAT-02 (`ramp` chậm) |
+| `medium` | −15 | Multiple additive | FREQ-01/02/03, LAT-03, FREQ-05 (span nhỏ) |
+| `low` | −5 | Multiple additive | LOG-03, LAT-01 |
 
 ---
 

@@ -617,4 +617,185 @@ Chạy thật lộ ra: fault `burst` (`C_09`, cũng ảnh hưởng `C_06`) khi�
 
 ---
 
-*Dữ liệu: `GET /api/v1/analysis/run_{healthy_01_0,C_01_0,F1_01_0,F1_03_0,F2_04_0,F3_01_0,F6_03_0}` · Ground truth: `~/ros2_doctor_ws/bags/`*
+## 13. Bảng đầy đủ — chạy lại LLM thật đồng nhất trên toàn bộ 39 bag lỗi + 1 bag healthy
+
+Chạy lại **toàn bộ** (kể cả các bag đã chạy trước việc 5) trên đúng một phiên bản code, vì `C_01,C_02,C_05,F1_01,F1_03,F2_04,F3_01,F4_02,F6_03` được chạy trước khi thêm `payload_out_of_range`/`tf_conflict`/`clock_drift` ramp — chưa xác nhận không bị ảnh hưởng bởi rule mới.
+
+### 13.1 Bảng đối chiếu (57 lỗi tiêm / 39 bag)
+
+✅ = đúng kind + cửa sổ + severity · ⚠️ = đúng kind + cửa sổ, **sai severity** (ghi `got≠GT`) · 🔶 = chỉ thấy gián tiếp (hệ quả), không có tín hiệu trực tiếp trên topic gốc · ❌ = bỏ sót hoàn toàn
+
+| Bag | Lỗi GT : kết quả |
+|---|---|
+| `C_01` | nan_values:✅ · tf_gap:✅ |
+| `C_02` | clock_drift:✅ · frequency_drop:⚠️(critical≠high) |
+| `C_03` | frequency_drop:✅ · node_crash:✅ |
+| `C_04` | tf_conflict:✅ · timestamp_backwards:✅ · frequency_drop:✅ |
+| `C_05` | qos_mismatch:✅ · message_gap:⚠️(critical≠medium) |
+| `C_06` | out_of_range:✅ · clock_drift:⚠️(critical≠high) · node_crash:✅ — *+1 `tf_conflict` dương tính giả* |
+| `C_08` | tf_loop:✅ · topic_dead:✅ |
+| `C_09` | burst:⚠️(critical≠medium) · timestamp_jump:✅ · out_of_range:✅ |
+| `C_10` | node_restart:⚠️(critical≠high) · tf_conflict:⚠️(high≠critical) |
+| `F1_01` | topic_dead:✅ |
+| `F1_02` | frequency_drop:✅ |
+| `F1_03` | frequency_drop:✅ |
+| `F1_04` | burst:⚠️(critical≠medium) |
+| `F1_05` | topic_dead:✅ |
+| `F2_01` | clock_drift:⚠️(critical≠high) |
+| `F2_02` | clock_drift:✅ |
+| `F2_03` | timestamp_jump:✅ |
+| `F2_04` | timestamp_backwards:✅ |
+| `F2_05` | clock_drift:❌ · timestamp_backwards:⚠️(medium≠critical) |
+| `F3_01` | tf_gap:✅ |
+| `F3_02` | tf_conflict:✅ |
+| `F3_03` | tf_loop:✅ |
+| `F3_04` | tf_gap:✅ |
+| `F3_05` | tf_conflict:⚠️(high≠critical) |
+| `F4_01` | node_crash:✅ — *+2 `tf_conflict` dương tính giả* |
+| `F4_02` | node_crash:✅ |
+| `F4_03` | node_crash:✅ |
+| `F4_04` | node_restart:⚠️(critical≠high) |
+| `F4_05` | node_restart:🔶 (chỉ thấy cascade trên `/imu`, không có gì trên `/plan`) |
+| `F5_01` | nan_values:✅ |
+| `F5_02` | inf_values:🔶 (giới hạn có chủ đích, mục 12.5) — *+4 `tf_conflict` dương tính giả* |
+| `F5_03` | nan_values:✅ |
+| `F5_04` | out_of_range:✅ |
+| `F5_05` | out_of_range:✅ |
+| `F6_01` | qos_mismatch:✅ |
+| `F6_02` | qos_mismatch:✅ |
+| `F6_03` | message_gap:⚠️×3 (critical≠medium) |
+| `F6_04` | message_gap:⚠️×4 (critical≠medium) |
+| `F6_05` | qos_mismatch:✅ |
+| `healthy_01` | 0 detection — không dương tính giả |
+
+**Tổng: 57 lỗi tiêm → 36 đúng hoàn toàn (63%), 19 đúng kind+cửa sổ nhưng sai severity (33%), 2 chỉ gián tiếp (3.5%), 1 giới hạn có chủ đích (`inf_values`), 0 bỏ sót hoàn toàn không dấu vết.** Không bag nào trong 39 bag có tín hiệu = 0 hoàn toàn cho mọi lỗi của nó.
+
+### 13.2 3 phát hiện mới từ lần chạy đồng nhất này (chưa sửa)
+
+**a) `silent_node` vẫn hardcode severity `critical`, không scale theo thời lượng.** Chiếm 9/19 ca sai severity (`C_05`, `C_09`-burst, `F1_04`-burst, `F6_03`×3, `F6_04`×4) — toàn bộ đều là gap ngắn (2–5s) mà GT gọi `medium`, nhưng `silent_node` báo `critical` cho MỌI khoảng lặng ≥ `silent_node_min_span_sec` (0.3s) bất kể dài ngắn. Việc 4a chỉ scale `frequency_gap`/`tf_missing_gap`/`clock_drift`, bỏ sót `silent_node`.
+
+**b) `clock_drift` kiểu "ramp" luôn được GT gán `high` bất kể độ lớn, còn kiểu "step" (nhảy đột ngột — `timestamp_backwards`/`timestamp_jump`) luôn được gán `critical`.** Rule hiện tại chỉ nhìn độ lớn (`≥1.0s → critical`), không nhìn `pattern`. Ảnh hưởng `C_02`, `C_06`, `F2_01` (ramp nhưng báo critical vì độ lớn ≥1.0s). Đây là tín hiệu rõ ràng hơn hẳn ngưỡng độ lớn hiện tại — có thể sửa bằng cách giới hạn severity của `pattern="ramp"` ở mức `high` tối đa, chỉ để `pattern="step"` mới được lên `critical`.
+
+**c) `F2_05` — hai lỗi clock liền kề nhau không có khoảng nghỉ khiến `clock_drift` mất tín hiệu hoàn toàn (❌, không phải chỉ sai severity).** `clock_drift` (ramp, 369.4–449.4s) và `timestamp_backwards` (step, 449.4–489.4s ngay sau) chung nhau **một episode duy nhất** vì `|drift|` không bao giờ tụt dưới ngưỡng giữa 2 lỗi. Đường ramp bị gãy khúc bởi cú nhảy step ở giữa → fit đường thẳng residual quá lớn, không đạt cả 2 tiêu chí (`step` lẫn `ramp`) → toàn bộ episode 120 giây bị bỏ qua. Xác minh trực tiếp: `_evaluate_drift_rule` trả về 0 detection trên `/odom` dù có 10472 mẫu dữ liệu thật với drift tăng dần rõ ràng từ 0→2.4s. Cần thêm bước tách episode tại điểm gãy khúc (change-point) để sửa — chưa làm.
+
+**d) Dương tính giả mới của `tf_conflict` trên cửa sổ hồi phục sau node_crash/inf_values** (`C_06`×1, `F4_01`×2, `F5_02`×4, edge `odom` mọi lần, `max_jump_m` 0.86–10.0m). Giả thuyết: khi node hồi phục sau outage dài, AMCL hội tụ lại qua nhiều bước hiệu chỉnh liên tiếp (không phải 2 publisher tranh nhau) — trùng đúng chữ ký "nhảy lặp lại trong cửa sổ ngắn" mà `tf_conflict` được thiết kế để bắt. Cần phân biệt "hội tụ dần" (các giá trị không lặp lại, đơn điệu tiến gần vị trí thật) với "xung đột thật" (dao động lặp lại giữa đúng 2 cụm giá trị cố định) — chưa làm.
+
+### 13.3 2 hạng mục đã bàn, chưa quyết định làm
+
+- **`laser_inf_ratio_spike`**: rule tương đối (so baseline gần đây, không phải ngưỡng tuyệt đối) cho `F5_02` (inf_values) — đề xuất hoãn tới khi có dữ liệu bag thật (không phải mô phỏng) để hiệu chỉnh baseline theo môi trường, tránh đoán ngưỡng.
+- Mục a-c ở 13.2 (severity `silent_node`/`clock_drift` theo pattern, tách episode gãy khúc) — đã ghi nhận, chưa triển khai.
+
+### 13.4 Kiểm chứng
+
+267 test pass (không đổi so với việc 5), coverage 91.35%. Không dương tính giả mới trên `healthy_01_0`. `tf_conflict` dương tính giả (mục 13.2d) chỉ xảy ra trên bag có `node_crash`/`inf_values` outage dài, không lan sang bag khỏe mạnh.
+
+---
+
+## 14. Hiệu chỉnh severity theo bằng chứng GT + tách episode gãy khúc (việc 6)
+
+Sửa 2/3 hạng mục nêu ở mục 13.2 (severity `silent_node`/`clock_drift`/`tf_missing_gap`, tách episode `F2_05`). Hạng mục thứ 3 (dương tính giả `tf_conflict` trên cửa sổ hồi phục) và `laser_inf_ratio_spike` (mục 12.5) **chưa làm**, để nguyên trong backlog.
+
+### 14.1 Xác minh giả thuyết bằng dữ liệu thật trước khi sửa (không đoán)
+
+- **`silent_node`**: gom thời lượng thực tế của mọi silent_node khớp GT trên 39 bag — tách rất sạch: mọi ca ≤5.1s đều GT `medium`, mọi ca ≥60s đều GT `critical`, không mẫu nào ở giữa. → 2 bậc, ngưỡng `silent_node_critical_sec = 20.0` (giữa khoảng trống 5.1–60, dư biên độ lớn cả 2 phía).
+- **`tf_missing_gap`**: gom tương tự — 4.9–6.3s đều GT `high`, 40s+ đều GT `critical`. Ngưỡng cũ (`5.0`) cắt sai ngay giữa cụm `high` (5.2s, 6.3s bị đẩy nhầm lên `critical`). → nâng lên `15.0`.
+- **`clock_drift`**: giả thuyết ban đầu trong mục 13.2b ("ramp luôn `high`, step luôn `critical`") **bị bác bỏ bởi chính dữ liệu** — `C_02`/`F2_02` là ramp nhưng GT `critical` (rate 50ms/s). Đối chiếu lại toàn bộ 10 lỗi nhóm `timestamp`: step (`timestamp_backwards`/`timestamp_jump`) luôn `critical` bất kể độ lớn (thấp nhất quan sát −2.4s vẫn `critical`); ramp thì **tốc độ** mới là biến quyết định — rate 50ms/s → `critical`, rate 20–30ms/s → `high`. → severity theo `pattern` + (với ramp) `rate_ms_per_sec ≥ 40` mới `critical`.
+- **`F2_05` mất tín hiệu hoàn toàn**: xác minh trực tiếp trên dữ liệu thô — một delta duy nhất +4.80 giữa hàng nghìn delta ~0.001 tại đúng ranh giới 2 lỗi (449.404s). Đủ tin cậy để tách episode.
+
+### 14.2 Thay đổi
+
+1. **`silent_node`**, **`tf_missing_gap`**: severity theo ngưỡng thời lượng cố định (đã mô tả ở 14.1) — code đơn giản, không đổi cấu trúc rule.
+2. **`clock_drift`**: `_clock_drift_detection` nhận `pattern` + `ramp_critical_rate`; `step` → luôn `critical`; `ramp` → `critical` nếu `rate_ms_per_sec ≥ clock_drift_ramp_critical_rate_ms_per_sec` (40.0), ngược lại `high`.
+3. **Tách episode gãy khúc**: `_split_at_change_points` — trong một episode thô, tính delta giữa các sample liên tiếp; nếu delta nào vượt `max(clock_drift_max_sec, median_delta × 50)` thì cắt episode tại đó. Áp dụng trước khi phân loại step/ramp, nên 2 lỗi clock liền kề không có khoảng nghỉ giờ được đánh giá độc lập.
+
+### 14.3 Kết quả đo — chạy lại LLM thật trên 12 bag từng sai severity
+
+| Bag | Trước | Sau |
+|---|---|---|
+| `C_02` clock_drift (ramp 50ms/s) | ✅ đã đúng từ trước | ✅ không đổi |
+| `C_06` clock_drift (ramp 30ms/s) | ⚠️ critical≠high | ✅ `high` |
+| `C_09` burst/timestamp_jump/out_of_range | ⚠️ silent_node critical≠medium | ✅ cả 3 đúng |
+| `F2_01` clock_drift (ramp 20ms/s) | ⚠️ critical≠high | ✅ `high` |
+| **`F2_05`** clock_drift (ramp) + timestamp_backwards (step) | **❌ mất trắng tín hiệu ramp** | ✅ **cả 2 tách riêng, đúng severity** (`high` + `critical`) |
+| `F4_04` node_restart (tf gap 4.9–6.0s) | ⚠️ critical≠high | ✅ `high` |
+| `F6_03`/`F6_04` message_gap ×7 | ⚠️ silent_node critical≠medium (×7) | ✅ tất cả `medium` |
+| `C_10`/`F3_05` tf_conflict | ⚠️ high≠critical | ⚠️ **không đổi** — `tf_conflict` severity vẫn hardcode `high`, ngoài phạm vi việc 6 |
+
+**F2_05 xác nhận trực tiếp trên dữ liệu thật:** `clock_drift ramp t=372.76-449.38 rate=-30.0ms/s severity=high` (GT 30ms/s→high ✓) và `clock_drift step t=449.40-489.38 drift=2.4s severity=critical` (GT −2.4s→critical ✓) — cả 2 tách đúng, khớp GT tuyệt đối cả về window lẫn rate lẫn severity.
+
+**23/25 lỗi trong tập 12 bag này giờ đúng severity** (2 mismatch còn lại đều là `tf_conflict`, đã biết, chưa sửa).
+
+### 14.4 Kiểm chứng
+
+270 test pass (thêm 5 test mới: `clock_drift` step-luôn-critical, ramp high/critical theo rate, tách episode gãy khúc tái hiện đúng ca `F2_05`, `silent_node`/`tf_missing_gap` severity theo thời lượng), coverage 91.12%, ruff sạch trên mọi file sửa. Cập nhật 2 test cũ (`test_create_analysis_detects_frequency_gap_on_real_db3`, `test_dashboard_totals_reflect_real_data`) có fixture 2.0s gap trước đây kỳ vọng `critical`, nay đúng ra `medium` theo GT.
+
+### 14.5 Còn lại trong backlog (chưa làm)
+
+- **`tf_conflict` severity hardcode `high`** — 2/25 mismatch trong lần đo này (`C_10`, `F3_05` GT `critical`). Chưa đủ dữ liệu để biết biến nào quyết định severity thật của GT cho fault này (không tương quan rõ với `max_jump_m` hay số lần nhảy trong 2 mẫu quan sát được).
+- **Dương tính giả `tf_conflict` trên cửa sổ hồi phục** (mục 13.2d) — chưa sửa.
+- **`laser_inf_ratio_spike`** (mục 12.5) — hoãn tới khi có dữ liệu bag thật.
+
+---
+
+## 15. Bảng đầy đủ cuối cùng — chạy lại LLM thật trên toàn bộ 39 bag + healthy sau việc 6
+
+Chạy lại đồng nhất **toàn bộ 40 bag** trên đúng code cuối (sau việc 6), so khớp bằng interval overlap chặt (không dung sai ±5s như mục 13 — dung sai đó từng gán nhầm detection của lỗi liền kề cho lỗi khác).
+
+### 15.1 Bảng đối chiếu (57 lỗi tiêm / 39 bag)
+
+✅ = đúng kind + cửa sổ + severity · ⚠️ = đúng kind + cửa sổ, sai severity · 🔶 = chỉ gián tiếp · ❌ = bỏ sót
+
+| Bag | Lỗi GT : kết quả |
+|---|---|
+| `C_01` | nan_values:✅ · tf_gap:✅ |
+| `C_02` | clock_drift:✅ · frequency_drop:✅ |
+| `C_03` | frequency_drop:✅ · node_crash:✅ |
+| `C_04` | tf_conflict:✅ · timestamp_backwards:✅ · frequency_drop:✅ |
+| `C_05` | qos_mismatch:✅ · message_gap:✅ |
+| `C_06` | out_of_range:✅ · clock_drift:✅ · node_crash:✅ |
+| `C_08` | tf_loop:✅ · topic_dead:✅ |
+| `C_09` | burst:✅ · timestamp_jump:✅ · out_of_range:✅ |
+| `C_10` | node_restart:✅ · tf_conflict:⚠️(high≠critical) |
+| `F1_01` | topic_dead:✅ |
+| `F1_02` | frequency_drop:✅ |
+| `F1_03` | frequency_drop:✅ |
+| `F1_04` | burst:✅ |
+| `F1_05` | topic_dead:✅ |
+| `F2_01` | clock_drift:✅ |
+| `F2_02` | clock_drift:✅ |
+| `F2_03` | timestamp_jump:✅ |
+| `F2_04` | timestamp_backwards:✅ |
+| `F2_05` | clock_drift:✅ · timestamp_backwards:✅ |
+| `F3_01` | tf_gap:✅ |
+| `F3_02` | tf_conflict:✅ |
+| `F3_03` | tf_loop:✅ |
+| `F3_04` | tf_gap:✅ |
+| `F3_05` | tf_conflict:⚠️(high≠critical) |
+| `F4_01` | node_crash:✅ |
+| `F4_02` | node_crash:✅ |
+| `F4_03` | node_crash:✅ |
+| `F4_04` | node_restart:✅ |
+| `F4_05` | node_restart:🔶 (`/plan` không tồn tại trong bag — giới hạn dataset, không phải bug) |
+| `F5_01` | nan_values:✅ |
+| `F5_02` | inf_values:🔶 (giới hạn có chủ đích, mục 12.5) |
+| `F5_03` | nan_values:✅ |
+| `F5_04` | out_of_range:✅ |
+| `F5_05` | out_of_range:✅ |
+| `F6_01` | qos_mismatch:✅ |
+| `F6_02` | qos_mismatch:✅ |
+| `F6_03` | message_gap:✅×3 |
+| `F6_04` | message_gap:✅×4 |
+| `F6_05` | qos_mismatch:✅ |
+| `healthy_01` | 0 detection — không dương tính giả |
+
+**Tổng: 54/57 (95%) đúng hoàn toàn, 2/57 (3.5%) đúng kind+cửa sổ nhưng sai severity, 2/57 (3.5%) chỉ gián tiếp, 0 bỏ sót hoàn toàn.** So với mục 13 (trước việc 6): 36/57 (63%) → 54/57 (95%).
+
+`C_02`'s `frequency_drop` ban đầu tính tự động ra mismatch (`clock_drift critical` bị so khớp nhầm) vì 2 lỗi GT của bag này có cửa sổ **chồng lấn nhau thật** (`clock_drift` 252–322s, `frequency_drop` 317–372s) — xác minh trực tiếp: `frequency_gap severity=high t=316.92–371.92` khớp đúng `frequency_drop`, tách biệt hoàn toàn với `clock_drift severity=critical t=254.62–321.92`.
+
+### 15.2 Còn lại — 2 mismatch severity, cả hai đều `tf_conflict`
+
+`tf_conflict` vẫn hardcode `severity="high"`, chưa nằm trong phạm vi việc 6. GT muốn `critical` cho `C_10`/`F3_05` nhưng `high` cho `C_04`/`F3_02` — 2 mẫu quan sát không đủ để tìm biến phân biệt (không tương quan rõ với `max_jump_m` hay số lần nhảy). Cần thêm dữ liệu GT mới trước khi hiệu chỉnh, tránh đoán ngưỡng.
+
+---
+
+*Dữ liệu: `GET /api/v1/analysis/run_{...39 bag lỗi + healthy_01_0}` · Ground truth: `~/ros2_doctor_ws/bags/`*

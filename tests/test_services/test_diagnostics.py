@@ -558,7 +558,9 @@ def test_clock_drift_flags_header_bag_offset() -> None:
     assert drift["severity"] == "critical"
 
 
-def test_clock_drift_stays_medium_below_critical_magnitude() -> None:
+def test_clock_drift_step_is_always_critical_regardless_of_magnitude() -> None:
+    """Ground truth: a sudden clock jump is critical even for a small offset (observed
+    as low as -2.4s and still critical) — severity does not scale with a step's size."""
     messages = [
         {
             "timestamp": 10.0 + i,
@@ -572,7 +574,8 @@ def test_clock_drift_stays_medium_below_critical_magnitude() -> None:
     summary = detect_anomalies(messages)
     drift = next(d for d in summary["detections"] if d["kind"] == "clock_drift")
     assert drift["evidence"]["drift_sec"] == pytest.approx(0.2)
-    assert drift["severity"] == "medium"
+    assert drift["evidence"]["pattern"] == "step"
+    assert drift["severity"] == "critical"
 
 
 def test_clock_drift_ignores_a_run_shorter_than_min_count() -> None:
@@ -621,6 +624,40 @@ def test_clock_drift_window_excludes_the_stretch_from_header_latency() -> None:
     assert "header_latency" not in kinds
 
 
+def test_clock_drift_splits_a_ramp_immediately_followed_by_a_step() -> None:
+    """Two distinct clock faults back-to-back (no healthy gap between them) must not
+    merge into one unclassifiable episode (reproduces F2_05: a ramp then a backward jump)."""
+    rate = 0.02
+    ramp = [
+        {
+            "timestamp": 10.0 + i,
+            "topic": "/odom",
+            "node": "odom",
+            "message_type": "nav_msgs/msg/Odometry",
+            "header": 10.0 + i - rate * i,
+        }
+        for i in range(40)
+    ]
+    step_start = ramp[-1]["timestamp"] + 1.0
+    step = [
+        {
+            "timestamp": step_start + i,
+            "topic": "/odom",
+            "node": "odom",
+            "message_type": "nav_msgs/msg/Odometry",
+            "header": step_start + i + 2.0,  # constant -2.0s offset, no gap from the ramp's tail
+        }
+        for i in range(10)
+    ]
+    summary = detect_anomalies(ramp + step, thresholds={"pre_roll_grace_sec": 0.0})
+    drifts = [d for d in summary["detections"] if d["kind"] == "clock_drift"]
+    patterns = {d["evidence"]["pattern"] for d in drifts}
+    assert patterns == {"ramp", "step"}
+    step_detection = next(d for d in drifts if d["evidence"]["pattern"] == "step")
+    assert step_detection["evidence"]["drift_sec"] == pytest.approx(-2.0)
+    assert step_detection["severity"] == "critical"
+
+
 def test_clock_drift_skipped_without_header_field() -> None:
     summary = detect_anomalies(
         [
@@ -644,7 +681,35 @@ def test_silent_node_reports_topic_and_node_for_real_gap() -> None:
     assert silent["topic"] == "/imu"
     assert silent["evidence"]["node"] == "imu_node"
     assert silent["evidence"]["silent_duration_sec"] == pytest.approx(2.0)
-    assert silent["severity"] == "critical"
+    # Ground-truth-calibrated: a 2s gap is "medium"; only outages past
+    # silent_node_critical_sec are "critical" (see the dedicated scaling test).
+    assert silent["severity"] == "medium"
+
+
+def _scan_stream_with_gap(gap_sec: float) -> list[dict[str, Any]]:
+    """Steady 0.1s cadence (sets the median) followed by one gap."""
+    steady = [
+        {"timestamp": i * 0.1, "topic": "/scan", "node": "scan", "message_type": "sensor_msgs/msg/LaserScan"}
+        for i in range(5)
+    ]
+    after_gap = {
+        "timestamp": steady[-1]["timestamp"] + gap_sec,
+        "topic": "/scan",
+        "node": "scan",
+        "message_type": "sensor_msgs/msg/LaserScan",
+    }
+    return [*steady, after_gap]
+
+
+def test_silent_node_severity_scales_with_duration() -> None:
+    """Ground-truth-calibrated boundary: short gaps stay 'medium', long outages become 'critical'."""
+    brief = detect_anomalies(_scan_stream_with_gap(5.0))
+    brief_gap = next(d for d in brief["detections"] if d["kind"] == "silent_node")
+    assert brief_gap["severity"] == "medium"
+
+    sustained = detect_anomalies(_scan_stream_with_gap(60.0))
+    sustained_gap = next(d for d in sustained["detections"] if d["kind"] == "silent_node")
+    assert sustained_gap["severity"] == "critical"
 
 
 def test_silent_node_not_inferred_from_active_span_alone() -> None:
@@ -954,13 +1019,14 @@ def test_tf_missing_gap_does_not_flag_a_latched_tf_static_transform() -> None:
 
 
 def test_tf_missing_gap_severity_scales_with_duration() -> None:
-    """A brief gap stays 'high'; a sustained outage past the critical cutoff becomes 'critical'."""
-    brief = detect_anomalies([_tf_message(0.0, "odom", "base_link"), _tf_message(1.0, "odom", "base_link")])
+    """A brief gap stays 'high' (ground truth: node_restart gaps of 4.9-6.3s are all
+    'high'); a sustained outage past the critical cutoff becomes 'critical'."""
+    brief = detect_anomalies([_tf_message(0.0, "odom", "base_link"), _tf_message(6.3, "odom", "base_link")])
     brief_gap = next(d for d in brief["detections"] if d["kind"] == "tf_missing_gap")
     assert brief_gap["severity"] == "high"
 
     sustained = detect_anomalies(
-        [_tf_message(0.0, "odom", "base_link"), _tf_message(10.0, "odom", "base_link")]
+        [_tf_message(0.0, "odom", "base_link"), _tf_message(40.0, "odom", "base_link")]
     )
     sustained_gap = next(d for d in sustained["detections"] if d["kind"] == "tf_missing_gap")
     assert sustained_gap["severity"] == "critical"
@@ -1071,24 +1137,41 @@ def test_payload_out_of_range_flags_a_sustained_stretch() -> None:
     assert oor["evidence"]["max_out_of_range_ratio"] == pytest.approx(1.0)
 
 
-def test_clock_drift_flags_a_linear_ramp_distinct_from_a_step() -> None:
-    """A free-running clock drifting at a constant rate is one 'ramp' episode."""
-    rate = 0.05  # 50ms drift per second, e.g. C_02's injected fault
-    messages = [
+def _ramp_messages(rate: float, count: int = 20, topic: str = "/scan") -> list[dict[str, Any]]:
+    return [
         {
             "timestamp": 10.0 + i,
-            "topic": "/scan",
+            "topic": topic,
             "node": "scan",
             "message_type": "sensor_msgs/msg/LaserScan",
             "header": 10.0 + i - rate * i,
         }
-        for i in range(20)
+        for i in range(count)
     ]
-    summary = detect_anomalies(messages)
+
+
+def test_clock_drift_flags_a_linear_ramp_distinct_from_a_step() -> None:
+    """A free-running clock drifting at a constant rate is one 'ramp' episode.
+
+    Ground truth: a fast ramp (e.g. C_02's 50ms/s) is critical, matching a step's
+    severity — the rate, not just the pattern label, decides how urgent it is.
+    """
+    rate = 0.05  # 50ms drift per second, e.g. C_02's injected fault
+    summary = detect_anomalies(_ramp_messages(rate))
     drift = next(d for d in summary["detections"] if d["kind"] == "clock_drift")
     assert drift["evidence"]["pattern"] == "ramp"
     assert drift["evidence"]["drift_rate_ms_per_sec"] == pytest.approx(rate * 1000.0, abs=1.0)
     assert drift["evidence"]["direction"] == "backward"
+    assert drift["severity"] == "critical"
+
+
+def test_clock_drift_ramp_stays_high_below_the_critical_rate() -> None:
+    """A slower ramp (e.g. F2_01's 20ms/s) stays 'high' no matter how long it runs."""
+    rate = 0.02  # 20ms drift per second
+    summary = detect_anomalies(_ramp_messages(rate, count=40))
+    drift = next(d for d in summary["detections"] if d["kind"] == "clock_drift")
+    assert drift["evidence"]["pattern"] == "ramp"
+    assert drift["severity"] == "high"
 
 
 def test_clock_drift_ramp_ignored_when_too_short_to_accumulate_real_drift() -> None:

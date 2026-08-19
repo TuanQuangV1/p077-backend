@@ -441,7 +441,10 @@ async def test_create_analysis_detects_frequency_gap_on_real_db3(client, experim
     assert run["status"] == "succeeded"
     assert run["stage"] == "done"
     assert run["anomalyCount"] == 4
-    assert run["worstSeverity"] == "critical"
+    # silent_node severity now scales with duration (ground-truth-calibrated:
+    # short gaps stay "medium", only outages >= silent_node_critical_sec are
+    # "critical"); this fixture's 2.0s gap is well below that.
+    assert run["worstSeverity"] == "medium"
 
     detail = await client.get(f"/api/v1/analysis/{run['id']}")
     assert detail.status_code == 200
@@ -454,7 +457,7 @@ async def test_create_analysis_detects_frequency_gap_on_real_db3(client, experim
     assert gap["endSec"] == pytest.approx(3.2)
     assert gap["title"] == "Publish gap on /scan"
     silent = next(a for a in anomalies if a["kind"] == "silent_node")
-    assert silent["severity"] == "critical"
+    assert silent["severity"] == "medium"
     assert silent["tSec"] == pytest.approx(1.2)
 
     ai_results = body["aiResults"]
@@ -1027,13 +1030,15 @@ async def test_dashboard_totals_reflect_real_data(client, experiments_dir):
     assert totals["analyzed"] == 1
     assert totals["messages"] == 5
     assert totals["anomalies"] == 4
-    assert totals["criticalOpen"] == 1
+    # This fixture's 2.0s silent_node gap is below silent_node_critical_sec,
+    # so it is "medium" now (see test_create_analysis_detects_frequency_gap_on_real_db3).
+    assert totals["criticalOpen"] == 0
     assert totals["reviewPending"] == 4
     assert body["recentRuns"][0]["id"] == run.json()["run"]["id"]
     assert body["severity"] == [
-        {"severity": "critical", "count": 1},
+        {"severity": "critical", "count": 0},
         {"severity": "high", "count": 0},
-        {"severity": "medium", "count": 2},
+        {"severity": "medium", "count": 3},
         {"severity": "low", "count": 1},
     ]
     assert len(body["topIssues"]) == 4

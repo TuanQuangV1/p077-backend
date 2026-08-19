@@ -382,10 +382,20 @@ def _clock_drift_detection(
     jitter_sec: float,
     occurrence_count: int,
     threshold: float,
-    critical_sec: float,
     pattern: str,
+    ramp_critical_rate: float,
     rate_ms_per_sec: float | None = None,
 ) -> dict[str, Any]:
+    """Build a clock_drift detection with pattern-appropriate severity.
+
+    Ground-truth evidence across the framework's dataset shows severity
+    tracks *how* the clock is wrong, not just by how much: a sudden jump
+    (`step` — a node restart resetting the clock) is always critical, even
+    for a small offset (observed as low as 2.4s and still critical). A
+    free-running clock drifting at a constant rate (`ramp`) is only critical
+    once its rate is fast enough to matter (``ramp_critical_rate``); a slower
+    drift stays `high` regardless of how long it has had to accumulate.
+    """
     evidence: dict[str, Any] = {
         "drift_sec": round(drift_sec, 4),
         "jitter_sec": round(jitter_sec, 4),
@@ -394,17 +404,52 @@ def _clock_drift_detection(
         "occurrence_count": occurrence_count,
         "pattern": pattern,
     }
-    if rate_ms_per_sec is not None:
-        evidence["drift_rate_ms_per_sec"] = round(rate_ms_per_sec, 4)
+    if pattern == "ramp":
+        severity = "critical" if rate_ms_per_sec is not None and abs(rate_ms_per_sec) >= ramp_critical_rate else "high"
+        evidence["drift_rate_ms_per_sec"] = round(rate_ms_per_sec or 0.0, 4)
+    else:
+        severity = "critical"
     return {
         "kind": "clock_drift",
         "topic": topic,
-        "severity": "critical" if abs(drift_sec) >= critical_sec else "medium",
+        "severity": severity,
         "confidence": 0.88,
         "tSec": start_sec,
         "endSec": end_sec,
         "evidence": evidence,
     }
+
+
+def _split_at_change_points(
+    ep_samples: list[tuple[float, float]],
+    threshold: float,
+) -> list[list[tuple[float, float]]]:
+    """Split one drift episode wherever the signal jumps abruptly to a new level.
+
+    Two distinct clock faults occurring back-to-back with no healthy gap
+    between them (e.g. a ramp immediately followed by a sudden backward jump)
+    stay one contiguous episode under the |drift| > threshold grouping — but
+    a single line fit can't describe both a ramp and a step, so the whole
+    episode fails classification and the fault is lost entirely. A genuine
+    step or ramp changes by only a tiny amount between consecutive messages
+    (bounded by the publish rate); a jump between two independent fault
+    regimes instead shows one delta that dwarfs every other delta in the
+    episode. Splitting there lets each side be classified on its own.
+    """
+    if len(ep_samples) < 4:
+        return [ep_samples]
+    deltas = [abs(ep_samples[i][1] - ep_samples[i - 1][1]) for i in range(1, len(ep_samples))]
+    median_delta = statistics.median(deltas)
+    split_points = [i + 1 for i, delta in enumerate(deltas) if delta > max(threshold, median_delta * 50)]
+    if not split_points:
+        return [ep_samples]
+    segments = []
+    start_idx = 0
+    for idx in split_points:
+        segments.append(ep_samples[start_idx:idx])
+        start_idx = idx
+    segments.append(ep_samples[start_idx:])
+    return [segment for segment in segments if segment]
 
 
 def _fit_clock_drift_ramp(
@@ -478,7 +523,7 @@ def _evaluate_drift_rule(
     """
     threshold = float(thresholds["clock_drift_max_sec"])
     min_count = int(thresholds["clock_drift_min_count"])
-    critical_sec = float(thresholds["clock_drift_critical_sec"])
+    ramp_critical_rate = float(thresholds["clock_drift_ramp_critical_rate_ms_per_sec"])
     min_span = float(thresholds["clock_drift_min_span_sec"])
     max_rate = float(thresholds["clock_drift_max_rate_ms_per_sec"])
 
@@ -500,47 +545,50 @@ def _evaluate_drift_rule(
 
     detections: list[dict[str, Any]] = []
     fired_windows: list[tuple[float, float]] = []
-    for start_sec, end_sec, ep_samples in raw_episodes:
-        # A driver that buffers messages and flushes them in a batch (the
-        # `burst` fault) crams many messages into a near-zero bag-time span;
-        # any drift/rate computed over that span is numerically unstable
-        # (dividing by ~0 time), not a real clock signature. Require a
-        # minimum real duration before trusting either classification below.
-        if len(ep_samples) < min_count or end_sec - start_sec < min_span:
-            continue
-        values = [drift for _, drift in ep_samples]
-        spread = statistics.pstdev(values)
-        if spread < threshold:
-            # Stable offset: a step jump (e.g. a node restart resetting the clock).
-            mean_drift = statistics.fmean(values)
-            detections.append(
-                _clock_drift_detection(
-                    topic, start_sec, end_sec, mean_drift, spread, len(ep_samples), threshold, critical_sec, "step"
+    for _start_sec, _end_sec, raw_ep_samples in raw_episodes:
+        for ep_samples in _split_at_change_points(raw_ep_samples, threshold):
+            start_sec, end_sec = ep_samples[0][0], ep_samples[-1][0]
+            # A driver that buffers messages and flushes them in a batch (the
+            # `burst` fault) crams many messages into a near-zero bag-time span;
+            # any drift/rate computed over that span is numerically unstable
+            # (dividing by ~0 time), not a real clock signature. Require a
+            # minimum real duration before trusting either classification below.
+            if len(ep_samples) < min_count or end_sec - start_sec < min_span:
+                continue
+            values = [drift for _, drift in ep_samples]
+            spread = statistics.pstdev(values)
+            if spread < threshold:
+                # Stable offset: a step jump (e.g. a node restart resetting the clock).
+                mean_drift = statistics.fmean(values)
+                detections.append(
+                    _clock_drift_detection(
+                        topic, start_sec, end_sec, mean_drift, spread, len(ep_samples), threshold, "step",
+                        ramp_critical_rate,
+                    )
                 )
-            )
-            fired_windows.append((start_sec, end_sec))
-            continue
+                fired_windows.append((start_sec, end_sec))
+                continue
 
-        # Not stable — check whether it is instead a clean linear ramp (a
-        # free-running clock drifting at a constant rate) rather than jitter.
-        ramp = _fit_clock_drift_ramp(ep_samples, threshold, max_rate)
-        if ramp is not None:
-            slope, residual_spread, total_drift = ramp
-            detections.append(
-                _clock_drift_detection(
-                    topic,
-                    start_sec,
-                    end_sec,
-                    total_drift,
-                    residual_spread,
-                    len(ep_samples),
-                    threshold,
-                    critical_sec,
-                    "ramp",
-                    rate_ms_per_sec=slope * 1000.0,
+            # Not stable — check whether it is instead a clean linear ramp (a
+            # free-running clock drifting at a constant rate) rather than jitter.
+            ramp = _fit_clock_drift_ramp(ep_samples, threshold, max_rate)
+            if ramp is not None:
+                slope, residual_spread, total_drift = ramp
+                detections.append(
+                    _clock_drift_detection(
+                        topic,
+                        start_sec,
+                        end_sec,
+                        total_drift,
+                        residual_spread,
+                        len(ep_samples),
+                        threshold,
+                        "ramp",
+                        ramp_critical_rate,
+                        rate_ms_per_sec=slope * 1000.0,
+                    )
                 )
-            )
-            fired_windows.append((start_sec, end_sec))
+                fired_windows.append((start_sec, end_sec))
 
     drift_log_payload: dict[str, Any] = {
         "event": "diagnostics.rule_evaluation",
@@ -590,6 +638,7 @@ def _evaluate_silent_rule(
     minimum_threshold = float(thresholds["silent_node_min_span_sec"])
     multiplier = float(thresholds["silent_node_gap_multiplier"])
     resolved_gap_threshold = max(minimum_threshold, median_interval * multiplier)
+    critical_span = float(thresholds["silent_node_critical_sec"])
     max_gap = max(duration for _, _, duration in intervals)
     node_log_payload: dict[str, Any] = {
         "event": "diagnostics.rule_evaluation",
@@ -610,7 +659,7 @@ def _evaluate_silent_rule(
         {
             "kind": "silent_node",
             "topic": topic,
-            "severity": "critical",
+            "severity": "critical" if worst >= critical_span else "medium",
             "confidence": 0.92,
             "tSec": start_sec,
             "endSec": end_sec,
@@ -1316,16 +1365,21 @@ def detect_anomalies(
       a topic exceeding `timestamp_jitter_max_sec`.
     - `silent_node`: for each node with >= 2 messages, a node is flagged when
       its active span (last - first timestamp) reaches `silent_node_min_span_sec`.
+      Severity is `critical` once the span reaches `silent_node_critical_sec`,
+      else `medium`.
     - `clock_drift`: a sustained run of `>= clock_drift_min_count` messages
       whose |bag timestamp - header timestamp| exceeds `clock_drift_max_sec`
       and either stays stable (std-dev below `clock_drift_max_sec` — a node
-      clock reset producing a near-constant offset) or follows a clean linear
-      ramp (an unsynced free-running clock drifting at a constant rate;
-      residual std-dev after a line fit stays below `clock_drift_max_sec`).
-      Fluctuating latency with no such pattern is left for `header_latency`.
-      Severity is `critical` when the total offset reaches
-      `clock_drift_critical_sec`, else `medium`. Only evaluated when messages
-      carry a `header` field.
+      clock reset producing a near-constant offset, kind `"step"`) or follows
+      a clean linear ramp (an unsynced free-running clock drifting at a
+      constant rate; residual std-dev after a line fit stays below
+      `clock_drift_max_sec`, kind `"ramp"`). Two distinct clock faults with no
+      healthy gap between them are split at the abrupt jump joining them
+      before classification. Fluctuating latency with no such pattern is left
+      for `header_latency`. Severity: `step` is always `critical` (a sudden
+      jump is dangerous regardless of size); `ramp` is `critical` only once
+      its rate reaches `clock_drift_ramp_critical_rate_ms_per_sec`, else
+      `high`. Only evaluated when messages carry a `header` field.
     - `hz_drop` / `hz_drop_critical`: a time window whose effective publish rate
       falls more than `hz_drop_warn_pct` / `hz_drop_critical_pct` below the
       expected rate (from `expected_hz`, else the peak window rate). Requires at
