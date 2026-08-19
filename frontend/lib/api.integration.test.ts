@@ -23,7 +23,7 @@ describe("api integration", () => {
 
         expect(payload).toEqual({ totals: {} })
         expect(fetchMock).toHaveBeenCalledTimes(1)
-        expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/api/v1/dashboard/overview", undefined)
+        expect(fetchMock).toHaveBeenCalledWith("/api/v1/dashboard/overview", undefined)
     })
 
     it("fetcher passes through Next.js-only routes unchanged", async () => {
@@ -43,7 +43,7 @@ describe("api integration", () => {
 
         expect(payload).toEqual({ run: { id: "run_001" } })
         expect(fetchMock).toHaveBeenCalledTimes(1)
-        expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/api/v1/analysis", {
+        expect(fetchMock).toHaveBeenCalledWith("/api/v1/analysis", {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ rosbag_id: "bag_01" }),

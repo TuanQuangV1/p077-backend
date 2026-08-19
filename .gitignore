@@ -64,11 +64,8 @@ out/
 .kiro/
 .kilo/
 .next-builds/
+.npmrc
+frontend/.npmrc
 
-# Terraform
-.terraform/
-*.tfstate
-*.tfstate.*
-*.tfplan
-terraform.exe
-LICENSE.txt
+.pytest_cache/
+.ruff_cache/

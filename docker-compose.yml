@@ -12,6 +12,7 @@ services:
       APP_ENV: production
       APP_HOST: 0.0.0.0
       APP_PORT: 8000
+      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
     volumes:
       - ./data:/app/data
     restart: unless-stopped
@@ -28,11 +29,12 @@ services:
       dockerfile: Dockerfile
       target: frontend
       args:
-        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+        API_PROXY_TARGET: http://backend:8000
     ports:
       - "3000:3000"
     environment:
       NODE_ENV: production
+      API_PROXY_TARGET: http://backend:8000
     depends_on:
       backend:
         condition: service_healthy
@@ -59,6 +61,7 @@ services:
       APP_ENV: development
       APP_HOST: 0.0.0.0
       APP_PORT: 8000
+      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
     volumes:
       - ./src:/app/src
       - ./data:/app/data
@@ -73,7 +76,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      API_PROXY_TARGET: http://backend:8000
     volumes:
       - ./frontend:/app/frontend
       - frontend_node_modules:/app/frontend/node_modules

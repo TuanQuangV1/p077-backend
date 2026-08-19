@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 from src.config import get_settings
 from src.models.schemas import AIResultSummary, AnalysisRun, EvidenceItem
-from src.services import run_store
+from src.services import perf, run_store
 from src.services.bag_stream import iter_bag_messages
 from src.services.diagnostics import detect_anomalies
 from src.services.experiments import experiment_bag_files, list_experiments
@@ -367,8 +367,9 @@ def run_analysis(dataset_id: str, model: str | None = None) -> dict[str, Any]:
         total_messages = 0
     else:
         try:
-            stream = chain.from_iterable(iter_bag_messages(bag_path) for bag_path in bag_files)
-            analysis_result = detect_anomalies(stream, None)
+            with perf.timed_phase("analysis.detect", {"id": ds["id"], "bags": [b.name for b in bag_files]}):
+                stream = chain.from_iterable(iter_bag_messages(bag_path) for bag_path in bag_files)
+                analysis_result = detect_anomalies(stream, None)
             detections = analysis_result.get("detections", [])
             total_messages = int(analysis_result.get("summary", {}).get("total_messages", 0))
             run = _succeeded_run(ds, resolved_model, started_at, started, detections)
@@ -387,12 +388,14 @@ def run_analysis(dataset_id: str, model: str | None = None) -> dict[str, Any]:
             detections = []
             total_messages = 0
 
-    ai_results = _build_ai_results(run.id, detections)
-    report_health = compute_health_summary(detections, total_messages=total_messages)
-    run_store.save_run(run.model_dump())
-    run_store.save_run_anomalies(run.id, detections)
-    run_store.save_run_ai_results(run.id, [result.model_dump() for result in ai_results])
-    _persist_review_items(run, ai_results)
+    with perf.timed_phase("analysis.ai", {"id": run.id, "detections": len(detections)}):
+        ai_results = _build_ai_results(run.id, detections)
+    with perf.timed_phase("analysis.persist", {"id": run.id}):
+        report_health = compute_health_summary(detections, total_messages=total_messages)
+        run_store.save_run(run.model_dump())
+        run_store.save_run_anomalies(run.id, detections)
+        run_store.save_run_ai_results(run.id, [result.model_dump() for result in ai_results])
+        _persist_review_items(run, ai_results)
 
     logger.info(
         "analysis.created",

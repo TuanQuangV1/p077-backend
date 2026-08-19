@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { resolveApiUrl } from "./api"
 
-const BASE = "http://localhost:8000/api/v1"
+const BASE = "/api/v1"
 
 describe("resolveApiUrl", () => {
     it("maps dashboard overview to backend endpoint", () => {

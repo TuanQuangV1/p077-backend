@@ -39,13 +39,13 @@ from src.services.experiments import (
 from src.services.hilt_store import HILT_LABELS, append_hilt_review, list_hilt_reviews
 from src.services.iterative_debug import IterativeDebugger
 from src.services.hilt_triggers import detect_llm_uncertainty
-from src.services.llm import chat_completion, explain_diagnostics, is_llm_configured
-from src.services.window_export import export_windowed_jsonl, iter_window_jsonl_lines
-
-_CHAT_SYSTEM_PROMPT = (
-    "You are a robotics diagnostics assistant for the RAV-13 platform. "
-    "Answer concisely and only from the data provided in this conversation."
+from src.services.llm import (
+    CHAT_SYSTEM_PROMPT,
+    chat_completion,
+    explain_diagnostics,
+    is_llm_configured,
 )
+from src.services.window_export import export_windowed_jsonl, iter_window_jsonl_lines
 
 _FEEDBACK_CHOICES = {"1": "correct", "2": "wrong", "3": "partial"}
 
@@ -239,7 +239,7 @@ def _cmd_chat(args: argparse.Namespace) -> int:
     try:
         message = chat_completion(
             [
-                {"role": "system", "content": _CHAT_SYSTEM_PROMPT},
+                {"role": "system", "content": CHAT_SYSTEM_PROMPT},
                 {"role": "user", "content": args.message},
             ]
         )

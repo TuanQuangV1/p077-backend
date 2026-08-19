@@ -152,4 +152,3 @@ class HiltTriggerEvaluator:
             triggers.append("user_failures")
 
         return triggers
-

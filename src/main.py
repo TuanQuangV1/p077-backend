@@ -1,11 +1,19 @@
-from collections.abc import AsyncIterator
+import logging
+import os
+import time
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.routes import router
 from src.config import get_settings
+from src.services import perf
+
+logger = logging.getLogger(__name__)
+
+_SLOW_REQUEST_MS = float(os.environ.get("PERF_SLOW_REQUEST_MS", "1000"))
 
 
 @asynccontextmanager
@@ -24,6 +32,9 @@ app = FastAPI(
 )
 
 settings = get_settings()
+# Root handler so app/perf logs are visible under uvicorn (its default config
+# only wires up the uvicorn.* loggers).
+logging.basicConfig(level=logging.getLevelName(settings.log_level))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins.split(","),
@@ -33,6 +44,45 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api/v1")
+
+
+@app.middleware("http")
+async def measure_request(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    """Log per-request timing and DB query counters (performance scaffolding)."""
+    started = time.perf_counter()
+    metrics, token = perf.begin_request()
+    status_code: int | None = None
+    try:
+        response = await call_next(request)
+        status_code = getattr(response, "status_code", None)
+        return response
+    finally:
+        duration_ms = (time.perf_counter() - started) * 1000
+        perf.end_request(token)
+        details = {
+            "event": "perf.request",
+            "level": "info",
+            "method": request.method,
+            "path": request.url.path,
+            "status": status_code,
+            "durationMs": round(duration_ms, 2),
+            "queries": metrics["queries"],
+            "dbMs": round(metrics["db_ms"], 2),
+            "slowQueries": len(metrics["slow_queries"]),
+        }
+        message = (
+            f"perf.request {request.method} {request.url.path} status={status_code} "
+            f"durationMs={details['durationMs']} queries={metrics['queries']} "
+            f"dbMs={details['dbMs']} slowQueries={details['slowQueries']}"
+        )
+        if duration_ms >= _SLOW_REQUEST_MS:
+            details["level"] = "warning"
+            logger.warning(message, extra={"diagnostics": details})
+        else:
+            logger.info(message, extra={"diagnostics": details})
 
 
 @app.get("/health")

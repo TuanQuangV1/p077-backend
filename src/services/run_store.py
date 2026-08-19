@@ -11,12 +11,15 @@ import json
 import os
 import sqlite3
 import threading
+from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Concatenate, ParamSpec, TypeVar
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+from src.services import perf
 
 DEFAULT_RUN_DB_PATH = Path("data/runs.db")
 
@@ -101,8 +104,10 @@ _init_state_db_path: list[str] = [""]
 def _connect() -> sqlite3.Connection:
     path = _db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
+    conn = perf.open_connection(path, source="runs.db")
     conn.row_factory = sqlite3.Row
+    if os.environ.get("RUN_DB_WAL", "0") == "1":
+        conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 
@@ -213,6 +218,30 @@ def save_run_anomalies(conn: sqlite3.Connection, run_id: str, detections: list[d
 def get_run_anomalies(conn: sqlite3.Connection, run_id: str) -> list[dict[str, Any]]:
     rows = conn.execute("SELECT payload FROM run_anomalies WHERE run_id = ? ORDER BY idx", (run_id,)).fetchall()
     return [json.loads(row["payload"]) for row in rows]
+
+
+@_with_conn
+def get_runs_anomalies(conn: sqlite3.Connection, run_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
+    """Fetch anomalies for many runs in a single query (avoids N+1).
+
+    Args:
+        run_ids: Run ids to load anomalies for.
+
+    Returns:
+        Mapping of ``run_id -> [anomaly payloads]``, ordered by ``idx`` within
+        each run. Runs without anomalies are absent from the mapping.
+    """
+    if not run_ids:
+        return {}
+    placeholders = ",".join("?" * len(run_ids))
+    rows = conn.execute(
+        f"SELECT run_id, idx, payload FROM run_anomalies WHERE run_id IN ({placeholders}) ORDER BY idx",
+        tuple(run_ids),
+    ).fetchall()
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        grouped[row["run_id"]].append(json.loads(row["payload"]))
+    return grouped
 
 
 @_with_conn

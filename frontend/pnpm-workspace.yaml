@@ -4,3 +4,10 @@ allowBuilds:
 onlyBuiltDependencies:
   - esbuild
   - sharp
+overrides:
+  fast-uri: 3.1.5
+  hono: 4.13.2
+  js-yaml: 4.3.1
+  nanoid: 3.3.18
+  postcss: 8.5.26
+  sharp: 0.35.3

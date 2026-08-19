@@ -248,3 +248,71 @@ class IterativeDebugger:
             key=lambda s: severity_rank.get(s, 0),
         )
 
+
+def run_iterative_debug_loop(
+    run_id: str,
+    anomaly_id: str,
+    anomaly: dict[str, Any],
+    max_iterations: int | None = None,
+) -> dict[str, Any]:
+    """Run the full iterative debug loop until completion or escalation.
+
+    Args:
+        run_id: Analysis run ID.
+        anomaly_id: Anomaly ID to debug.
+        anomaly: Anomaly detection dict.
+        max_iterations: Optional override for max iterations.
+
+    Returns:
+        Dict with final status, iterations, and optional hilt_payload.
+    """
+    settings = get_settings()
+    max_iter = max_iterations or settings.hilt_max_iterations
+
+    debugger = IterativeDebugger(run_id, anomaly_id, anomaly)
+    feedback_history: list[dict[str, Any]] = []
+
+    for iteration in range(1, max_iter + 1):
+        ai_result = debugger.suggest(feedback_history)
+
+        llm_output = {
+            "root_cause": ai_result.rootCause,
+            "explanation": ai_result.explanation,
+            "confidence": ai_result.confidence,
+        }
+
+        triggers = debugger.evaluate_triggers(llm_output)
+
+        # In real usage, this would wait for engineer test input
+        # For now, record a placeholder iteration
+        debugger.record_test(
+            iteration=iteration,
+            llm_root_cause=ai_result.rootCause,
+            llm_actions=ai_result.suggestedFix,
+            llm_explanation=ai_result.explanation,
+            llm_confidence=ai_result.confidence,
+            test_pass=False,  # Placeholder - real implementation waits for input
+            test_comment="awaiting engineer test",
+        )
+
+        feedback_history.append({
+            "iteration": iteration,
+            "test_pass": False,
+            "comment": "awaiting engineer test",
+        })
+
+        if not debugger.should_continue(iteration, triggers):
+            hilt_payload = debugger.build_hilt_payload(triggers)
+            return {
+                "status": "escalated" if triggers else "max_iterations",
+                "iterations": iteration,
+                "triggers": triggers,
+                "hilt_payload": hilt_payload,
+            }
+
+    return {
+        "status": "completed",
+        "iterations": max_iter,
+        "triggers": [],
+        "hilt_payload": None,
+    }

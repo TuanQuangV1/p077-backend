@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from src.services.iterative_debug import IterativeDebugger
+
+from src.services.iterative_debug import IterativeDebugger, run_iterative_debug_loop
 
 
 class TestIterativeDebugger:
@@ -204,7 +205,7 @@ class TestIterativeDebugger:
 
 class TestRunIterativeDebugLoop:
     def test_loop_completes(self, tmp_path, monkeypatch) -> None:
-        """Verify IterativeDebugger runs through multiple iterations correctly."""
+
         db_path = tmp_path / "test.db"
         monkeypatch.setenv("RUN_DB_PATH", str(db_path))
 
@@ -222,22 +223,5 @@ class TestRunIterativeDebugLoop:
         ai_result = debugger.suggest()
         assert ai_result is not None
 
-        debugger.record_test(
-            iteration=1,
-            llm_root_cause=ai_result.rootCause,
-            llm_actions=ai_result.suggestedFix,
-            llm_explanation=ai_result.explanation,
-            llm_confidence=ai_result.confidence,
-            test_pass=False,
-            test_comment="awaiting engineer",
-        )
-
-        llm_output = {
-            "root_cause": ai_result.rootCause,
-            "explanation": ai_result.explanation,
-            "confidence": ai_result.confidence,
-        }
-        triggers = debugger.evaluate_triggers(llm_output)
-        should_continue = debugger.should_continue(1, triggers)
-        # With max_iterations=5 and iteration=1, should continue unless triggers fired
-        assert isinstance(should_continue, bool)
+        assert result["status"] in ("completed", "escalated", "max_iterations")
+        assert result["iterations"] <= 2
