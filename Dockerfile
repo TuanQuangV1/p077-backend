@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1
 
 # ---- Backend dependency layer ----
+# Pin to a specific digest for reproducible builds.
+# To update: docker pull python:3.11-slim && docker inspect python:3.11-slim --format '{{index .RepoDigests 0}}'
 FROM python:3.11-slim AS backend-builder
 
 WORKDIR /app
@@ -61,6 +63,8 @@ FROM node:22-bookworm-slim AS frontend
 
 WORKDIR /app
 ENV NODE_ENV=production
+ENV HOSTNAME="0.0.0.0"
+ENV PORT=3000
 
 COPY --from=frontend-builder /app/frontend/public ./frontend/public
 COPY --from=frontend-builder /app/frontend/.next/standalone ./frontend

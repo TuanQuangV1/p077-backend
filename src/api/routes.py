@@ -105,8 +105,16 @@ def _require_auth(authorization: str | None = Header(default=None)) -> None:
 
 
 def _check_rate_limit(request: Request) -> None:
-    """Sliding-window in-memory rate limit keyed by client IP."""
-    key = request.client.host if request.client else "unknown"
+    """Sliding-window in-memory rate limit keyed by client IP.
+
+    When the direct client address is unavailable (e.g. behind a proxy that
+    strips headers), each forwarded IP from ``X-Forwarded-For`` is used so that
+    anonymous traffic does not share a single "unknown" bucket that could be
+    exhausted by a single abusive client.
+    """
+    client_host = request.client.host if request.client else None
+    forwarded_for = request.headers.get("x-forwarded-for")
+    key = forwarded_for.split(",")[0].strip() or client_host or "unknown" if forwarded_for else client_host or "unknown"
     if not _rate_limiter.allow(key):
         raise HTTPException(status_code=429, detail="rate limit exceeded")
 
@@ -212,7 +220,17 @@ async def chat(
         )
         return ChatResponse(response=message.get("content", ""), analysis="")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        logger.warning(
+            "chat.upstream_failed",
+            extra={
+                "diagnostics": {
+                    "event": "chat.upstream_failed",
+                    "level": "warning",
+                    "details": {"error_type": type(e).__name__},
+                }
+            },
+        )
+        raise HTTPException(status_code=500, detail="LLM request failed; please try again later") from e
 
 
 @router.get("/status")

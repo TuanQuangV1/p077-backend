@@ -97,6 +97,8 @@ def _db_path() -> Path:
 
 
 _lock = threading.Lock()
+_init_state: list[bool] = [False]  # Mutable container — reset when DB path changes
+_init_state_db_path: list[str] = [""]
 
 
 def _connect() -> sqlite3.Connection:
@@ -110,8 +112,12 @@ def _connect() -> sqlite3.Connection:
 
 
 def _init(conn: sqlite3.Connection) -> None:
-    conn.executescript(_SCHEMA)
-    conn.commit()
+    current_path = str(_db_path())
+    if not _init_state[0] or _init_state_db_path[0] != current_path:
+        conn.executescript(_SCHEMA)
+        conn.commit()
+        _init_state[0] = True
+        _init_state_db_path[0] = current_path
 
 
 _P = ParamSpec("_P")
