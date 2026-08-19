@@ -19,7 +19,12 @@ WORKDIR /app
 COPY --from=backend-builder /install /usr/local
 COPY src ./src
 
-RUN useradd --create-home appuser \
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip uninstall -y setuptools \
+    && useradd --create-home appuser \
     && mkdir -p /app/data \
     && chown -R appuser:appuser /app
 
@@ -61,7 +66,11 @@ COPY --from=frontend-builder /app/frontend/public ./frontend/public
 COPY --from=frontend-builder /app/frontend/.next/standalone ./frontend
 COPY --from=frontend-builder /app/frontend/.next/static ./frontend/.next/static
 
-RUN useradd --create-home nextjs \
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home nextjs \
     && chown -R nextjs:nextjs /app
 
 USER nextjs

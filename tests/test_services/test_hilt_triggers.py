@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from src.services.hilt_triggers import (
     HiltTriggerEvaluator,
@@ -37,7 +36,7 @@ class TestDetectLlmUncertainty:
 
 class TestDetectLlmLoop:
     def test_identical_output(self, tmp_path, monkeypatch) -> None:
-        import src.services.run_store as run_store
+        from src.services import run_store
 
         db_path = tmp_path / "test.db"
         monkeypatch.setenv("RUN_DB_PATH", str(db_path))
@@ -53,7 +52,7 @@ class TestDetectLlmLoop:
         assert detect_llm_loop("run_1", "anomaly_001", current) is True
 
     def test_different_output(self, tmp_path, monkeypatch) -> None:
-        import src.services.run_store as run_store
+        from src.services import run_store
 
         db_path = tmp_path / "test.db"
         monkeypatch.setenv("RUN_DB_PATH", str(db_path))
@@ -69,7 +68,7 @@ class TestDetectLlmLoop:
         assert detect_llm_loop("run_1", "anomaly_001", current) is False
 
     def test_below_min_iterations(self, tmp_path, monkeypatch) -> None:
-        import src.services.run_store as run_store
+        from src.services import run_store
 
         db_path = tmp_path / "test.db"
         monkeypatch.setenv("RUN_DB_PATH", str(db_path))
@@ -85,8 +84,8 @@ class TestDetectLlmLoop:
 
 class TestCountUserFailures:
     def test_wrong_labels(self, tmp_path, monkeypatch) -> None:
-        import src.services.hilt_store as hilt_store
-        import src.services.run_store as run_store
+        from src.services import hilt_store
+        from src.services import run_store
 
         db_path = tmp_path / "test.db"
         hilt_dir = tmp_path / "hilt"
@@ -108,7 +107,6 @@ class TestCountUserFailures:
         assert count == 4  # 2 wrong + 1 partial (HILT) + 1 rejected (review items)
 
     def test_no_feedback(self, tmp_path, monkeypatch) -> None:
-        import src.services.run_store as run_store
 
         db_path = tmp_path / "test.db"
         hilt_dir = tmp_path / "hilt"
@@ -121,8 +119,8 @@ class TestCountUserFailures:
 
 class TestHiltTriggerEvaluator:
     def test_all_triggers(self, tmp_path, monkeypatch) -> None:
-        import src.services.hilt_store as hilt_store
-        import src.services.run_store as run_store
+        from src.services import hilt_store
+        from src.services import run_store
 
         db_path = tmp_path / "test.db"
         hilt_dir = tmp_path / "hilt"
@@ -167,7 +165,7 @@ class TestHiltTriggerEvaluator:
         assert len(triggers) == 3
 
     def test_no_triggers(self, tmp_path, monkeypatch) -> None:
-        import src.services.run_store as run_store
+        from src.services import run_store
 
         db_path = tmp_path / "test.db"
         hilt_dir = tmp_path / "hilt"

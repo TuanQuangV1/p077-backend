@@ -65,3 +65,6 @@ out/
 .next-builds/
 .npmrc
 frontend/.npmrc
+
+.pytest_cache/
+.ruff_cache/
