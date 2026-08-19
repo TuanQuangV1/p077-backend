@@ -1,4 +1,5 @@
 /** @type {import('next').NextConfig} */
+const backendOrigin = process.env.API_PROXY_TARGET ?? "http://127.0.0.1:8000"
 const nextConfig = {
     output: "standalone",
     distDir: ".next",
@@ -6,7 +7,7 @@ const nextConfig = {
         root: process.cwd(),
     },
     typescript: {
-        ignoreBuildErrors: true,
+        ignoreBuildErrors: false,
     },
     images: {
         unoptimized: true,
@@ -24,7 +25,7 @@ const nextConfig = {
         return [
             {
                 source: "/api/v1/:path*",
-                destination: "http://127.0.0.1:8000/api/v1/:path*",
+                destination: `${backendOrigin}/api/v1/:path*`,
             },
         ]
     },

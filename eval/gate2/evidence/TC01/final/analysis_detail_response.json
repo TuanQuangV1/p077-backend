@@ -1,0 +1,144 @@
+{
+  "captured_at": "2026-08-12T10:08:19.236023+00:00",
+  "status_code": 200,
+  "headers": {
+    "date": "Wed, 12 Aug 2026 10:08:13 GMT",
+    "server": "uvicorn",
+    "content-length": "2254",
+    "content-type": "application/json"
+  },
+  "body": {
+    "run": {
+      "id": "run_healthy_01_0",
+      "rosbagId": "healthy_01_0",
+      "rosbagName": "healthy_01_0.mcap",
+      "robotType": "amr-delivery",
+      "status": "succeeded",
+      "progress": 100,
+      "stage": "done",
+      "startedAt": "2026-08-12T10:08:08.363186+00:00",
+      "finishedAt": "2026-08-12T10:08:14.777672+00:00",
+      "anomalyCount": 0,
+      "worstSeverity": null,
+      "model": "vllm/qwen2.5-coder-32b",
+      "totalLatencyMs": 6414,
+      "promptTokens": 0,
+      "completionTokens": 0,
+      "costUsd": 0.0
+    },
+    "rosbag": {
+      "id": "healthy_01_0",
+      "name": "healthy_01_0.mcap",
+      "robotType": "amr-delivery",
+      "sizeBytes": 29326829,
+      "durationSec": 178,
+      "recordedAt": "1970-01-01T00:36:16.391000+00:00",
+      "uploadedAt": "1970-01-01T00:36:16.391000+00:00",
+      "status": "uploaded",
+      "messageCount": 64953,
+      "topics": [
+        {
+          "name": "/tf_static",
+          "type": "tf2_msgs/msg/TFMessage",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        },
+        {
+          "name": "/tf",
+          "type": "tf2_msgs/msg/TFMessage",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        },
+        {
+          "name": "/imu",
+          "type": "sensor_msgs/msg/Imu",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        },
+        {
+          "name": "/odom",
+          "type": "nav_msgs/msg/Odometry",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        },
+        {
+          "name": "/scan",
+          "type": "sensor_msgs/msg/LaserScan",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        },
+        {
+          "name": "/amcl_pose",
+          "type": "geometry_msgs/msg/PoseWithCovarianceStamped",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        },
+        {
+          "name": "/diagnostics",
+          "type": "diagnostic_msgs/msg/DiagnosticArray",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        },
+        {
+          "name": "/cmd_vel",
+          "type": "geometry_msgs/msg/TwistStamped",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        }
+      ],
+      "site": "Unknown",
+      "rosVersion": "ROS 2 Jazzy"
+    },
+    "anomalies": [],
+    "aiResults": [],
+    "health": {
+      "health_score": 100.0,
+      "status": "green",
+      "status_zones": {
+        "green_min": 80.0,
+        "yellow_min": 60.0,
+        "red_max": 60.0
+      },
+      "trigger_llm_deep_dive": false,
+      "summary": {
+        "total_messages": 64953,
+        "total_detections": 0,
+        "worst_severity": "low",
+        "groups": {
+          "log": {
+            "score": 100.0,
+            "weight": 0.2,
+            "detection_count": 0
+          },
+          "frequency": {
+            "score": 100.0,
+            "weight": 0.3,
+            "detection_count": 0
+          },
+          "latency": {
+            "score": 100.0,
+            "weight": 0.15,
+            "detection_count": 0
+          },
+          "tf": {
+            "score": 100.0,
+            "weight": 0.25,
+            "detection_count": 0
+          },
+          "payload": {
+            "score": 100.0,
+            "weight": 0.1,
+            "detection_count": 0
+          }
+        }
+      },
+      "detections_by_group": {
+        "log": [],
+        "frequency": [],
+        "latency": [],
+        "tf": [],
+        "payload": []
+      }
+    }
+  }
+}

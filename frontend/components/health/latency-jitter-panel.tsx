@@ -95,15 +95,15 @@ function generateMockData(
 }
 
 const MODE_LABELS: Record<ViewMode, string> = {
-  latency: "Header Latency",
-  jitter: "Jitter",
-  clock: "Clock Drift",
+  latency: "Độ trễ Header (Latency)",
+  jitter: "Biến động (Jitter)",
+  clock: "Trôi đồng hồ (Clock Drift)",
 }
 
 const MODE_HELP: Record<ViewMode, string> = {
-  latency: "Time between header.stamp and publish time",
-  jitter: "Standard deviation of inter-message intervals",
-  clock: "Median |bag - header| timestamp offset",
+  latency: "Thời gian giữa header.stamp và thời điểm xuất bản (publish time)",
+  jitter: "Độ lệch chuẩn khoảng cách giữa các tin nhắn liên tiếp",
+  clock: "Độ lệch timestamp trung vị giữa |bag - header|",
 }
 
 export function LatencyJitterPanel({
@@ -123,7 +123,7 @@ export function LatencyJitterPanel({
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-sm">
             <ClockIcon className="size-4" />
-            Latency & Jitter
+            Độ trễ & Biến động (Latency & Jitter)
           </CardTitle>
         </div>
         {/* Mode toggle */}
@@ -151,13 +151,13 @@ export function LatencyJitterPanel({
             <span className="text-lg font-bold tabular-nums">
               {maxVal.toFixed(0)}
             </span>
-            <span className="text-xs text-muted-foreground">ms max</span>
+            <span className="text-xs text-muted-foreground">ms tối đa</span>
           </div>
           <div>
             <span className="text-lg font-bold tabular-nums">
               {avgVal.toFixed(0)}
             </span>
-            <span className="text-xs text-muted-foreground">ms avg</span>
+            <span className="text-xs text-muted-foreground">ms trung bình</span>
           </div>
           <div>
             <span
@@ -182,11 +182,10 @@ export function LatencyJitterPanel({
             <AlertTriangleIcon className="size-4 text-yellow-500" />
             <div className="flex-1">
               <p className="text-xs font-medium">
-                {latencyAnomalies.length} latency anomaly
-                {latencyAnomalies.length > 1 ? "ies" : ""} detected
+                Phát hiện {latencyAnomalies.length} bất thường độ trễ
               </p>
               <p className="text-[10px] text-muted-foreground">
-                Sustained lag at t={latencyAnomalies[0]?.tSec.toFixed(0)}s
+                Trễ duy trì tại t={latencyAnomalies[0]?.tSec.toFixed(0)}s
               </p>
             </div>
             <Badge

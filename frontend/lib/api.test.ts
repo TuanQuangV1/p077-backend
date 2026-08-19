@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { resolveApiUrl } from "./api"
 
-const BASE = "http://localhost:8000/api/v1"
+const BASE = "/api/v1"
 
 describe("resolveApiUrl", () => {
     it("maps dashboard overview to backend endpoint", () => {
@@ -15,6 +15,10 @@ describe("resolveApiUrl", () => {
 
     it("maps runs list to analysis endpoint", () => {
         expect(resolveApiUrl("/api/runs")).toBe(`${BASE}/analysis`)
+    })
+
+    it("maps diagnostics explanation to the backend LLM endpoint", () => {
+        expect(resolveApiUrl("/api/analysis/explain")).toBe(`${BASE}/analysis/explain`)
     })
 
     it("maps run detail to analysis detail endpoint", () => {

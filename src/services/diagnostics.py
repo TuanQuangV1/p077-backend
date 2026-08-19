@@ -41,6 +41,10 @@ _MESSAGE_DTYPE = [
 _HZ_WINDOW_SEC = 5.0
 _HEADER_LATENCY_MIN_SUSTAINED = 3
 _TF_TOPICS = {"/tf", "/tf_static"}
+_EVENT_DRIVEN_MESSAGE_TYPES = {
+    "diagnostic_msgs/msg/DiagnosticArray",
+    "geometry_msgs/msg/PoseWithCovarianceStamped",
+}
 
 
 def parse_rosbag2_db3(path: str | Path) -> list[dict[str, Any]]:
@@ -161,15 +165,18 @@ def denormalize_message_stream(
 def _gap_stats(timestamps: list[float]) -> tuple[float, float, int]:
     """Return (median interval, max interval, index of the max interval)."""
     if len(timestamps) >= _MIN_NUMPY_MESSAGES:
-        arr = np.diff(np.asarray(timestamps, dtype=float))
+        all_intervals = np.diff(np.asarray(timestamps, dtype=float))
+        positive = all_intervals[all_intervals > 0]
         return (
-            float(np.median(arr)),
-            float(np.max(arr)),
-            int(np.argmax(arr)),
+            float(np.median(positive)) if positive.size else 0.0,
+            float(np.max(all_intervals)),
+            int(np.argmax(all_intervals)),
         )
     diffs = [b - a for a, b in pairwise(timestamps)]
+    positive = [interval for interval in diffs if interval > 0]
     max_interval = max(diffs)
-    return float(statistics.median(diffs)), max_interval, diffs.index(max_interval)
+    median_interval = float(statistics.median(positive)) if positive else 0.0
+    return median_interval, max_interval, diffs.index(max_interval)
 
 
 def _timestamp_jitter(timestamps: list[float]) -> float:
@@ -177,8 +184,10 @@ def _timestamp_jitter(timestamps: list[float]) -> float:
     if len(timestamps) < 3:
         return 0.0
     if len(timestamps) >= _MIN_NUMPY_MESSAGES:
-        return float(np.std(np.diff(np.asarray(timestamps, dtype=float))))
-    return float(statistics.pstdev(b - a for a, b in pairwise(timestamps)))
+        intervals = np.diff(np.asarray(timestamps, dtype=float))
+        return float(np.std(intervals))
+    intervals = [b - a for a, b in pairwise(timestamps)]
+    return float(statistics.pstdev(intervals)) if len(intervals) >= 2 else 0.0
 
 
 def _median_abs(values: list[float]) -> float:
@@ -363,16 +372,32 @@ def _evaluate_drift_rule(
 
 
 def _evaluate_silent_rule(
+    topic: str,
     node: str,
     timestamps_arr: list[float],
-    node_topic_counts: dict[str, dict[str, int]],
+    observation_end: float,
     thresholds: dict[str, float],
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
-    """Evaluate the silent-node rule for one node."""
-    span = float(timestamps_arr[-1] - timestamps_arr[0])
-    resolved_span_threshold = thresholds["silent_node_min_span_sec"]
-    topic_counts = node_topic_counts[node]
-    dominant_topic = max(topic_counts, key=lambda t: topic_counts[t])
+    """Flag a topic whose publish stream contains a sustained silent gap.
+
+    A node's *active* span is not evidence of silence.  Instead, compare the
+    longest inter-message gap (plus a possible trailing gap to the observation
+    end) with both an absolute floor and the topic's normal median cadence.
+    """
+    intervals = [(float(a), float(b), float(b - a)) for a, b in pairwise(timestamps_arr)]
+    if observation_end > timestamps_arr[-1]:
+        intervals.append(
+            (
+                float(timestamps_arr[-1]),
+                float(observation_end),
+                float(observation_end - timestamps_arr[-1]),
+            )
+        )
+    median_interval = float(statistics.median(b - a for a, b in pairwise(timestamps_arr)))
+    minimum_threshold = float(thresholds["silent_node_min_span_sec"])
+    multiplier = float(thresholds["silent_node_gap_multiplier"])
+    resolved_gap_threshold = max(minimum_threshold, median_interval * multiplier)
+    gap_start, gap_end, max_gap = max(intervals, key=lambda item: item[2])
     node_log_payload: dict[str, Any] = {
         "event": "diagnostics.rule_evaluation",
         "rule": "silent_node",
@@ -380,27 +405,32 @@ def _evaluate_silent_rule(
         "message": "Evaluated silent node rule.",
         "details": {
             "node": node,
-            "topic": dominant_topic,
+            "topic": topic,
             "message_count": len(timestamps_arr),
-            "active_span_sec": round(span, 4),
-            "silent_node_min_span_sec": resolved_span_threshold,
+            "median_interval_sec": round(median_interval, 4),
+            "max_silent_gap_sec": round(max_gap, 4),
+            "threshold_sec": round(resolved_gap_threshold, 4),
         },
     }
-    if span >= resolved_span_threshold:
+    if max_gap > resolved_gap_threshold:
         node_log_payload["level"] = "warn"
         node_log_payload["details"]["detected"] = True
         logger.warning("diagnostics.rule_detected", extra={"diagnostics": node_log_payload})
         return (
             {
                 "kind": "silent_node",
-                "topic": dominant_topic,
-                "severity": "low",
-                "confidence": 0.72,
-                "tSec": float(timestamps_arr[0]),
-                "endSec": float(timestamps_arr[-1]),
+                "topic": topic,
+                "severity": "critical",
+                "confidence": 0.92,
+                "tSec": gap_start,
+                "endSec": gap_end,
                 "evidence": {
                     "node": node,
-                    "active_span_sec": round(span, 4),
+                    "last_timestamp_sec": gap_start,
+                    "resume_timestamp_sec": gap_end,
+                    "silent_duration_sec": round(max_gap, 4),
+                    "threshold_sec": round(resolved_gap_threshold, 4),
+                    "median_interval_sec": round(median_interval, 4),
                 },
             },
             node_log_payload,
@@ -431,7 +461,7 @@ def _window_hz(
         stamps = windows[key]
         count = len(stamps)
         span = max(stamps[-1] - stamps[0], 1e-6)
-        hz = count / span if count > 1 else count / window_sec
+        hz = (count - 1) / span if count > 1 else count / window_sec
         result.append((float(key) * window_sec, hz))
     return result
 
@@ -456,16 +486,23 @@ def _evaluate_hz_drop_rules(
     if len(timestamps_arr) < int(thresholds["hz_drop_min_messages"]):
         return detections, logs
 
+    has_explicit_expected = expected_hz is not None and topic in expected_hz
     resolved_expected: float | None = None
-    if expected_hz is not None and topic in expected_hz:
+    if has_explicit_expected:
         resolved_expected = float(expected_hz[topic])
 
     windows = _window_hz(timestamps_arr)
     if resolved_expected is None:
-        rates = [hz for _, hz in windows if hz > 0]
-        if not rates:
+        intervals = [b - a for a, b in pairwise(timestamps_arr) if b > a]
+        if not intervals:
             return detections, logs
-        resolved_expected = max(rates)
+        median_interval = float(statistics.median(intervals))
+        # Without an explicit baseline, highly bursty/event-driven topics do
+        # not have a meaningful nominal Hz.  Skip rate-drop scoring for those
+        # streams instead of treating their fastest burst as the baseline.
+        if max(intervals) > median_interval * 5.0:
+            return detections, logs
+        resolved_expected = 1.0 / median_interval
 
     warn_pct = float(thresholds["hz_drop_warn_pct"])
     critical_pct = float(thresholds["hz_drop_critical_pct"])
@@ -481,7 +518,7 @@ def _evaluate_hz_drop_rules(
             "windows": len(windows),
         },
     }
-    fired = False
+    candidates: list[tuple[float, float, float, str, str, float]] = []
     for start, actual in windows:
         if actual <= 0:
             continue
@@ -490,23 +527,44 @@ def _evaluate_hz_drop_rules(
             continue
         kind = "hz_drop_critical" if drop_pct >= critical_pct else "hz_drop"
         severity = "high" if kind == "hz_drop_critical" else "medium"
+        candidates.append((start, actual, drop_pct, kind, severity, 0.9 if kind == "hz_drop_critical" else 0.83))
+
+    # A sustained drop should be one anomaly band, not one UI item per 5-second
+    # bucket.  Merge adjacent windows of the same severity/kind.
+    segments: list[list[tuple[float, float, float, str, str, float]]] = []
+    for candidate in candidates:
+        if (
+            segments
+            and segments[-1][-1][3] == candidate[3]
+            and candidate[0] <= segments[-1][-1][0] + _HZ_WINDOW_SEC + 1e-9
+        ):
+            segments[-1].append(candidate)
+        else:
+            segments.append([candidate])
+    for segment in segments:
+        start = segment[0][0]
+        end = segment[-1][0] + _HZ_WINDOW_SEC
+        actual = min(item[1] for item in segment)
+        drop_pct = max(item[2] for item in segment)
+        kind, severity, confidence = segment[0][3:]
         detections.append(
             {
                 "kind": kind,
                 "topic": topic,
                 "severity": severity,
-                "confidence": 0.9 if kind == "hz_drop_critical" else 0.83,
+                "confidence": confidence,
                 "tSec": float(start),
-                "endSec": float(start) + _HZ_WINDOW_SEC,
+                "endSec": float(end),
                 "evidence": {
                     "expected_hz": round(resolved_expected, 4),
                     "actual_hz": round(actual, 4),
                     "drop_pct": round(drop_pct, 4),
                     "window_sec": _HZ_WINDOW_SEC,
+                    "window_count": len(segment),
                 },
             }
         )
-        fired = True
+    fired = bool(detections)
     log_payload["level"] = "warn" if fired else "debug"
     log_payload["details"]["detected"] = fired
     logs.append(log_payload)
@@ -738,6 +796,7 @@ def _evaluate_auxiliary_rules(
     tf_pairs: dict[str, list[tuple[float, str, str]]],
     thresholds: dict[str, float],
     expected_hz: Mapping[str, float] | None,
+    cadence_topics: set[str],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Run the hz-drop, header-latency, log, payload and TF rule batteries.
 
@@ -749,12 +808,16 @@ def _evaluate_auxiliary_rules(
     logs: list[dict[str, Any]] = []
 
     for topic, timestamps in topic_times.items():
+        if topic not in cadence_topics:
+            continue
         timestamps_arr = sorted(timestamps)
         hz_detections, hz_logs = _evaluate_hz_drop_rules(topic, timestamps_arr, thresholds, expected_hz)
         detections.extend(hz_detections)
         logs.extend(hz_logs)
 
     for topic, latencies in topic_latency.items():
+        if topic.rstrip("/").endswith("cmd_vel"):
+            continue
         latency_detection, latency_log = _evaluate_header_latency_rule(topic, latencies, thresholds)
         if latency_detection is not None:
             detections.append(latency_detection)
@@ -832,8 +895,8 @@ def detect_anomalies(
     logs: list[dict[str, Any]] = []
 
     topic_times: dict[str, list[float]] = defaultdict(list)
-    node_times: dict[str, list[float]] = defaultdict(list)
-    node_topic_counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    topic_message_types: dict[str, set[str]] = defaultdict(set)
+    topic_node_counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     topic_drift: dict[str, list[float]] = defaultdict(list)
     topic_latency: dict[str, list[tuple[float, float]]] = defaultdict(list)
     topic_payload: dict[str, list[tuple[float, int]]] = defaultdict(list)
@@ -841,13 +904,27 @@ def detect_anomalies(
     tf_pairs: dict[str, list[tuple[float, str, str]]] = defaultdict(list)
     total_messages = 0
     for message in messages:
-        timestamp = float(message["timestamp"])
-        topic = str(message["topic"])
-        node = str(message["node"])
+        try:
+            timestamp = float(message["timestamp"])
+            topic = str(message["topic"])
+            node = str(message["node"])
+        except (KeyError, TypeError, ValueError):
+            # Skip malformed messages that are missing required fields.
+            logger.debug(
+                "diagnostics.message_skipped",
+                extra={
+                    "diagnostics": {
+                        "event": "diagnostics.message_skipped",
+                        "level": "debug",
+                        "details": {"keys": list(message.keys()) if hasattr(message, "keys") else []},
+                    }
+                },
+            )
+            continue
         total_messages += 1
         topic_times[topic].append(timestamp)
-        node_times[node].append(timestamp)
-        node_topic_counts[node][topic] += 1
+        topic_message_types[topic].add(str(message.get("message_type") or ""))
+        topic_node_counts[topic][node] += 1
         header = message.get("header")
         if header is not None:
             drift = timestamp - float(header)
@@ -886,8 +963,20 @@ def detect_anomalies(
             "logs": [empty_log_payload],
         }
 
+    # Status/event messages have no stable publish cadence unless a caller
+    # supplies an explicit expected rate. Treating their natural pauses as
+    # failures produced false Gate 2 alarms on healthy captures.
+    cadence_topics = {
+        topic
+        for topic, message_types in topic_message_types.items()
+        if (expected_hz is not None and topic in expected_hz)
+        or not message_types.intersection(_EVENT_DRIVEN_MESSAGE_TYPES)
+    }
+
     detections: list[dict[str, Any]] = []
     for topic, timestamps in topic_times.items():
+        if topic not in cadence_topics:
+            continue
         timestamps_arr = sorted(timestamps)
         if len(timestamps_arr) < 2:
             continue
@@ -903,12 +992,17 @@ def detect_anomalies(
             detections.append(drift_detection)
         logs.append(drift_log)
 
-    for node, timestamps in node_times.items():
+    observation_end = max(timestamp for timestamps in topic_times.values() for timestamp in timestamps)
+    for topic, timestamps in topic_times.items():
+        if topic not in cadence_topics:
+            continue
         timestamps_arr = sorted(timestamps)
         if len(timestamps_arr) < 2:
             continue
+        node_counts = topic_node_counts[topic]
+        node = max(node_counts, key=lambda value: node_counts[value])
         silent_detection, silent_log = _evaluate_silent_rule(
-            node, timestamps_arr, node_topic_counts, resolved_thresholds
+            topic, node, timestamps_arr, observation_end, resolved_thresholds
         )
         if silent_detection is not None:
             detections.append(silent_detection)
@@ -922,6 +1016,7 @@ def detect_anomalies(
         tf_pairs,
         resolved_thresholds,
         expected_hz,
+        cadence_topics,
     )
     detections.extend(aux_detections)
     logs.extend(aux_logs)

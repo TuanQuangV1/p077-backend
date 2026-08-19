@@ -1,0 +1,32 @@
+# Unfixable CVEs in base images / vendored framework dependencies.
+# No upstream fix available as of 2026-08-19 (Debian status: affected/fix_deferred/will_not_fix;
+# node deps are vendored inside next@16.2.12 dist/compiled and can only be fixed by upgrading Next).
+# Remove entries as fixes land.
+
+# --- python:3.11-slim (debian trixie) base image ---
+CVE-2025-69720  # ncurses: buffer overflow (libncursesw6, libtinfo6, ncurses-base, ncurses-bin)
+CVE-2026-13221  # perl-base: silently incorrect regex results (CRITICAL, affected)
+CVE-2026-14456  # openssl: QUIC unbounded memory DoS (fix_deferred)
+CVE-2026-41992  # gzip: global buffer overflow in LZH decompressor (affected)
+CVE-2026-42496  # perl-archive-tar: path traversal via crafted symlinks (fix_deferred)
+CVE-2026-42497  # perl-archive-tar: arbitrary file modification via hardlinks (fix_deferred)
+CVE-2026-48962  # base image package (affected)
+CVE-2026-54369  # acl: symlink traversal privilege escalation (affected)
+CVE-2026-57432  # perl: (affected)
+CVE-2026-57433  # perl Storable: signed integer overflow (affected)
+CVE-2026-8376   # perl: heap buffer overflow on 32-bit builds
+CVE-2026-9538   # base image package (affected)
+
+# --- node:22-bookworm-slim base image ---
+CVE-2023-45853  # zlib1g: integer overflow / heap overflow (will_not_fix in bookworm)
+CVE-2026-53615  # bsdutils/util-linux: integer overflow (no bookworm fix yet; trixie already patched)
+
+# --- vendored inside next@16.2.12 dist/compiled (fix requires upgrading Next) ---
+CVE-2026-13149  # brace-expansion: DoS (vendored by Next)
+CVE-2026-14257  # brace-expansion: DoS (vendored by Next)
+CVE-2026-69152  # brace-expansion: DoS bypass (vendored by Next)
+CVE-2026-69192  # ip-address: inconsistent parsing (vendored by Next)
+CVE-2026-33671  # picomatch: ReDoS (vendored by Next)
+CVE-2026-48815  # sigstore: unauthorized certificates (vendored by Next)
+CVE-2026-59873  # tar: gzip bomb DoS, CRITICAL (vendored by Next)
+CVE-2026-59874  # tar: malformed archive DoS (vendored by Next)

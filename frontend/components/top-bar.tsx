@@ -25,7 +25,7 @@ export function TopBar() {
       <div className="flex min-w-0 items-center gap-2">
         <RadioIcon className={cn("size-3.5 shrink-0", connected ? "text-ok" : "text-muted-foreground")} />
         <span className="font-mono text-xs text-muted-foreground">
-          {connected ? "stream live" : "stream idle"}
+          {connected ? "luồng trực tiếp (live)" : "luồng nhàn rỗi (idle)"}
           <span className="hidden sm:inline"> · /ws?topics=jobs,logs,vllm</span>
         </span>
       </div>
@@ -47,11 +47,11 @@ export function TopBar() {
               tok/s <span className="text-foreground">{last.tokensPerSec}</span>
             </span>
             <span className="text-muted-foreground">
-              q <span className="text-foreground">{last.queueLen}</span>
+              hàng đợi <span className="text-foreground">{last.queueLen}</span>
             </span>
           </>
         ) : (
-          <span className="text-muted-foreground">awaiting telemetry…</span>
+          <span className="text-muted-foreground">đang chờ dữ liệu…</span>
         )}
         <Separator orientation="vertical" className="!h-4" />
         <ThemeToggle />

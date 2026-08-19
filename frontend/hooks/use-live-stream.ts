@@ -6,8 +6,8 @@ import { useEffect, useRef, useState } from "react"
  * Single subscription point for the live channel.
  *
  * Today this reads SSE from `/api/stream`. Against the FastAPI backend the
- * same envelope arrives over `ws://.../ws?topics=...`; swapping transports
- * only touches this file because every consumer sees the same shape.
+ * same envelope arrives over a WebSocket at `/ws?topics=...`; swapping
+ * transports only touches this file because every consumer sees the same shape.
  */
 export interface JobProgress {
   runId: string

@@ -278,10 +278,47 @@ def test_explain_diagnostics_serializes_summary_for_prompt(monkeypatch) -> None:
     assert "Ignore previous instructions" in payload
 
 
+def test_explain_diagnostics_uses_configured_openai_provider(monkeypatch) -> None:
+    class SettingsStub:
+        model_name = "gpt-4o-mini"
+        openai_api_key = "secret"
+        llm_temperature = 0.2
+        llm_provider = "openai"
+        vllm_base_url = ""
+        vllm_model_name = "unused"
+        vllm_api_key = ""
+
+    called = False
+
+    def fake_chat(
+        messages: list[dict[str, object]],
+        tools: list[dict[str, object]] | None = None,
+    ) -> dict[str, object]:
+        nonlocal called
+        called = True
+        return {"content": "live openai diagnosis"}
+
+    def get_settings() -> SettingsStub:
+        return SettingsStub()
+
+    monkeypatch.setattr("src.services.llm.get_settings", get_settings)
+    monkeypatch.setattr("src.services.llm.chat_completion", fake_chat)
+
+    explanation = explain_diagnostics({"detections": [{"kind": "frequency_gap"}]})
+
+    assert called is True
+    assert explanation["root_cause"] == "live openai diagnosis"
+
+
 def test_explain_diagnostics_handles_empty_and_nested_untrusted_values(monkeypatch) -> None:
     class SettingsStub:
+        model_name = "unused"
+        openai_api_key = ""
+        llm_temperature = 0.2
         llm_provider = "vllm"
         vllm_base_url = "http://localhost:8000/v1"
+        vllm_model_name = "qwen2.5-coder-32b"
+        vllm_api_key = "secret"
 
     captured: dict[str, Any] = {}
 
@@ -457,20 +494,23 @@ def test_clock_drift_skipped_without_header_field() -> None:
     assert not any(d["kind"] == "clock_drift" for d in summary["detections"])
 
 
-def test_silent_node_reports_dominant_topic() -> None:
+def test_silent_node_reports_topic_and_node_for_real_gap() -> None:
     summary = detect_anomalies(
         [
             {"timestamp": 0.0, "topic": "/imu", "node": "imu_node", "message_type": "Imu"},
-            {"timestamp": 0.4, "topic": "/imu", "node": "imu_node", "message_type": "Imu"},
-            {"timestamp": 0.8, "topic": "/scan", "node": "imu_node", "message_type": "LaserScan"},
+            {"timestamp": 0.1, "topic": "/imu", "node": "imu_node", "message_type": "Imu"},
+            {"timestamp": 0.2, "topic": "/imu", "node": "imu_node", "message_type": "Imu"},
+            {"timestamp": 2.2, "topic": "/imu", "node": "imu_node", "message_type": "Imu"},
         ]
     )
     silent = next(d for d in summary["detections"] if d["kind"] == "silent_node")
     assert silent["topic"] == "/imu"
     assert silent["evidence"]["node"] == "imu_node"
+    assert silent["evidence"]["silent_duration_sec"] == pytest.approx(2.0)
+    assert silent["severity"] == "critical"
 
 
-def test_silent_node_detected_with_two_messages() -> None:
+def test_silent_node_not_inferred_from_active_span_alone() -> None:
     summary = detect_anomalies(
         [
             {"timestamp": 0.0, "topic": "/scan", "node": "scanner", "message_type": "LaserScan"},
@@ -478,7 +518,7 @@ def test_silent_node_detected_with_two_messages() -> None:
         ]
     )
     kinds = {d["kind"] for d in summary["detections"]}
-    assert "silent_node" in kinds
+    assert "silent_node" not in kinds
 
 
 def test_thresholds_missing_file_returns_defaults(tmp_path) -> None:
@@ -538,9 +578,9 @@ def _hz_stream(rate: float, seconds: float, start: float = 0.0, topic: str = "/s
 
 
 def test_hz_drop_flags_sustained_rate_fall() -> None:
-    # 60 Hz nominal, then a long 30 Hz segment (>30% drop) and a 10 Hz segment (>50%).
-    messages = _hz_stream(60.0, 2.0, start=0.0) + _hz_stream(30.0, 2.0, start=2.0)
-    messages += _hz_stream(10.0, 2.0, start=4.0)
+    # 60 Hz nominal, then 40 Hz (>30% drop) and 10 Hz (>50%) in full windows.
+    messages = _hz_stream(60.0, 5.0, start=0.0) + _hz_stream(40.0, 5.0, start=5.0)
+    messages += _hz_stream(10.0, 5.0, start=10.0)
     summary = detect_anomalies(messages, thresholds={"hz_drop_min_messages": 10}, expected_hz={"/scan": 60.0})
     kinds = {d["kind"] for d in summary["detections"]}
     assert "hz_drop" in kinds
@@ -557,8 +597,8 @@ def test_hz_drop_skipped_below_min_messages() -> None:
     assert not any(d["kind"].startswith("hz_drop") for d in summary["detections"])
 
 
-def test_hz_drop_infers_expected_from_peak_when_no_map() -> None:
-    # Multi-window stream so the peak-window fallback can be derived: 60 Hz
+def test_hz_drop_infers_expected_from_median_cadence_when_no_map() -> None:
+    # Multi-window stream so the median-cadence fallback can be derived: 60 Hz
     # nominal, 35 Hz mid window (warn tier), 20 Hz final window (critical tier).
     messages = _hz_stream(60.0, 5.0)
     messages += _hz_stream(35.0, 5.0, start=5.0)

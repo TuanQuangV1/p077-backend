@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import pytest
 
 from src.services.iterative_debug import IterativeDebugger, run_iterative_debug_loop
-from src.services.run_store import save_hilt_iteration
 
 
 class TestIterativeDebugger:
     def test_suggest_returns_ai_result(self, tmp_path, monkeypatch) -> None:
-        import src.services.run_store as run_store
 
         db_path = tmp_path / "test.db"
         monkeypatch.setenv("RUN_DB_PATH", str(db_path))
@@ -35,7 +32,7 @@ class TestIterativeDebugger:
         assert hasattr(result, "confidence")
 
     def test_record_test_persists(self, tmp_path, monkeypatch) -> None:
-        import src.services.run_store as run_store
+        from src.services import run_store
 
         db_path = tmp_path / "test.db"
         monkeypatch.setenv("RUN_DB_PATH", str(db_path))
@@ -69,7 +66,6 @@ class TestIterativeDebugger:
         assert iterations[0]["test_comment"] == "test passed"
 
     def test_should_continue_no_triggers(self, tmp_path, monkeypatch) -> None:
-        import src.services.run_store as run_store
 
         db_path = tmp_path / "test.db"
         monkeypatch.setenv("RUN_DB_PATH", str(db_path))
@@ -91,7 +87,6 @@ class TestIterativeDebugger:
         assert debugger.should_continue(5, triggers) is False  # max_iterations = 5
 
     def test_should_continue_triggered(self, tmp_path, monkeypatch) -> None:
-        import src.services.run_store as run_store
 
         db_path = tmp_path / "test.db"
         monkeypatch.setenv("RUN_DB_PATH", str(db_path))
@@ -111,7 +106,6 @@ class TestIterativeDebugger:
         assert debugger.should_continue(1, triggers) is False
 
     def test_should_continue_max_iterations(self, tmp_path, monkeypatch) -> None:
-        import src.services.run_store as run_store
 
         db_path = tmp_path / "test.db"
         monkeypatch.setenv("RUN_DB_PATH", str(db_path))
@@ -134,7 +128,6 @@ class TestIterativeDebugger:
         assert debugger.should_continue(6, triggers) is False
 
     def test_build_hilt_payload_shape(self, tmp_path, monkeypatch) -> None:
-        import src.services.run_store as run_store
 
         db_path = tmp_path / "test.db"
         monkeypatch.setenv("RUN_DB_PATH", str(db_path))
@@ -176,7 +169,6 @@ class TestIterativeDebugger:
         assert payload["failure_count"] == 1
 
     def test_refine_includes_feedback_history(self, tmp_path, monkeypatch) -> None:
-        import src.services.run_store as run_store
 
         db_path = tmp_path / "test.db"
         monkeypatch.setenv("RUN_DB_PATH", str(db_path))
@@ -213,7 +205,6 @@ class TestIterativeDebugger:
 
 class TestRunIterativeDebugLoop:
     def test_loop_completes(self, tmp_path, monkeypatch) -> None:
-        import src.services.run_store as run_store
 
         db_path = tmp_path / "test.db"
         monkeypatch.setenv("RUN_DB_PATH", str(db_path))
@@ -229,6 +220,5 @@ class TestRunIterativeDebugLoop:
         }
 
         result = run_iterative_debug_loop("run_1", "anomaly_001", anomaly, max_iterations=2)
-
         assert result["status"] in ("completed", "escalated", "max_iterations")
         assert result["iterations"] <= 2

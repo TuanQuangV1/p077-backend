@@ -1,4 +1,8 @@
+# syntax=docker/dockerfile:1
+
 # ---- Backend dependency layer ----
+# Pin to a specific digest for reproducible builds.
+# To update: docker pull python:3.11-slim && docker inspect python:3.11-slim --format '{{index .RepoDigests 0}}'
 FROM python:3.11-slim AS backend-builder
 
 WORKDIR /app
@@ -6,7 +10,8 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
 
-RUN python -m pip install --default-timeout=100 --retries 5 --no-cache-dir --prefix=/install .
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install --default-timeout=100 --retries 5 --prefix=/install .
 
 # ---- Backend production image ----
 FROM python:3.11-slim AS backend
@@ -16,7 +21,12 @@ WORKDIR /app
 COPY --from=backend-builder /install /usr/local
 COPY src ./src
 
-RUN useradd --create-home appuser \
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip uninstall -y setuptools \
+    && useradd --create-home appuser \
     && mkdir -p /app/data \
     && chown -R appuser:appuser /app
 
@@ -36,13 +46,14 @@ WORKDIR /app/frontend
 
 RUN corepack enable
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml* frontend/.npmrc* ./
-RUN pnpm install --no-frozen-lockfile --ignore-scripts
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --no-frozen-lockfile --ignore-scripts
 
 # ---- Frontend production build ----
 FROM frontend-deps AS frontend-builder
 
-ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+ARG API_PROXY_TARGET=http://127.0.0.1:8000
+ENV API_PROXY_TARGET=$API_PROXY_TARGET
 
 COPY frontend ./
 RUN pnpm build
@@ -52,12 +63,18 @@ FROM node:22-bookworm-slim AS frontend
 
 WORKDIR /app
 ENV NODE_ENV=production
+ENV HOSTNAME="0.0.0.0"
+ENV PORT=3000
 
 COPY --from=frontend-builder /app/frontend/public ./frontend/public
 COPY --from=frontend-builder /app/frontend/.next/standalone ./frontend
 COPY --from=frontend-builder /app/frontend/.next/static ./frontend/.next/static
 
-RUN useradd --create-home nextjs \
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home nextjs \
     && chown -R nextjs:nextjs /app
 
 USER nextjs

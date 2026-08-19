@@ -32,12 +32,6 @@ class Settings(BaseSettings):
     vllm_api_key: str = "EMPTY"
     vllm_model_name: str = "qwen2.5-coder-32b"
 
-    # Database
-    database_url: str = "sqlite:///./data/app.db"
-
-    # Vector Store
-    chroma_persist_dir: str = "./data/chroma"
-
     # HILT (human-in-the-loop) iterative debug triggers
     hilt_max_iterations: int = 5
     hilt_uncertainty_threshold: float = 0.5

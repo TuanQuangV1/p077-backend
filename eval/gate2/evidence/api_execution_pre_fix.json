@@ -1,0 +1,1370 @@
+{
+  "phase": "pre_fix",
+  "base_url": "http://localhost:8000/api/v1",
+  "started_at": "2026-08-12T09:55:42.466741+00:00",
+  "results": [
+    {
+      "case_id": "TC01",
+      "status": "FAIL",
+      "checks": {
+        "run_succeeded": true,
+        "message_count": true,
+        "topics_parsed": true,
+        "no_high_or_critical": false,
+        "health_green": false,
+        "no_auto_llm": false
+      },
+      "anomaly_count": 85,
+      "severe_anomalies": [
+        {
+          "id": "anomaly_013",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2175.0,
+          "endSec": 2180.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_014",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2180.0,
+          "endSec": 2185.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_015",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2185.0,
+          "endSec": 2190.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_016",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2190.0,
+          "endSec": 2195.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_017",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2195.0,
+          "endSec": 2200.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_018",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2200.0,
+          "endSec": 2205.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_019",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2205.0,
+          "endSec": 2210.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_020",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2210.0,
+          "endSec": 2215.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_021",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2215.0,
+          "endSec": 2220.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_022",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2220.0,
+          "endSec": 2225.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_023",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2225.0,
+          "endSec": 2230.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_024",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2230.0,
+          "endSec": 2235.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_025",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2235.0,
+          "endSec": 2240.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_026",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2240.0,
+          "endSec": 2245.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_027",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2245.0,
+          "endSec": 2250.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_028",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2250.0,
+          "endSec": 2255.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_029",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2255.0,
+          "endSec": 2260.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_030",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2260.0,
+          "endSec": 2265.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_031",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2265.0,
+          "endSec": 2270.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_032",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2270.0,
+          "endSec": 2275.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_033",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2275.0,
+          "endSec": 2280.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_034",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2280.0,
+          "endSec": 2285.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_035",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2285.0,
+          "endSec": 2290.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_036",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2290.0,
+          "endSec": 2295.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_037",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2295.0,
+          "endSec": 2300.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_038",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2300.0,
+          "endSec": 2305.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_039",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2305.0,
+          "endSec": 2310.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_040",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2310.0,
+          "endSec": 2315.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_041",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2315.0,
+          "endSec": 2320.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_042",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2320.0,
+          "endSec": 2325.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_043",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2325.0,
+          "endSec": 2330.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_044",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2330.0,
+          "endSec": 2335.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_045",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2335.0,
+          "endSec": 2340.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_047",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2345.0,
+          "endSec": 2350.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_048",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /amcl_pose",
+          "severity": "high",
+          "tSec": 2350.0,
+          "endSec": 2355.0,
+          "topics": [
+            "/amcl_pose"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /amcl_pose"
+        },
+        {
+          "id": "anomaly_049",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2175.0,
+          "endSec": 2180.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_050",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2180.0,
+          "endSec": 2185.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_051",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2185.0,
+          "endSec": 2190.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_052",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2190.0,
+          "endSec": 2195.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_053",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2195.0,
+          "endSec": 2200.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_054",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2200.0,
+          "endSec": 2205.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_055",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2205.0,
+          "endSec": 2210.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_056",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2210.0,
+          "endSec": 2215.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_057",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2215.0,
+          "endSec": 2220.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_058",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2220.0,
+          "endSec": 2225.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_059",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2225.0,
+          "endSec": 2230.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_060",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2230.0,
+          "endSec": 2235.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_061",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2235.0,
+          "endSec": 2240.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_062",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2240.0,
+          "endSec": 2245.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_063",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2245.0,
+          "endSec": 2250.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_064",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2250.0,
+          "endSec": 2255.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_065",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2255.0,
+          "endSec": 2260.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_066",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2260.0,
+          "endSec": 2265.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_067",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2265.0,
+          "endSec": 2270.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_068",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2270.0,
+          "endSec": 2275.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_069",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2275.0,
+          "endSec": 2280.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_070",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2280.0,
+          "endSec": 2285.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_071",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2285.0,
+          "endSec": 2290.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_072",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2290.0,
+          "endSec": 2295.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_073",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2295.0,
+          "endSec": 2300.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_074",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2300.0,
+          "endSec": 2305.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_075",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2305.0,
+          "endSec": 2310.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_076",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2310.0,
+          "endSec": 2315.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_077",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2315.0,
+          "endSec": 2320.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_078",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2320.0,
+          "endSec": 2325.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_079",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2325.0,
+          "endSec": 2330.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_080",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2330.0,
+          "endSec": 2335.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_081",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2335.0,
+          "endSec": 2340.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_082",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2340.0,
+          "endSec": 2345.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_083",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2345.0,
+          "endSec": 2350.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        },
+        {
+          "id": "anomaly_084",
+          "runId": "run_healthy_01_0",
+          "kind": "hz_drop_critical",
+          "title": "Severe publish rate drop on /diagnostics",
+          "severity": "high",
+          "tSec": 2350.0,
+          "endSec": 2355.0,
+          "topics": [
+            "/diagnostics"
+          ],
+          "confidence": 0.9,
+          "metric": "detected on /diagnostics"
+        }
+      ],
+      "health_score": 66.2,
+      "started_at": "2026-08-12T09:55:42.886498+00:00",
+      "finished_at": "2026-08-12T09:55:58.160020+00:00",
+      "execution_time_sec": 15.274,
+      "timings": {
+        "upload_sec": 3.502,
+        "analysis_sec": 8.689,
+        "detail_sec": 3.034,
+        "health_sec": 0.018
+      },
+      "dataset_id": "healthy_01_0",
+      "run_id": "run_healthy_01_0"
+    },
+    {
+      "case_id": "TC02",
+      "status": "PASS",
+      "checks": {
+        "run_succeeded": true,
+        "frequency_anomaly_detected": true,
+        "correct_topic": true
+      },
+      "expected_frequency_hz": 10.0,
+      "ground_truth_frequency_hz": 2.5,
+      "actual_detector_output": {
+        "kind": "hz_drop_critical",
+        "topic": "/scan",
+        "severity": "high",
+        "tSec": 645.0,
+        "endSec": 650.0,
+        "evidence": {
+          "expected_hz": 13.1148,
+          "actual_hz": 2.7016,
+          "drop_pct": 0.794,
+          "window_sec": 5.0
+        }
+      },
+      "all_scan_frequency_detections": [
+        {
+          "kind": "frequency_gap",
+          "topic": "/scan",
+          "severity": "medium",
+          "tSec": 661.53,
+          "endSec": 661.97,
+          "evidence": {
+            "interval_sec": 0.44,
+            "threshold_sec": 0.1515
+          }
+        },
+        {
+          "kind": "hz_drop_critical",
+          "topic": "/scan",
+          "severity": "high",
+          "tSec": 645.0,
+          "endSec": 650.0,
+          "evidence": {
+            "expected_hz": 13.1148,
+            "actual_hz": 2.7016,
+            "drop_pct": 0.794,
+            "window_sec": 5.0
+          }
+        },
+        {
+          "kind": "hz_drop_critical",
+          "topic": "/scan",
+          "severity": "high",
+          "tSec": 650.0,
+          "endSec": 655.0,
+          "evidence": {
+            "expected_hz": 13.1148,
+            "actual_hz": 2.7335,
+            "drop_pct": 0.7916,
+            "window_sec": 5.0
+          }
+        },
+        {
+          "kind": "hz_drop_critical",
+          "topic": "/scan",
+          "severity": "high",
+          "tSec": 655.0,
+          "endSec": 660.0,
+          "evidence": {
+            "expected_hz": 13.1148,
+            "actual_hz": 2.7112,
+            "drop_pct": 0.7933,
+            "window_sec": 5.0
+          }
+        },
+        {
+          "kind": "hz_drop_critical",
+          "topic": "/scan",
+          "severity": "high",
+          "tSec": 660.0,
+          "endSec": 665.0,
+          "evidence": {
+            "expected_hz": 13.1148,
+            "actual_hz": 2.7236,
+            "drop_pct": 0.7923,
+            "window_sec": 5.0
+          }
+        },
+        {
+          "kind": "hz_drop_critical",
+          "topic": "/scan",
+          "severity": "high",
+          "tSec": 665.0,
+          "endSec": 670.0,
+          "evidence": {
+            "expected_hz": 13.1148,
+            "actual_hz": 2.7095,
+            "drop_pct": 0.7934,
+            "window_sec": 5.0
+          }
+        },
+        {
+          "kind": "hz_drop_critical",
+          "topic": "/scan",
+          "severity": "high",
+          "tSec": 670.0,
+          "endSec": 675.0,
+          "evidence": {
+            "expected_hz": 13.1148,
+            "actual_hz": 2.7298,
+            "drop_pct": 0.7919,
+            "window_sec": 5.0
+          }
+        },
+        {
+          "kind": "hz_drop_critical",
+          "topic": "/scan",
+          "severity": "high",
+          "tSec": 675.0,
+          "endSec": 680.0,
+          "evidence": {
+            "expected_hz": 13.1148,
+            "actual_hz": 2.7083,
+            "drop_pct": 0.7935,
+            "window_sec": 5.0
+          }
+        },
+        {
+          "kind": "hz_drop_critical",
+          "topic": "/scan",
+          "severity": "high",
+          "tSec": 680.0,
+          "endSec": 685.0,
+          "evidence": {
+            "expected_hz": 13.1148,
+            "actual_hz": 2.7267,
+            "drop_pct": 0.7921,
+            "window_sec": 5.0
+          }
+        },
+        {
+          "kind": "hz_drop_critical",
+          "topic": "/scan",
+          "severity": "high",
+          "tSec": 685.0,
+          "endSec": 690.0,
+          "evidence": {
+            "expected_hz": 13.1148,
+            "actual_hz": 2.7083,
+            "drop_pct": 0.7935,
+            "window_sec": 5.0
+          }
+        },
+        {
+          "kind": "hz_drop_critical",
+          "topic": "/scan",
+          "severity": "high",
+          "tSec": 690.0,
+          "endSec": 695.0,
+          "evidence": {
+            "expected_hz": 13.1148,
+            "actual_hz": 2.7248,
+            "drop_pct": 0.7922,
+            "window_sec": 5.0
+          }
+        },
+        {
+          "kind": "hz_drop_critical",
+          "topic": "/scan",
+          "severity": "high",
+          "tSec": 695.0,
+          "endSec": 700.0,
+          "evidence": {
+            "expected_hz": 13.1148,
+            "actual_hz": 2.714,
+            "drop_pct": 0.7931,
+            "window_sec": 5.0
+          }
+        },
+        {
+          "kind": "hz_drop_critical",
+          "topic": "/scan",
+          "severity": "high",
+          "tSec": 700.0,
+          "endSec": 705.0,
+          "evidence": {
+            "expected_hz": 13.1148,
+            "actual_hz": 2.7279,
+            "drop_pct": 0.792,
+            "window_sec": 5.0
+          }
+        },
+        {
+          "kind": "hz_drop_critical",
+          "topic": "/scan",
+          "severity": "high",
+          "tSec": 705.0,
+          "endSec": 710.0,
+          "evidence": {
+            "expected_hz": 13.1148,
+            "actual_hz": 2.7061,
+            "drop_pct": 0.7937,
+            "window_sec": 5.0
+          }
+        },
+        {
+          "kind": "hz_drop_critical",
+          "topic": "/scan",
+          "severity": "high",
+          "tSec": 710.0,
+          "endSec": 715.0,
+          "evidence": {
+            "expected_hz": 13.1148,
+            "actual_hz": 2.726,
+            "drop_pct": 0.7921,
+            "window_sec": 5.0
+          }
+        },
+        {
+          "kind": "hz_drop_critical",
+          "topic": "/scan",
+          "severity": "high",
+          "tSec": 715.0,
+          "endSec": 720.0,
+          "evidence": {
+            "expected_hz": 13.1148,
+            "actual_hz": 2.7106,
+            "drop_pct": 0.7933,
+            "window_sec": 5.0
+          }
+        },
+        {
+          "kind": "hz_drop_critical",
+          "topic": "/scan",
+          "severity": "high",
+          "tSec": 720.0,
+          "endSec": 725.0,
+          "evidence": {
+            "expected_hz": 13.1148,
+            "actual_hz": 2.731,
+            "drop_pct": 0.7918,
+            "window_sec": 5.0
+          }
+        },
+        {
+          "kind": "hz_drop_critical",
+          "topic": "/scan",
+          "severity": "high",
+          "tSec": 725.0,
+          "endSec": 730.0,
+          "evidence": {
+            "expected_hz": 13.1148,
+            "actual_hz": 2.7072,
+            "drop_pct": 0.7936,
+            "window_sec": 5.0
+          }
+        },
+        {
+          "kind": "hz_drop_critical",
+          "topic": "/scan",
+          "severity": "high",
+          "tSec": 730.0,
+          "endSec": 735.0,
+          "evidence": {
+            "expected_hz": 13.1148,
+            "actual_hz": 3.2623,
+            "drop_pct": 0.7513,
+            "window_sec": 5.0
+          }
+        }
+      ],
+      "started_at": "2026-08-12T09:55:58.353661+00:00",
+      "finished_at": "2026-08-12T09:56:11.750534+00:00",
+      "execution_time_sec": 13.397,
+      "timings": {
+        "upload_sec": 1.959,
+        "analysis_sec": 8.949,
+        "detail_sec": 2.415,
+        "health_sec": 0.018
+      },
+      "dataset_id": "F1_02_0",
+      "run_id": "run_F1_02_0"
+    },
+    {
+      "case_id": "TC03",
+      "status": "FAIL",
+      "checks": {
+        "run_succeeded": true,
+        "silent_node_detected": true,
+        "correct_topic": true,
+        "critical_severity": false,
+        "duration_matches": false
+      },
+      "measured_topic_tail": {
+        "topic": "/scan",
+        "topic_message_count": 934,
+        "bag_start_sec": 358.383,
+        "bag_end_sec": 567.277,
+        "last_topic_timestamp_sec": 567.225,
+        "silent_tail_sec": 0.052
+      },
+      "threshold_sec": null,
+      "actual_detector_output": {
+        "kind": "silent_node",
+        "topic": "/scan",
+        "severity": "low",
+        "tSec": 359.026,
+        "endSec": 567.225,
+        "evidence": {
+          "node": "scan",
+          "active_span_sec": 208.199
+        }
+      },
+      "started_at": "2026-08-12T09:56:11.908260+00:00",
+      "finished_at": "2026-08-12T09:56:25.704042+00:00",
+      "execution_time_sec": 13.796,
+      "timings": {
+        "upload_sec": 2.524,
+        "analysis_sec": 8.677,
+        "detail_sec": 1.487,
+        "health_sec": 0.008
+      },
+      "dataset_id": "F1_01_0",
+      "run_id": "run_F1_01_0"
+    },
+    {
+      "case_id": "TC04",
+      "status": "PASS",
+      "checks": {
+        "http_400": true,
+        "clear_error": true,
+        "registry_unchanged": true,
+        "backend_healthy": true
+      },
+      "actual_status_code": 400,
+      "actual_error": {
+        "detail": "unsupported file type: .txt"
+      },
+      "started_at": "2026-08-12T09:56:27.770872+00:00",
+      "finished_at": "2026-08-12T09:56:27.814494+00:00",
+      "execution_time_sec": 0.029
+    }
+  ],
+  "finished_at": "2026-08-12T09:56:27.822118+00:00"
+}

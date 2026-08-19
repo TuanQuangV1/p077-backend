@@ -2,7 +2,9 @@ import { defineConfig } from "@playwright/test"
 
 export default defineConfig({
     testDir: "./e2e",
-    fullyParallel: true,
+    globalSetup: "./e2e/global-setup.ts",
+    fullyParallel: false,
+    workers: 1,
     forbidOnly: !!process.env.CI,
     retries: process.env.CI ? 2 : 0,
     reporter: [["list"], ["html", { open: "never" }]],
@@ -26,7 +28,6 @@ export default defineConfig({
             command: "pnpm dev",
             url: "http://localhost:3000",
             timeout: 120_000,
-            env: { NEXT_PUBLIC_API_BASE_URL: "http://localhost:8000" },
             reuseExistingServer: !process.env.CI,
         },
     ],

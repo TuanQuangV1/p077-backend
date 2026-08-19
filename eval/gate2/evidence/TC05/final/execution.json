@@ -1,0 +1,9 @@
+{
+  "case_id": "TC05",
+  "started_at": "2026-08-12T10:18:02.585957+00:00",
+  "finished_at": "2026-08-12T10:18:12.802883+00:00",
+  "execution_time_sec": 10.215,
+  "http_status": 502,
+  "pipeline_completed": false,
+  "response_captured": false
+}

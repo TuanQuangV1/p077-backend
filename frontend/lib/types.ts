@@ -14,16 +14,20 @@ export type Severity = "critical" | "high" | "medium" | "low"
 export type LogLevel = "debug" | "info" | "warn" | "error" | "fatal"
 
 export type AnomalyKind =
-  | "tf_timeout"
-  | "lidar_dropout"
-  | "costmap_stale"
-  | "localization_jump"
-  | "cpu_spike"
-  | "nav_recovery"
-  | "topic_hz_drop"
-  | "message_drop"
-  | "header_latency"
+  | "frequency_gap"
+  | "message_drop_burst"
   | "timestamp_jitter"
+  | "silent_node"
+  | "clock_drift"
+  | "hz_drop"
+  | "hz_drop_critical"
+  | "header_latency"
+  | "log_fatal"
+  | "log_error_burst"
+  | "log_warn_storm"
+  | "payload_zero_byte"
+  | "tf_missing_gap"
+  | "tf_drift_jump"
 
 export type ReviewStatus = "pending" | "approved" | "rejected" | "edited"
 
@@ -151,6 +155,32 @@ export interface AIResult {
   promptTokens: number
   completionTokens: number
   vllmRequestId: string
+  reviewer?: string | null
+  reviewerNote?: string | null
+  reviewedAt?: string | null
+}
+
+export interface ReviewStatsRun {
+  runId: string
+  rosbagName: string
+  total: number
+  reviewed: number
+  approved: number
+  rejected: number
+  edited: number
+  pending: number
+  accuracy: number | null
+}
+
+export interface ReviewStats {
+  total: number
+  reviewed: number
+  approved: number
+  rejected: number
+  edited: number
+  pending: number
+  accuracy: number | null
+  runs: ReviewStatsRun[]
 }
 
 export interface Feedback {
@@ -249,38 +279,6 @@ export interface SimulationData {
   /** Ground-truth path the planner intended to follow. */
   plannedPath: { x: number; y: number }[]
   /** Second trajectory for A/B comparison (previous run on same route). */
-  referencePath: { x: number; y: number }[]
-}
-
-/* ---------- Simulation ---------- */
-
-export interface OccupancyMap {
-  width: number
-  height: number
-  resolution: number
-  rows: string[]
-}
-
-export interface SimFrame {
-  t: number
-  x: number
-  y: number
-  theta: number
-  v: number
-  w: number
-  scan: number[]
-  cpu: number
-  degraded: AnomalyKind | null
-}
-
-export interface SimulationData {
-  runId: string
-  map: OccupancyMap
-  scanAngleMin: number
-  scanAngleMax: number
-  scanRangeMax: number
-  frames: SimFrame[]
-  plannedPath: { x: number; y: number }[]
   referencePath: { x: number; y: number }[]
 }
 

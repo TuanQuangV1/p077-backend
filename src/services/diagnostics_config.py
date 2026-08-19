@@ -19,6 +19,7 @@ DEFAULT_DIAGNOSTICS_THRESHOLDS = {
     "frequency_gap_min_threshold_sec": 0.08,
     "frequency_gap_multiplier": 1.5,
     "silent_node_min_span_sec": 0.3,
+    "silent_node_gap_multiplier": 5.0,
     "timestamp_jitter_max_sec": 0.02,
     "max_gap_burst_sec": 1.0,
     "clock_drift_max_sec": 0.1,

@@ -1,0 +1,8 @@
+{
+  "topic": "/scan",
+  "topic_message_count": 934,
+  "bag_start_sec": 358.383,
+  "bag_end_sec": 567.277,
+  "last_topic_timestamp_sec": 567.225,
+  "silent_tail_sec": 0.052
+}

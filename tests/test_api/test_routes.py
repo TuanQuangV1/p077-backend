@@ -6,6 +6,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
+import httpx
 import pytest
 import yaml  # type: ignore[import-untyped]
 
@@ -207,6 +208,26 @@ async def test_explain_route_rejects_missing_summary(client):
 
 
 @pytest.mark.asyncio
+async def test_explain_route_maps_upstream_failure_to_safe_502(client, monkeypatch):
+    def failed_explain(summary: dict[str, object]) -> dict[str, object]:
+        request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+        response = httpx.Response(401, request=request)
+        raise httpx.HTTPStatusError("unauthorized", request=request, response=response)
+
+    monkeypatch.setattr("src.api.routes.explain_diagnostics", failed_explain)
+
+    response = await client.post(
+        "/api/v1/analysis/explain",
+        json={"summary": {"detections": []}},
+    )
+
+    assert response.status_code == 502
+    assert response.json() == {
+        "detail": "LLM provider request failed; verify provider credentials and availability"
+    }
+
+
+@pytest.mark.asyncio
 async def test_health(client):
     response = await client.get("/health")
     assert response.status_code == 200
@@ -318,7 +339,8 @@ async def test_chat_upstream_error_returns_500(client, monkeypatch):
 
     response = await client.post("/api/v1/chat", json={"message": "hello"})
     assert response.status_code == 500
-    assert "vllm exploded" in response.json()["detail"]
+    # Error detail should be a generic message, not the raw internal exception
+    assert "LLM request failed" in response.json()["detail"]
 
 
 @pytest.mark.asyncio
@@ -420,7 +442,7 @@ async def test_create_analysis_detects_frequency_gap_on_real_db3(client, experim
     assert run["status"] == "succeeded"
     assert run["stage"] == "done"
     assert run["anomalyCount"] == 4
-    assert run["worstSeverity"] == "medium"
+    assert run["worstSeverity"] == "critical"
 
     detail = await client.get(f"/api/v1/analysis/{run['id']}")
     assert detail.status_code == 200
@@ -433,8 +455,8 @@ async def test_create_analysis_detects_frequency_gap_on_real_db3(client, experim
     assert gap["endSec"] == pytest.approx(3.2)
     assert gap["title"] == "Publish gap on /scan"
     silent = next(a for a in anomalies if a["kind"] == "silent_node")
-    assert silent["severity"] == "low"
-    assert silent["tSec"] == pytest.approx(1.0)
+    assert silent["severity"] == "critical"
+    assert silent["tSec"] == pytest.approx(1.2)
 
     ai_results = body["aiResults"]
     assert len(ai_results) == 4
@@ -470,8 +492,8 @@ async def test_create_analysis_reads_all_db3_shards(client, experiments_dir):
     detail = await client.get(f"/api/v1/analysis/{run['id']}")
     body = detail.json()
     silent = next(a for a in body["anomalies"] if a["kind"] == "silent_node")
-    assert silent["tSec"] == pytest.approx(1.0)
-    assert silent["endSec"] == pytest.approx(5.2)
+    assert silent["tSec"] == pytest.approx(1.2)
+    assert silent["endSec"] == pytest.approx(5.0)
 
 
 @pytest.mark.asyncio
@@ -1006,14 +1028,14 @@ async def test_dashboard_totals_reflect_real_data(client, experiments_dir):
     assert totals["analyzed"] == 1
     assert totals["messages"] == 5
     assert totals["anomalies"] == 4
-    assert totals["criticalOpen"] == 0
+    assert totals["criticalOpen"] == 1
     assert totals["reviewPending"] == 4
     assert body["recentRuns"][0]["id"] == run.json()["run"]["id"]
     assert body["severity"] == [
-        {"severity": "critical", "count": 0},
+        {"severity": "critical", "count": 1},
         {"severity": "high", "count": 0},
         {"severity": "medium", "count": 2},
-        {"severity": "low", "count": 2},
+        {"severity": "low", "count": 1},
     ]
     assert len(body["topIssues"]) == 4
     assert len(body["trend"]) == 1

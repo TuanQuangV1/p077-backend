@@ -1,0 +1,49 @@
+{
+  "case_id": "TC03",
+  "status": "PASS",
+  "checks": {
+    "run_succeeded": true,
+    "silent_node_detected": true,
+    "correct_topic": true,
+    "critical_severity": true,
+    "duration_matches": true
+  },
+  "measured_topic_silence": {
+    "topic": "/scan",
+    "topic_message_count": 934,
+    "bag_start_sec": 358.383,
+    "bag_end_sec": 567.277,
+    "last_topic_timestamp_sec": 567.225,
+    "silent_tail_sec": 0.052,
+    "max_gap_sec": 115.09,
+    "max_gap_start_sec": 425.133,
+    "max_gap_end_sec": 540.223
+  },
+  "threshold_sec": 0.5,
+  "actual_detector_output": {
+    "kind": "silent_node",
+    "topic": "/scan",
+    "severity": "critical",
+    "tSec": 425.133,
+    "endSec": 540.223,
+    "evidence": {
+      "node": "scan",
+      "last_timestamp_sec": 425.133,
+      "resume_timestamp_sec": 540.223,
+      "silent_duration_sec": 115.09,
+      "threshold_sec": 0.5,
+      "median_interval_sec": 0.1
+    }
+  },
+  "started_at": "2026-08-12T10:08:39.382935+00:00",
+  "finished_at": "2026-08-12T10:08:50.388774+00:00",
+  "execution_time_sec": 11.006,
+  "timings": {
+    "upload_sec": 2.601,
+    "analysis_sec": 8.2,
+    "detail_sec": 0.006,
+    "health_sec": 0.004
+  },
+  "dataset_id": "F1_01_0",
+  "run_id": "run_F1_01_0"
+}

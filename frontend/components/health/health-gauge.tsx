@@ -15,9 +15,9 @@ const STATUS_COLORS: Record<HealthStatus, string> = {
 }
 
 const STATUS_LABELS: Record<HealthStatus, string> = {
-  green: "HEALTHY",
-  yellow: "DEGRADED",
-  red: "INCIDENT",
+  green: "KHOẺ MẠNH",
+  yellow: "SUY GIẢM",
+  red: "SỰ CỐ",
 }
 
 function GaugeArc({ score, status }: { score: number; status: HealthStatus }) {

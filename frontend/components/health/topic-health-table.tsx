@@ -1,12 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { Fragment, useState } from "react"
 import { ChevronDownIcon, ChevronRightIcon, SignalIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
 import type { Anomaly, TopicStat } from "@/lib/types"
 
 interface TopicHealthTableProps {
@@ -85,7 +84,7 @@ export function TopicHealthTable({
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-sm">
             <SignalIcon className="size-4" />
-            Topic Health
+            Sức khỏe Cảm biến (Topic Health)
           </CardTitle>
           <div className="flex items-center gap-1">
             {(["all", "critical", "warning", "healthy", "silent"] as FilterType[]).map(
@@ -97,7 +96,7 @@ export function TopicHealthTable({
                   className="h-7 px-2 text-[10px]"
                   onClick={() => setFilter(f)}
                 >
-                  {f.charAt(0).toUpperCase() + f.slice(1)}
+                  {f === "all" ? "Tất cả" : f === "critical" ? "Nghiêm trọng" : f === "warning" ? "Cảnh báo" : f === "healthy" ? "Bình thường" : "Im lặng"}
                   <span className="ml-1 font-mono">{counts[f]}</span>
                 </Button>
               ),
@@ -111,19 +110,19 @@ export function TopicHealthTable({
             <thead className="sticky top-0 bg-background">
               <tr className="border-b border-border">
                 <th className="px-3 py-2 font-mono text-[10px] uppercase text-muted-foreground">
-                  Topic
+                  Chủ đề (Topic)
                 </th>
                 <th className="px-2 py-2 text-right font-mono text-[10px] uppercase text-muted-foreground">
-                  Exp Hz
+                  Hz Kỳ vọng
                 </th>
                 <th className="px-2 py-2 text-right font-mono text-[10px] uppercase text-muted-foreground">
-                  Actual
+                  Thực tế
                 </th>
                 <th className="px-2 py-2 text-right font-mono text-[10px] uppercase text-muted-foreground">
-                  Drop%
+                  Tỷ lệ giảm
                 </th>
                 <th className="px-2 py-2 text-center font-mono text-[10px] uppercase text-muted-foreground">
-                  Status
+                  Trạng thái
                 </th>
               </tr>
             </thead>
@@ -136,13 +135,10 @@ export function TopicHealthTable({
                 const isExpanded = expandedTopic === topic.name
 
                 return (
-                  <Collapsible
-                    key={topic.name}
-                    open={isExpanded}
-                    onOpenChange={(open) =>
-                      setExpandedTopic(open ? topic.name : null)
-                    }
-                  >
+                  // A Fragment, not Collapsible: that primitive renders a <div>,
+                  // which is invalid directly inside <tbody> and breaks hydration.
+                  // Expansion is already driven by `expandedTopic` state.
+                  <Fragment key={topic.name}>
                     <tr className="group">
                       <td className="px-3 py-2">
                         <button
@@ -201,7 +197,7 @@ export function TopicHealthTable({
                         </Badge>
                       </td>
                     </tr>
-                    <CollapsibleContent>
+                    {isExpanded ? (
                       <tr className="bg-muted/30">
                         <td colSpan={5} className="px-4 py-2">
                           <div className="space-y-2">
@@ -255,8 +251,8 @@ export function TopicHealthTable({
                           </div>
                         </td>
                       </tr>
-                    </CollapsibleContent>
-                  </Collapsible>
+                    ) : null}
+                  </Fragment>
                 )
               })}
             </tbody>

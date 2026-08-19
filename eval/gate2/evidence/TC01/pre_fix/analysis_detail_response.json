@@ -1,0 +1,4628 @@
+{
+  "captured_at": "2026-08-12T09:55:58.117671+00:00",
+  "status_code": 200,
+  "headers": {
+    "date": "Wed, 12 Aug 2026 09:55:54 GMT",
+    "server": "uvicorn",
+    "content-length": "103489",
+    "content-type": "application/json"
+  },
+  "body": {
+    "run": {
+      "id": "run_healthy_01_0",
+      "rosbagId": "healthy_01_0",
+      "rosbagName": "healthy_01_0.mcap",
+      "robotType": "amr-delivery",
+      "status": "succeeded",
+      "progress": 100,
+      "stage": "done",
+      "startedAt": "2026-08-12T09:55:50.845838+00:00",
+      "finishedAt": "2026-08-12T09:55:54.993768+00:00",
+      "anomalyCount": 85,
+      "worstSeverity": "high",
+      "model": "vllm/qwen2.5-coder-32b",
+      "totalLatencyMs": 4147,
+      "promptTokens": 0,
+      "completionTokens": 0,
+      "costUsd": 0.0
+    },
+    "rosbag": {
+      "id": "healthy_01_0",
+      "name": "healthy_01_0.mcap",
+      "robotType": "amr-delivery",
+      "sizeBytes": 29326829,
+      "durationSec": 178,
+      "recordedAt": "1970-01-01T00:36:16.391000+00:00",
+      "uploadedAt": "1970-01-01T00:36:16.391000+00:00",
+      "status": "uploaded",
+      "messageCount": 64953,
+      "topics": [
+        {
+          "name": "/tf_static",
+          "type": "tf2_msgs/msg/TFMessage",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        },
+        {
+          "name": "/tf",
+          "type": "tf2_msgs/msg/TFMessage",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        },
+        {
+          "name": "/imu",
+          "type": "sensor_msgs/msg/Imu",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        },
+        {
+          "name": "/odom",
+          "type": "nav_msgs/msg/Odometry",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        },
+        {
+          "name": "/scan",
+          "type": "sensor_msgs/msg/LaserScan",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        },
+        {
+          "name": "/amcl_pose",
+          "type": "geometry_msgs/msg/PoseWithCovarianceStamped",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        },
+        {
+          "name": "/diagnostics",
+          "type": "diagnostic_msgs/msg/DiagnosticArray",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        },
+        {
+          "name": "/cmd_vel",
+          "type": "geometry_msgs/msg/TwistStamped",
+          "serialization_format": "cdr",
+          "offered_qos_profiles": {}
+        }
+      ],
+      "site": "Unknown",
+      "rosVersion": "ROS 2 Jazzy"
+    },
+    "anomalies": [
+      {
+        "id": "anomaly_001",
+        "runId": "run_healthy_01_0",
+        "kind": "frequency_gap",
+        "title": "Publish gap on /amcl_pose",
+        "severity": "medium",
+        "tSec": 2237.224,
+        "endSec": 2239.925,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.81,
+        "metric": "interval sec 2.701; threshold sec 1.5045"
+      },
+      {
+        "id": "anomaly_002",
+        "runId": "run_healthy_01_0",
+        "kind": "message_drop_burst",
+        "title": "Message drop burst on /amcl_pose",
+        "severity": "medium",
+        "tSec": 2237.224,
+        "endSec": 2239.925,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.8,
+        "metric": "max gap sec 2.701; threshold sec 1.0"
+      },
+      {
+        "id": "anomaly_003",
+        "runId": "run_healthy_01_0",
+        "kind": "timestamp_jitter",
+        "title": "Timestamp jitter on /amcl_pose",
+        "severity": "low",
+        "tSec": 2176.621,
+        "endSec": 2355.328,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.7,
+        "metric": "jitter sec 0.491; threshold sec 0.02"
+      },
+      {
+        "id": "anomaly_004",
+        "runId": "run_healthy_01_0",
+        "kind": "frequency_gap",
+        "title": "Publish gap on /diagnostics",
+        "severity": "medium",
+        "tSec": 2177.0,
+        "endSec": 2178.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.81,
+        "metric": "interval sec 1.0; threshold sec 0.08"
+      },
+      {
+        "id": "anomaly_005",
+        "runId": "run_healthy_01_0",
+        "kind": "timestamp_jitter",
+        "title": "Timestamp jitter on /diagnostics",
+        "severity": "low",
+        "tSec": 2177.0,
+        "endSec": 2355.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.7,
+        "metric": "jitter sec 0.5; threshold sec 0.02"
+      },
+      {
+        "id": "anomaly_006",
+        "runId": "run_healthy_01_0",
+        "kind": "silent_node",
+        "title": "Silent node tf",
+        "severity": "low",
+        "tSec": 2176.4,
+        "endSec": 2355.36,
+        "topics": [
+          "/tf"
+        ],
+        "confidence": 0.72,
+        "metric": "active span sec 178.96"
+      },
+      {
+        "id": "anomaly_007",
+        "runId": "run_healthy_01_0",
+        "kind": "silent_node",
+        "title": "Silent node imu",
+        "severity": "low",
+        "tSec": 2176.506,
+        "endSec": 2355.37,
+        "topics": [
+          "/imu"
+        ],
+        "confidence": 0.72,
+        "metric": "active span sec 178.864"
+      },
+      {
+        "id": "anomaly_008",
+        "runId": "run_healthy_01_0",
+        "kind": "silent_node",
+        "title": "Silent node odom",
+        "severity": "low",
+        "tSec": 2176.52,
+        "endSec": 2355.36,
+        "topics": [
+          "/odom"
+        ],
+        "confidence": 0.72,
+        "metric": "active span sec 178.84"
+      },
+      {
+        "id": "anomaly_009",
+        "runId": "run_healthy_01_0",
+        "kind": "silent_node",
+        "title": "Silent node scan",
+        "severity": "low",
+        "tSec": 2176.526,
+        "endSec": 2355.325,
+        "topics": [
+          "/scan"
+        ],
+        "confidence": 0.72,
+        "metric": "active span sec 178.799"
+      },
+      {
+        "id": "anomaly_010",
+        "runId": "run_healthy_01_0",
+        "kind": "silent_node",
+        "title": "Silent node amcl_pose",
+        "severity": "low",
+        "tSec": 2176.621,
+        "endSec": 2355.328,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.72,
+        "metric": "active span sec 178.707"
+      },
+      {
+        "id": "anomaly_011",
+        "runId": "run_healthy_01_0",
+        "kind": "silent_node",
+        "title": "Silent node diagnostics",
+        "severity": "low",
+        "tSec": 2177.0,
+        "endSec": 2355.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.72,
+        "metric": "active span sec 178.0"
+      },
+      {
+        "id": "anomaly_012",
+        "runId": "run_healthy_01_0",
+        "kind": "silent_node",
+        "title": "Silent node cmd_vel",
+        "severity": "low",
+        "tSec": 2177.184,
+        "endSec": 2355.344,
+        "topics": [
+          "/cmd_vel"
+        ],
+        "confidence": 0.72,
+        "metric": "active span sec 178.16"
+      },
+      {
+        "id": "anomaly_013",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2175.0,
+        "endSec": 2180.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_014",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2180.0,
+        "endSec": 2185.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_015",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2185.0,
+        "endSec": 2190.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_016",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2190.0,
+        "endSec": 2195.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_017",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2195.0,
+        "endSec": 2200.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_018",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2200.0,
+        "endSec": 2205.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_019",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2205.0,
+        "endSec": 2210.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_020",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2210.0,
+        "endSec": 2215.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_021",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2215.0,
+        "endSec": 2220.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_022",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2220.0,
+        "endSec": 2225.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_023",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2225.0,
+        "endSec": 2230.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_024",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2230.0,
+        "endSec": 2235.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_025",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2235.0,
+        "endSec": 2240.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_026",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2240.0,
+        "endSec": 2245.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_027",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2245.0,
+        "endSec": 2250.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_028",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2250.0,
+        "endSec": 2255.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_029",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2255.0,
+        "endSec": 2260.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_030",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2260.0,
+        "endSec": 2265.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_031",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2265.0,
+        "endSec": 2270.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_032",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2270.0,
+        "endSec": 2275.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_033",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2275.0,
+        "endSec": 2280.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_034",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2280.0,
+        "endSec": 2285.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_035",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2285.0,
+        "endSec": 2290.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_036",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2290.0,
+        "endSec": 2295.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_037",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2295.0,
+        "endSec": 2300.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_038",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2300.0,
+        "endSec": 2305.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_039",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2305.0,
+        "endSec": 2310.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_040",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2310.0,
+        "endSec": 2315.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_041",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2315.0,
+        "endSec": 2320.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_042",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2320.0,
+        "endSec": 2325.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_043",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2325.0,
+        "endSec": 2330.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_044",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2330.0,
+        "endSec": 2335.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_045",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2335.0,
+        "endSec": 2340.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_046",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop",
+        "title": "Publish rate drop on /amcl_pose",
+        "severity": "medium",
+        "tSec": 2340.0,
+        "endSec": 2345.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.83,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_047",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2345.0,
+        "endSec": 2350.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_048",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /amcl_pose",
+        "severity": "high",
+        "tSec": 2350.0,
+        "endSec": 2355.0,
+        "topics": [
+          "/amcl_pose"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /amcl_pose"
+      },
+      {
+        "id": "anomaly_049",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2175.0,
+        "endSec": 2180.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_050",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2180.0,
+        "endSec": 2185.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_051",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2185.0,
+        "endSec": 2190.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_052",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2190.0,
+        "endSec": 2195.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_053",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2195.0,
+        "endSec": 2200.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_054",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2200.0,
+        "endSec": 2205.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_055",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2205.0,
+        "endSec": 2210.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_056",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2210.0,
+        "endSec": 2215.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_057",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2215.0,
+        "endSec": 2220.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_058",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2220.0,
+        "endSec": 2225.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_059",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2225.0,
+        "endSec": 2230.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_060",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2230.0,
+        "endSec": 2235.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_061",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2235.0,
+        "endSec": 2240.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_062",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2240.0,
+        "endSec": 2245.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_063",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2245.0,
+        "endSec": 2250.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_064",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2250.0,
+        "endSec": 2255.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_065",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2255.0,
+        "endSec": 2260.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_066",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2260.0,
+        "endSec": 2265.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_067",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2265.0,
+        "endSec": 2270.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_068",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2270.0,
+        "endSec": 2275.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_069",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2275.0,
+        "endSec": 2280.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_070",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2280.0,
+        "endSec": 2285.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_071",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2285.0,
+        "endSec": 2290.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_072",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2290.0,
+        "endSec": 2295.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_073",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2295.0,
+        "endSec": 2300.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_074",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2300.0,
+        "endSec": 2305.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_075",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2305.0,
+        "endSec": 2310.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_076",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2310.0,
+        "endSec": 2315.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_077",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2315.0,
+        "endSec": 2320.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_078",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2320.0,
+        "endSec": 2325.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_079",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2325.0,
+        "endSec": 2330.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_080",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2330.0,
+        "endSec": 2335.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_081",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2335.0,
+        "endSec": 2340.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_082",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2340.0,
+        "endSec": 2345.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_083",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2345.0,
+        "endSec": 2350.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_084",
+        "runId": "run_healthy_01_0",
+        "kind": "hz_drop_critical",
+        "title": "Severe publish rate drop on /diagnostics",
+        "severity": "high",
+        "tSec": 2350.0,
+        "endSec": 2355.0,
+        "topics": [
+          "/diagnostics"
+        ],
+        "confidence": 0.9,
+        "metric": "detected on /diagnostics"
+      },
+      {
+        "id": "anomaly_085",
+        "runId": "run_healthy_01_0",
+        "kind": "header_latency",
+        "title": "Header latency on /cmd_vel",
+        "severity": "medium",
+        "tSec": 2187.344,
+        "endSec": 2354.604,
+        "topics": [
+          "/cmd_vel"
+        ],
+        "confidence": 0.84,
+        "metric": "detected on /cmd_vel"
+      }
+    ],
+    "aiResults": [
+      {
+        "id": "ai_001",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_001",
+        "issue": "Producer thread starvation or transport buffering paused publishing.",
+        "rootCause": "Producer thread starvation or transport buffering paused publishing.",
+        "confidence": 0.81,
+        "explanation": "Frequent publish gap detected on /amcl_pose. Producer thread starvation or transport buffering paused publishing.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2237.224,
+            "detail": "Frequent publish gap detected on /amcl_pose. Producer thread starvation or transport buffering paused publishing."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_001"
+      },
+      {
+        "id": "ai_002",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_002",
+        "issue": "A single long inter-message interval indicates dropped or coalesced messages.",
+        "rootCause": "A single long inter-message interval indicates dropped or coalesced messages.",
+        "confidence": 0.8,
+        "explanation": "Burst of dropped messages detected on /amcl_pose. A single long inter-message interval indicates dropped or coalesced messages.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2237.224,
+            "detail": "Burst of dropped messages detected on /amcl_pose. A single long inter-message interval indicates dropped or coalesced messages."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_002"
+      },
+      {
+        "id": "ai_003",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_003",
+        "issue": "Publish cadence deviates more than expected from the nominal rate.",
+        "rootCause": "Publish cadence deviates more than expected from the nominal rate.",
+        "confidence": 0.7,
+        "explanation": "Timestamp jitter detected on /amcl_pose. Publish cadence deviates more than expected from the nominal rate.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2176.621,
+            "detail": "Timestamp jitter detected on /amcl_pose. Publish cadence deviates more than expected from the nominal rate."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_003"
+      },
+      {
+        "id": "ai_004",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_004",
+        "issue": "Producer thread starvation or transport buffering paused publishing.",
+        "rootCause": "Producer thread starvation or transport buffering paused publishing.",
+        "confidence": 0.81,
+        "explanation": "Frequent publish gap detected on /diagnostics. Producer thread starvation or transport buffering paused publishing.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2177.0,
+            "detail": "Frequent publish gap detected on /diagnostics. Producer thread starvation or transport buffering paused publishing."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_004"
+      },
+      {
+        "id": "ai_005",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_005",
+        "issue": "Publish cadence deviates more than expected from the nominal rate.",
+        "rootCause": "Publish cadence deviates more than expected from the nominal rate.",
+        "confidence": 0.7,
+        "explanation": "Timestamp jitter detected on /diagnostics. Publish cadence deviates more than expected from the nominal rate.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2177.0,
+            "detail": "Timestamp jitter detected on /diagnostics. Publish cadence deviates more than expected from the nominal rate."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_005"
+      },
+      {
+        "id": "ai_006",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_006",
+        "issue": "The node stopped publishing for the full observation window.",
+        "rootCause": "The node stopped publishing for the full observation window.",
+        "confidence": 0.72,
+        "explanation": "Node silence detected for topic /tf. The node stopped publishing for the full observation window.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/tf",
+            "tSec": 2176.4,
+            "detail": "Node silence detected for topic /tf. The node stopped publishing for the full observation window."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_006"
+      },
+      {
+        "id": "ai_007",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_007",
+        "issue": "The node stopped publishing for the full observation window.",
+        "rootCause": "The node stopped publishing for the full observation window.",
+        "confidence": 0.72,
+        "explanation": "Node silence detected for topic /imu. The node stopped publishing for the full observation window.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/imu",
+            "tSec": 2176.506,
+            "detail": "Node silence detected for topic /imu. The node stopped publishing for the full observation window."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_007"
+      },
+      {
+        "id": "ai_008",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_008",
+        "issue": "The node stopped publishing for the full observation window.",
+        "rootCause": "The node stopped publishing for the full observation window.",
+        "confidence": 0.72,
+        "explanation": "Node silence detected for topic /odom. The node stopped publishing for the full observation window.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/odom",
+            "tSec": 2176.52,
+            "detail": "Node silence detected for topic /odom. The node stopped publishing for the full observation window."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_008"
+      },
+      {
+        "id": "ai_009",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_009",
+        "issue": "The node stopped publishing for the full observation window.",
+        "rootCause": "The node stopped publishing for the full observation window.",
+        "confidence": 0.72,
+        "explanation": "Node silence detected for topic /scan. The node stopped publishing for the full observation window.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/scan",
+            "tSec": 2176.526,
+            "detail": "Node silence detected for topic /scan. The node stopped publishing for the full observation window."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_009"
+      },
+      {
+        "id": "ai_010",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_010",
+        "issue": "The node stopped publishing for the full observation window.",
+        "rootCause": "The node stopped publishing for the full observation window.",
+        "confidence": 0.72,
+        "explanation": "Node silence detected for topic /amcl_pose. The node stopped publishing for the full observation window.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2176.621,
+            "detail": "Node silence detected for topic /amcl_pose. The node stopped publishing for the full observation window."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_010"
+      },
+      {
+        "id": "ai_011",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_011",
+        "issue": "The node stopped publishing for the full observation window.",
+        "rootCause": "The node stopped publishing for the full observation window.",
+        "confidence": 0.72,
+        "explanation": "Node silence detected for topic /diagnostics. The node stopped publishing for the full observation window.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2177.0,
+            "detail": "Node silence detected for topic /diagnostics. The node stopped publishing for the full observation window."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_011"
+      },
+      {
+        "id": "ai_012",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_012",
+        "issue": "The node stopped publishing for the full observation window.",
+        "rootCause": "The node stopped publishing for the full observation window.",
+        "confidence": 0.72,
+        "explanation": "Node silence detected for topic /cmd_vel. The node stopped publishing for the full observation window.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/cmd_vel",
+            "tSec": 2177.184,
+            "detail": "Node silence detected for topic /cmd_vel. The node stopped publishing for the full observation window."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_012"
+      },
+      {
+        "id": "ai_013",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_013",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2175.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_013"
+      },
+      {
+        "id": "ai_014",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_014",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2180.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_014"
+      },
+      {
+        "id": "ai_015",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_015",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2185.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_015"
+      },
+      {
+        "id": "ai_016",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_016",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2190.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_016"
+      },
+      {
+        "id": "ai_017",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_017",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2195.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_017"
+      },
+      {
+        "id": "ai_018",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_018",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2200.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_018"
+      },
+      {
+        "id": "ai_019",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_019",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2205.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_019"
+      },
+      {
+        "id": "ai_020",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_020",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2210.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_020"
+      },
+      {
+        "id": "ai_021",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_021",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2215.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_021"
+      },
+      {
+        "id": "ai_022",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_022",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2220.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_022"
+      },
+      {
+        "id": "ai_023",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_023",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2225.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_023"
+      },
+      {
+        "id": "ai_024",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_024",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2230.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_024"
+      },
+      {
+        "id": "ai_025",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_025",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2235.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_025"
+      },
+      {
+        "id": "ai_026",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_026",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2240.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_026"
+      },
+      {
+        "id": "ai_027",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_027",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2245.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_027"
+      },
+      {
+        "id": "ai_028",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_028",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2250.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_028"
+      },
+      {
+        "id": "ai_029",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_029",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2255.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_029"
+      },
+      {
+        "id": "ai_030",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_030",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2260.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_030"
+      },
+      {
+        "id": "ai_031",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_031",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2265.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_031"
+      },
+      {
+        "id": "ai_032",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_032",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2270.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_032"
+      },
+      {
+        "id": "ai_033",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_033",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2275.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_033"
+      },
+      {
+        "id": "ai_034",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_034",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2280.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_034"
+      },
+      {
+        "id": "ai_035",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_035",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2285.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_035"
+      },
+      {
+        "id": "ai_036",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_036",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2290.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_036"
+      },
+      {
+        "id": "ai_037",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_037",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2295.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_037"
+      },
+      {
+        "id": "ai_038",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_038",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2300.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_038"
+      },
+      {
+        "id": "ai_039",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_039",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2305.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_039"
+      },
+      {
+        "id": "ai_040",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_040",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2310.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_040"
+      },
+      {
+        "id": "ai_041",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_041",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2315.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_041"
+      },
+      {
+        "id": "ai_042",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_042",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2320.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_042"
+      },
+      {
+        "id": "ai_043",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_043",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2325.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_043"
+      },
+      {
+        "id": "ai_044",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_044",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2330.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_044"
+      },
+      {
+        "id": "ai_045",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_045",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2335.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_045"
+      },
+      {
+        "id": "ai_046",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_046",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.83,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2340.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_046"
+      },
+      {
+        "id": "ai_047",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_047",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2345.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_047"
+      },
+      {
+        "id": "ai_048",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_048",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/amcl_pose",
+            "tSec": 2350.0,
+            "detail": "Anomaly pattern detected on /amcl_pose. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_048"
+      },
+      {
+        "id": "ai_049",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_049",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2175.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_049"
+      },
+      {
+        "id": "ai_050",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_050",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2180.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_050"
+      },
+      {
+        "id": "ai_051",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_051",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2185.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_051"
+      },
+      {
+        "id": "ai_052",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_052",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2190.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_052"
+      },
+      {
+        "id": "ai_053",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_053",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2195.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_053"
+      },
+      {
+        "id": "ai_054",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_054",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2200.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_054"
+      },
+      {
+        "id": "ai_055",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_055",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2205.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_055"
+      },
+      {
+        "id": "ai_056",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_056",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2210.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_056"
+      },
+      {
+        "id": "ai_057",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_057",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2215.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_057"
+      },
+      {
+        "id": "ai_058",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_058",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2220.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_058"
+      },
+      {
+        "id": "ai_059",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_059",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2225.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_059"
+      },
+      {
+        "id": "ai_060",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_060",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2230.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_060"
+      },
+      {
+        "id": "ai_061",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_061",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2235.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_061"
+      },
+      {
+        "id": "ai_062",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_062",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2240.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_062"
+      },
+      {
+        "id": "ai_063",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_063",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2245.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_063"
+      },
+      {
+        "id": "ai_064",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_064",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2250.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_064"
+      },
+      {
+        "id": "ai_065",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_065",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2255.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_065"
+      },
+      {
+        "id": "ai_066",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_066",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2260.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_066"
+      },
+      {
+        "id": "ai_067",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_067",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2265.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_067"
+      },
+      {
+        "id": "ai_068",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_068",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2270.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_068"
+      },
+      {
+        "id": "ai_069",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_069",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2275.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_069"
+      },
+      {
+        "id": "ai_070",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_070",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2280.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_070"
+      },
+      {
+        "id": "ai_071",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_071",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2285.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_071"
+      },
+      {
+        "id": "ai_072",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_072",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2290.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_072"
+      },
+      {
+        "id": "ai_073",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_073",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2295.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_073"
+      },
+      {
+        "id": "ai_074",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_074",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2300.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_074"
+      },
+      {
+        "id": "ai_075",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_075",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2305.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_075"
+      },
+      {
+        "id": "ai_076",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_076",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2310.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_076"
+      },
+      {
+        "id": "ai_077",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_077",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2315.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_077"
+      },
+      {
+        "id": "ai_078",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_078",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2320.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_078"
+      },
+      {
+        "id": "ai_079",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_079",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2325.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_079"
+      },
+      {
+        "id": "ai_080",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_080",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2330.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_080"
+      },
+      {
+        "id": "ai_081",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_081",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2335.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_081"
+      },
+      {
+        "id": "ai_082",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_082",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2340.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_082"
+      },
+      {
+        "id": "ai_083",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_083",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2345.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_083"
+      },
+      {
+        "id": "ai_084",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_084",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.9,
+        "explanation": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/diagnostics",
+            "tSec": 2350.0,
+            "detail": "Anomaly pattern detected on /diagnostics. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_084"
+      },
+      {
+        "id": "ai_085",
+        "runId": "run_healthy_01_0",
+        "anomalyId": "anomaly_085",
+        "issue": "Raw signal deviates from the expected cadence.",
+        "rootCause": "Raw signal deviates from the expected cadence.",
+        "confidence": 0.84,
+        "explanation": "Anomaly pattern detected on /cmd_vel. Raw signal deviates from the expected cadence.",
+        "suggestedFix": [
+          "Check the producing node for publish stalls or thread starvation.",
+          "Validate the network / recorder path for bursty or dropped message windows."
+        ],
+        "evidence": [
+          {
+            "topic": "/cmd_vel",
+            "tSec": 2187.344,
+            "detail": "Anomaly pattern detected on /cmd_vel. Raw signal deviates from the expected cadence."
+          }
+        ],
+        "reviewStatus": "pending",
+        "model": "canned-fallback",
+        "latencyMs": 0,
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "vllmRequestId": "vllm_req_085"
+      }
+    ],
+    "health": {
+      "health_score": 66.2,
+      "status": "yellow",
+      "status_zones": {
+        "green_min": 80.0,
+        "yellow_min": 60.0,
+        "red_max": 60.0
+      },
+      "trigger_llm_deep_dive": true,
+      "summary": {
+        "total_messages": 64953,
+        "total_detections": 85,
+        "worst_severity": "high",
+        "groups": {
+          "log": {
+            "score": 100.0,
+            "weight": 0.2,
+            "detection_count": 0
+          },
+          "frequency": {
+            "score": 0.0,
+            "weight": 0.3,
+            "detection_count": 82
+          },
+          "latency": {
+            "score": 75.0,
+            "weight": 0.15,
+            "detection_count": 3
+          },
+          "tf": {
+            "score": 100.0,
+            "weight": 0.25,
+            "detection_count": 0
+          },
+          "payload": {
+            "score": 100.0,
+            "weight": 0.1,
+            "detection_count": 0
+          }
+        }
+      },
+      "detections_by_group": {
+        "log": [],
+        "frequency": [
+          {
+            "kind": "frequency_gap",
+            "topic": "/amcl_pose",
+            "severity": "medium",
+            "tSec": 2237.224,
+            "endSec": 2239.925,
+            "evidence": {
+              "interval_sec": 2.701,
+              "threshold_sec": 1.5045
+            }
+          },
+          {
+            "kind": "message_drop_burst",
+            "topic": "/amcl_pose",
+            "severity": "medium",
+            "tSec": 2237.224,
+            "endSec": 2239.925,
+            "evidence": {
+              "max_gap_sec": 2.701,
+              "threshold_sec": 1.0
+            }
+          },
+          {
+            "kind": "frequency_gap",
+            "topic": "/diagnostics",
+            "severity": "medium",
+            "tSec": 2177.0,
+            "endSec": 2178.0,
+            "evidence": {
+              "interval_sec": 1.0,
+              "threshold_sec": 0.08
+            }
+          },
+          {
+            "kind": "silent_node",
+            "topic": "/tf",
+            "severity": "low",
+            "tSec": 2176.4,
+            "endSec": 2355.36,
+            "evidence": {
+              "node": "tf",
+              "active_span_sec": 178.96
+            }
+          },
+          {
+            "kind": "silent_node",
+            "topic": "/imu",
+            "severity": "low",
+            "tSec": 2176.506,
+            "endSec": 2355.37,
+            "evidence": {
+              "node": "imu",
+              "active_span_sec": 178.864
+            }
+          },
+          {
+            "kind": "silent_node",
+            "topic": "/odom",
+            "severity": "low",
+            "tSec": 2176.52,
+            "endSec": 2355.36,
+            "evidence": {
+              "node": "odom",
+              "active_span_sec": 178.84
+            }
+          },
+          {
+            "kind": "silent_node",
+            "topic": "/scan",
+            "severity": "low",
+            "tSec": 2176.526,
+            "endSec": 2355.325,
+            "evidence": {
+              "node": "scan",
+              "active_span_sec": 178.799
+            }
+          },
+          {
+            "kind": "silent_node",
+            "topic": "/amcl_pose",
+            "severity": "low",
+            "tSec": 2176.621,
+            "endSec": 2355.328,
+            "evidence": {
+              "node": "amcl_pose",
+              "active_span_sec": 178.707
+            }
+          },
+          {
+            "kind": "silent_node",
+            "topic": "/diagnostics",
+            "severity": "low",
+            "tSec": 2177.0,
+            "endSec": 2355.0,
+            "evidence": {
+              "node": "diagnostics",
+              "active_span_sec": 178.0
+            }
+          },
+          {
+            "kind": "silent_node",
+            "topic": "/cmd_vel",
+            "severity": "low",
+            "tSec": 2177.184,
+            "endSec": 2355.344,
+            "evidence": {
+              "node": "cmd_vel",
+              "active_span_sec": 178.16
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2175.0,
+            "endSec": 2180.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.8204,
+              "drop_pct": 0.726,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2180.0,
+            "endSec": 2185.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.2114,
+              "drop_pct": 0.8177,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2185.0,
+            "endSec": 2190.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.4674,
+              "drop_pct": 0.7792,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2190.0,
+            "endSec": 2195.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.1109,
+              "drop_pct": 0.8328,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2195.0,
+            "endSec": 2200.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.2853,
+              "drop_pct": 0.8066,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2200.0,
+            "endSec": 2205.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 2.5008,
+              "drop_pct": 0.6236,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2205.0,
+            "endSec": 2210.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.214,
+              "drop_pct": 0.8173,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2210.0,
+            "endSec": 2215.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.4289,
+              "drop_pct": 0.785,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2215.0,
+            "endSec": 2220.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.2165,
+              "drop_pct": 0.8169,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2220.0,
+            "endSec": 2225.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.1644,
+              "drop_pct": 0.8248,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2225.0,
+            "endSec": 2230.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 2.4105,
+              "drop_pct": 0.6372,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2230.0,
+            "endSec": 2235.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.2488,
+              "drop_pct": 0.8121,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2235.0,
+            "endSec": 2240.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 0.8339,
+              "drop_pct": 0.8745,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2240.0,
+            "endSec": 2245.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.7032,
+              "drop_pct": 0.7437,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2245.0,
+            "endSec": 2250.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.1606,
+              "drop_pct": 0.8253,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2250.0,
+            "endSec": 2255.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.8243,
+              "drop_pct": 0.7254,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2255.0,
+            "endSec": 2260.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.1631,
+              "drop_pct": 0.825,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2260.0,
+            "endSec": 2265.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.2523,
+              "drop_pct": 0.8115,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2265.0,
+            "endSec": 2270.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 2.0592,
+              "drop_pct": 0.6901,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2270.0,
+            "endSec": 2275.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.2204,
+              "drop_pct": 0.8163,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2275.0,
+            "endSec": 2280.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.5389,
+              "drop_pct": 0.7684,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2280.0,
+            "endSec": 2285.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.1641,
+              "drop_pct": 0.8248,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2285.0,
+            "endSec": 2290.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.2103,
+              "drop_pct": 0.8179,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2290.0,
+            "endSec": 2295.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 2.3529,
+              "drop_pct": 0.6459,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2295.0,
+            "endSec": 2300.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.1623,
+              "drop_pct": 0.8251,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2300.0,
+            "endSec": 2305.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.6639,
+              "drop_pct": 0.7496,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2305.0,
+            "endSec": 2310.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.1652,
+              "drop_pct": 0.8246,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2310.0,
+            "endSec": 2315.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.1644,
+              "drop_pct": 0.8248,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2315.0,
+            "endSec": 2320.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 2.261,
+              "drop_pct": 0.6597,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2320.0,
+            "endSec": 2325.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.1865,
+              "drop_pct": 0.8214,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2325.0,
+            "endSec": 2330.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.4606,
+              "drop_pct": 0.7802,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2330.0,
+            "endSec": 2335.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.3024,
+              "drop_pct": 0.804,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2335.0,
+            "endSec": 2340.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.2174,
+              "drop_pct": 0.8168,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop",
+            "topic": "/amcl_pose",
+            "severity": "medium",
+            "tSec": 2340.0,
+            "endSec": 2345.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 3.5273,
+              "drop_pct": 0.4691,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2345.0,
+            "endSec": 2350.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.1893,
+              "drop_pct": 0.821,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/amcl_pose",
+            "severity": "high",
+            "tSec": 2350.0,
+            "endSec": 2355.0,
+            "evidence": {
+              "expected_hz": 6.6445,
+              "actual_hz": 1.1416,
+              "drop_pct": 0.8282,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2175.0,
+            "endSec": 2180.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 3.0,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2180.0,
+            "endSec": 2185.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2185.0,
+            "endSec": 2190.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2190.0,
+            "endSec": 2195.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2195.0,
+            "endSec": 2200.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2200.0,
+            "endSec": 2205.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2205.0,
+            "endSec": 2210.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2210.0,
+            "endSec": 2215.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2215.0,
+            "endSec": 2220.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2220.0,
+            "endSec": 2225.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2225.0,
+            "endSec": 2230.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2230.0,
+            "endSec": 2235.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2235.0,
+            "endSec": 2240.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2240.0,
+            "endSec": 2245.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2245.0,
+            "endSec": 2250.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2250.0,
+            "endSec": 2255.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2255.0,
+            "endSec": 2260.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2260.0,
+            "endSec": 2265.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2265.0,
+            "endSec": 2270.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2270.0,
+            "endSec": 2275.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2275.0,
+            "endSec": 2280.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2280.0,
+            "endSec": 2285.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2285.0,
+            "endSec": 2290.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2290.0,
+            "endSec": 2295.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2295.0,
+            "endSec": 2300.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2300.0,
+            "endSec": 2305.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2305.0,
+            "endSec": 2310.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2310.0,
+            "endSec": 2315.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2315.0,
+            "endSec": 2320.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2320.0,
+            "endSec": 2325.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2325.0,
+            "endSec": 2330.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2330.0,
+            "endSec": 2335.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2335.0,
+            "endSec": 2340.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2340.0,
+            "endSec": 2345.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2345.0,
+            "endSec": 2350.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          },
+          {
+            "kind": "hz_drop_critical",
+            "topic": "/diagnostics",
+            "severity": "high",
+            "tSec": 2350.0,
+            "endSec": 2355.0,
+            "evidence": {
+              "expected_hz": 2000000.0,
+              "actual_hz": 2.5,
+              "drop_pct": 1.0,
+              "window_sec": 5.0
+            }
+          }
+        ],
+        "latency": [
+          {
+            "kind": "timestamp_jitter",
+            "topic": "/amcl_pose",
+            "severity": "low",
+            "tSec": 2176.621,
+            "endSec": 2355.328,
+            "evidence": {
+              "jitter_sec": 0.491,
+              "threshold_sec": 0.02
+            }
+          },
+          {
+            "kind": "timestamp_jitter",
+            "topic": "/diagnostics",
+            "severity": "low",
+            "tSec": 2177.0,
+            "endSec": 2355.0,
+            "evidence": {
+              "jitter_sec": 0.5,
+              "threshold_sec": 0.02
+            }
+          },
+          {
+            "kind": "header_latency",
+            "topic": "/cmd_vel",
+            "severity": "medium",
+            "tSec": 2187.344,
+            "endSec": 2354.604,
+            "evidence": {
+              "max_latency_ms": 941.0,
+              "threshold_ms": 100.0,
+              "count": 594
+            }
+          }
+        ],
+        "tf": [],
+        "payload": []
+      }
+    }
+  }
+}

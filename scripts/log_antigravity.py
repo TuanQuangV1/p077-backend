@@ -166,6 +166,23 @@ def _conv_matches_repo(cwds: set[str], repo_root_n: str) -> bool:
 # Prompt extraction
 # ---------------------------------------------------------------------------
 
+MODEL_SETTING_RE = re.compile(
+    r"`Model Selection`\s+from\s+.*?\s+to\s+(.*?)(?:\.\s|\n|$)", re.DOTALL
+)
+
+def extract_model_name(content: str) -> str:
+    """Extract model name from <USER_SETTINGS_CHANGE> block if present."""
+    if not isinstance(content, str):
+        return ""
+    m = MODEL_SETTING_RE.search(content)
+    if m:
+        raw = m.group(1).strip()
+        # Clean slug: e.g. "Gemini 3.6 Flash (High)" -> "gemini-3.6-flash-high"
+        cleaned = re.sub(r"[^\w\.-]+", "-", raw.lower()).strip("-")
+        return cleaned
+    return ""
+
+
 def extract_user_prompt(content: str) -> str:
     """Pull the text between <USER_REQUEST>...</USER_REQUEST>. Fall back to
     stripping known auxiliary blocks if no wrapper is present."""
@@ -225,6 +242,7 @@ def iter_user_inputs(brain_dirs: list[Path], cutoff: datetime | None,
             if repo_root_n and not _conv_matches_repo(cwds, repo_root_n):
                 continue
 
+            current_model = "gemini"
             with open(transcript, encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
@@ -234,6 +252,12 @@ def iter_user_inputs(brain_dirs: list[Path], cutoff: datetime | None,
                         entry = json.loads(line)
                     except json.JSONDecodeError:
                         continue
+
+                    content_str = entry.get("content", "")
+                    extracted_model = extract_model_name(content_str)
+                    if extracted_model:
+                        current_model = extracted_model
+
                     if (entry.get("type") != "USER_INPUT"
                             or entry.get("source") != "USER_EXPLICIT"):
                         continue
@@ -249,7 +273,7 @@ def iter_user_inputs(brain_dirs: list[Path], cutoff: datetime | None,
                         except ValueError:
                             pass
 
-                    text = extract_user_prompt(entry.get("content", ""))
+                    text = extract_user_prompt(content_str)
                     if len(text) < 2:
                         continue
 
@@ -258,6 +282,7 @@ def iter_user_inputs(brain_dirs: list[Path], cutoff: datetime | None,
                         "step_index": int(entry.get("step_index", 0)),
                         "timestamp": ts,
                         "text": text,
+                        "model": current_model,
                     }
 
 
@@ -284,7 +309,7 @@ def build_entry(msg: dict, repo: str, branch: str, commit: str,
         "event": "UserPrompt",
         "entry_id": f"antigravity-{msg['conv_id']}-{msg['step_index']:05d}",
         "session_id": msg["conv_id"],
-        "model": "gemini",
+        "model": msg.get("model", "gemini"),
         "repo": repo,
         "branch": branch,
         "commit": commit,

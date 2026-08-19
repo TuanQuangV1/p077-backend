@@ -1,33 +1,32 @@
 import type { Rosbag, Severity } from "./types"
 
-const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
-const API_V1_BASE = `${DEFAULT_API_BASE}/api/v1`
-
 export function resolveApiUrl(url: string): string {
     if (!url.startsWith("/api/")) return url
 
     const path = url.slice("/api/".length)
     const [route] = path.split("?")
 
-    if (route === "overview") return `${API_V1_BASE}/dashboard/overview`
-    if (route === "rosbags") return `${API_V1_BASE}/datasets`
+    if (route === "overview") return "/api/v1/dashboard/overview"
+    if (route === "rosbags") return "/api/v1/datasets"
     if (route.startsWith("rosbags/")) {
         const [id] = route.slice("rosbags/".length).split("/")
-        return `${API_V1_BASE}/datasets/${id}`
+        return `/api/v1/datasets/${id}`
     }
-    if (route === "runs") return `${API_V1_BASE}/analysis`
+    if (route === "runs") return "/api/v1/analysis"
+    if (route === "analysis/explain") return "/api/v1/analysis/explain"
     if (route.startsWith("runs/")) {
         const suffix = route.slice("runs/".length)
         if (suffix.includes("/simulation")) return url
         if (suffix.includes("/timeline")) return url
         if (suffix.includes("/ai")) return url
         if (suffix.includes("/logs")) return url
-        if (suffix.includes("/health")) return `${API_V1_BASE}/analysis/${suffix}`
+        if (suffix.includes("/health")) return `/api/v1/analysis/${suffix}`
         const [runId] = suffix.split("/")
-        return `${API_V1_BASE}/analysis/${runId}`
+        return `/api/v1/analysis/${runId}`
     }
-    if (route === "review") return `${API_V1_BASE}/review`
-    if (route.startsWith("review/")) return `${API_V1_BASE}/${route}`
+    if (route === "review") return "/api/v1/review"
+    if (route === "review/stats") return "/api/v1/review/stats"
+    if (route.startsWith("review/")) return `/api/v1/${route}`
     if (route.startsWith("reports")) return url
     if (route.startsWith("vllm/")) return url
     if (route.startsWith("stream")) return url
@@ -58,15 +57,50 @@ export async function del<T>(url: string): Promise<T> {
     return requestJson<T>(url, { method: "DELETE" })
 }
 
+/** One row of the backend's per-(topic, window) NDJSON summary export. */
+export interface WindowSummaryRow {
+    window_start: string
+    topic: string
+    node: string
+    message_type: string
+    count: number
+    expected_hz: number | null
+    actual_hz: number
+    max_gap_ms: number
+    jitter_ms: number
+    drift_ms: number | null
+}
+
+/**
+ * Streams the run's windowed bag summary (NDJSON, one row per topic+window).
+ *
+ * Kept separate from `fetcher` because the response is newline-delimited JSON,
+ * not a single JSON document. The backend re-reads the whole bag per call
+ * (~1s), so callers should fetch once per run rather than per view change.
+ *
+ * All backend calls go through the Next.js `/api/v1` rewrite (see
+ * next.config.mjs), so URLs stay relative and the backend origin lives in one
+ * place only.
+ */
+export async function fetchWindowSummaries(runId: string, windowSec = 5): Promise<WindowSummaryRow[]> {
+    const res = await fetch(`/api/v1/analysis/${runId}/export/windows?window_sec=${windowSec}`)
+    if (!res.ok) throw new Error(`Request failed: ${res.status}`)
+    const body = await res.text()
+    return body.split("\n").filter(Boolean).map((line) => JSON.parse(line) as WindowSummaryRow)
+}
+
 /** Uploads a rosbag file (or rosbag2 zip) to the backend via multipart. */
 export async function uploadRosbag(file: File): Promise<Rosbag> {
     const form = new FormData()
     form.append("file", file)
-    const res = await fetch(`${API_V1_BASE}/datasets/upload`, {
+    const res = await fetch("/api/v1/datasets/upload", {
         method: "POST",
         body: form,
     })
-    if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
+    if (!res.ok) {
+        const body = await res.json().catch(() => null) as { detail?: string } | null
+        throw new Error(body?.detail ?? `HTTP ${res.status}`)
+    }
     return res.json() as Promise<Rosbag>
 }
 

@@ -1,0 +1,61 @@
+{
+  "captured_at": "2026-08-12T10:08:19.260538+00:00",
+  "status_code": 200,
+  "headers": {
+    "date": "Wed, 12 Aug 2026 10:08:13 GMT",
+    "server": "uvicorn",
+    "content-length": "609",
+    "content-type": "application/json"
+  },
+  "body": {
+    "health": {
+      "health_score": 100.0,
+      "status": "green",
+      "status_zones": {
+        "green_min": 80.0,
+        "yellow_min": 60.0,
+        "red_max": 60.0
+      },
+      "trigger_llm_deep_dive": false,
+      "summary": {
+        "total_messages": 64953,
+        "total_detections": 0,
+        "worst_severity": "low",
+        "groups": {
+          "log": {
+            "score": 100.0,
+            "weight": 0.2,
+            "detection_count": 0
+          },
+          "frequency": {
+            "score": 100.0,
+            "weight": 0.3,
+            "detection_count": 0
+          },
+          "latency": {
+            "score": 100.0,
+            "weight": 0.15,
+            "detection_count": 0
+          },
+          "tf": {
+            "score": 100.0,
+            "weight": 0.25,
+            "detection_count": 0
+          },
+          "payload": {
+            "score": 100.0,
+            "weight": 0.1,
+            "detection_count": 0
+          }
+        }
+      },
+      "detections_by_group": {
+        "log": [],
+        "frequency": [],
+        "latency": [],
+        "tf": [],
+        "payload": []
+      }
+    }
+  }
+}
