@@ -8,6 +8,8 @@ import numpy as np
 import pytest
 
 from src.services.diagnostics import (
+    _MAX_EPISODES_PER_RULE,
+    _threshold_episodes,
     denormalize_message_stream,
     detect_anomalies,
     parse_mcap_file,
@@ -716,3 +718,132 @@ def test_detect_anomalies_accepts_expected_hz_kwarg() -> None:
     messages = _hz_stream(30.0, 0.5)  # 15 messages at 30 Hz
     summary = detect_anomalies(messages, thresholds={"hz_drop_min_messages": 5}, expected_hz={"/scan": 60.0})
     assert any(d["kind"] in {"hz_drop", "hz_drop_critical"} for d in summary["detections"])
+
+
+def _spans(durations: list[float], start: float = 0.0) -> list[tuple[float, float, float]]:
+    """Build (start, end, duration) spans laid end to end from ``start``."""
+    spans = []
+    cursor = start
+    for duration in durations:
+        spans.append((cursor, cursor + duration, duration))
+        cursor += duration
+    return spans
+
+
+def test_threshold_episodes_keeps_breaches_separated_by_healthy_traffic_apart() -> None:
+    """Three distinct outages must stay three detections, not collapse into one."""
+    spans = _spans([0.1, 5.0, 0.1, 0.1, 5.0, 0.1, 5.0])
+
+    episodes = _threshold_episodes(spans, threshold=1.0)
+
+    assert [(round(worst, 3), count) for _, _, worst, count in episodes] == [(5.0, 1), (5.0, 1), (5.0, 1)]
+
+
+def test_threshold_episodes_merges_a_sustained_breach_into_one_span() -> None:
+    """A rate drop held for many messages is one incident covering its real duration."""
+    spans = _spans([0.02, 0.1, 0.1, 0.1, 0.1, 0.02], start=100.0)
+
+    episodes = _threshold_episodes(spans, threshold=0.08)
+
+    assert len(episodes) == 1
+    start_sec, end_sec, worst, count = episodes[0]
+    assert (start_sec, round(end_sec, 3)) == (100.02, 100.42)
+    assert count == 4
+    assert worst == pytest.approx(0.1)
+
+
+def test_threshold_episodes_reports_nothing_when_every_span_is_within_threshold() -> None:
+    assert _threshold_episodes(_spans([0.05, 0.05, 0.05]), threshold=0.08) == []
+
+
+def test_threshold_episodes_caps_runaway_topics_at_the_worst_episodes_in_time_order() -> None:
+    """A systematically broken topic yields the worst episodes, still time-ordered."""
+    durations = []
+    for index in range(_MAX_EPISODES_PER_RULE + 5):
+        durations += [1.0 + index, 0.01]
+    episodes = _threshold_episodes(_spans(durations), threshold=0.5)
+
+    assert len(episodes) == _MAX_EPISODES_PER_RULE
+    assert [start for start, _, _, _ in episodes] == sorted(start for start, _, _, _ in episodes)
+    # The five shortest breaches are the ones dropped.
+    assert min(worst for _, _, worst, _ in episodes) == pytest.approx(6.0)
+
+
+def _tf_message(t: float, frame_id: str, child_frame_id: str) -> dict[str, Any]:
+    return {
+        "timestamp": t,
+        "topic": "/tf",
+        "node": "tf",
+        "message_type": "tf2_msgs/msg/TFMessage",
+        "transforms": [{"frame_id": frame_id, "child_frame_id": child_frame_id}],
+    }
+
+
+def test_tf_missing_gap_is_evaluated_per_edge_not_masked_by_a_healthy_sibling() -> None:
+    """A silent localization edge must be flagged even while a wheel joint keeps publishing.
+
+    Aggregating gaps across the whole /tf topic hides a dead edge as long as
+    any other edge keeps publishing; the rule must key on child_frame_id.
+    """
+    healthy_edge = [_tf_message(i / 10.0, "base_link", "wheel_left_link") for i in range(51)]  # every 0.1s to 5.0
+    silent_edge = [_tf_message(0.0, "odom", "base_footprint")]  # never republished
+
+    summary = detect_anomalies(healthy_edge + silent_edge)
+
+    gaps = [d for d in summary["detections"] if d["kind"] == "tf_missing_gap"]
+    assert len(gaps) == 1
+    assert gaps[0]["evidence"]["child_frame"] == "base_footprint"
+    assert gaps[0]["evidence"]["parent_frame"] == "odom"
+    assert gaps[0]["evidence"]["gap_sec"] == pytest.approx(5.0)
+    assert gaps[0]["tSec"] == pytest.approx(0.0)
+    assert gaps[0]["endSec"] == pytest.approx(5.0)
+
+
+def test_tf_missing_gap_does_not_flag_a_latched_tf_static_transform() -> None:
+    """/tf_static is published once and legitimately never repeated; that's not a gap."""
+    messages = [
+        {
+            "timestamp": 0.0,
+            "topic": "/tf_static",
+            "node": "tf",
+            "message_type": "tf2_msgs/msg/TFMessage",
+            "transforms": [{"frame_id": "base_link", "child_frame_id": "laser"}],
+        },
+        {"timestamp": 100.0, "topic": "/imu", "node": "imu", "message_type": "sensor_msgs/msg/Imu"},
+    ]
+    summary = detect_anomalies(messages)
+    assert not any(d["kind"] == "tf_missing_gap" for d in summary["detections"])
+
+
+def _scan_message(t: float, nan_ratio: float) -> dict[str, Any]:
+    return {
+        "timestamp": t,
+        "topic": "/scan",
+        "node": "scan",
+        "message_type": "sensor_msgs/msg/LaserScan",
+        "nan_ratio": nan_ratio,
+    }
+
+
+def test_payload_nan_flags_a_sustained_corruption_stretch() -> None:
+    """A failing sensor segment is one incident covering its real duration, not per-message."""
+    messages = (
+        [_scan_message(float(i), 0.0) for i in range(5)]
+        + [_scan_message(float(i), 0.4) for i in range(5, 15)]
+        + [_scan_message(float(i), 0.0) for i in range(15, 20)]
+    )
+    summary = detect_anomalies(messages)
+    nan_detection = next((d for d in summary["detections"] if d["kind"] == "payload_nan"), None)
+    assert nan_detection is not None
+    assert nan_detection["severity"] == "critical"
+    assert nan_detection["tSec"] == pytest.approx(5.0)
+    assert nan_detection["endSec"] == pytest.approx(14.0)
+    assert nan_detection["evidence"]["occurrence_count"] == 10
+    assert nan_detection["evidence"]["max_nan_ratio"] == pytest.approx(0.4)
+
+
+def test_payload_nan_ignores_isolated_spikes_below_min_count() -> None:
+    """Two one-off noisy frames should not read as sensor corruption."""
+    messages = [_scan_message(float(i), 0.4 if i in (5, 12) else 0.0) for i in range(20)]
+    summary = detect_anomalies(messages)
+    assert not any(d["kind"] == "payload_nan" for d in summary["detections"])

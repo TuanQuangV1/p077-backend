@@ -23,9 +23,10 @@ Full Rule ID / Condition / Penalty / UI-warning table. Penalties là per-detecti
 | **LAT** | `LAT-01` | `timestamp_jitter` | `std-dev intervals > 0.02s` | −5 (low) | ⚪ "Jitter" |
 | **LAT** | `LAT-02` | `clock_drift` | `median |bag − header| > 0.1s` | −15 (medium) | 🟡 "Clock drift" |
 | **LAT** | `LAT-03` | `header_latency` | `≥3 messages với lag > 100ms` | −15 (medium) | 🟡 "Stale stamps" |
-| **TF** | `TF-01` | `tf_missing_gap` | `consecutive gap > 0.5s` | −30 (high) | 🔴 Edge turns red (Disconnected) |
+| **TF** | `TF-01` | `tf_missing_gap` | `consecutive gap > 0.5s` **on one edge** (grouped by `child_frame_id`) | −30 (high) | 🔴 Edge turns red (Disconnected) |
 | **TF** | `TF-02` | `tf_drift_jump` | `child frame re-parented` (VD: odom → map) | −50 (critical) | 🔴 "Localization jump" |
 | **PLD** | `PLD-01` | `payload_zero_byte` | `≥5 messages với payload_bytes == 0` | −30 (high) | 🔴 "PointCloud → 0 B" |
+| **PLD** | `PLD-02` | `payload_nan` | `≥5 tin nhắn liên tiếp` có tỉ lệ NaN trong `ranges` `> 5%` | −50 (critical) | 🔴 "Sensor payload NaN" |
 
 ---
 
@@ -270,8 +271,12 @@ latency_ms = (publish_timestamp - header.stamp) × 1000
 | Severity | `high` |
 | Penalty | −30 |
 | Threshold | `tf_max_missing_span_sec = 0.5` |
-| Điều kiện | `consecutive /tf broadcast gap > 0.5s` |
+| Điều kiện | `consecutive broadcast gap > 0.5s` **trên một edge cụ thể** |
 | UI | 🔴 Node-edge turns red (Disconnected) |
+
+**Per-edge, not per-topic:** gaps được nhóm theo `child_frame_id` (`base_footprint`, `odom`, `wheel_left_link`, ...), không phải theo timestamp gộp của cả topic `/tf`. Một edge chết (VD: broadcaster `odom→base_footprint` ngừng) sẽ **không** bị các edge khác trên cùng topic (VD: wheel joints) che khuất — trước đây, hệ thống chỉ nhìn `transforms[0]` của mỗi `/tf` message nên phần lớn edge bị bỏ sót; nay mọi edge trong một publish đều được nhóm đúng.
+
+`/tf_static` bị loại khỏi phần "gap kéo dài tới cuối bag": static transform hợp lệ khi chỉ phát một lần duy nhất, nên không kiểm tra trailing-gap trên topic này (tránh báo dương tính giả trên mọi bag).
 
 **ROS2 Context:**
 ```
@@ -350,6 +355,31 @@ Typical message sizes:
 # 0 bytes = definitely broken
 ```
 
+#### PLD-02: payload_nan
+
+| Thuộc tính | Giá trị |
+|------------|---------|
+| Detection Kind | `payload_nan` |
+| Severity | `critical` |
+| Penalty | −50 |
+| Threshold | `payload_nan_ratio_min = 0.05`, `payload_nan_min_count = 5` |
+| Điều kiện | `≥5 message liên tiếp` có tỉ lệ `NaN` trong mảng payload (VD: `LaserScan.ranges`) `> 5%` |
+| UI | 🔴 "Sensor payload NaN" on topic row |
+
+**Phạm vi:** áp dụng cho bất kỳ message có field `ranges` (không hard-code theo topic `/scan`). `nan_ratio` được tính rồi bỏ ngay mảng gốc trong `bag_stream.py` (`_nan_ratio`) — không giữ payload đầy đủ trong bộ nhớ. Chỉ đếm `NaN`, không đếm `+/-Inf`: theo `sensor_msgs/LaserScan`, `+/-Inf` là giá trị hợp lệ cho "quá xa/quá gần để đo", nên đếm Inf sẽ gây dương tính giả trên dữ liệu khỏe mạnh.
+
+**ROS2 Context:**
+```
+# NaN trong ranges = sensor hoặc driver hỏng
+# Common causes:
+# - Photodiode/hàng cảm biến lỗi phần cứng
+# - Driver serialize sai giá trị lỗi thành NaN thay vì Inf/0
+# - Firmware corruption
+
+# NaN không có ý nghĩa hợp lệ trong LaserScan — không giống Inf
+# (Inf = "quá xa/gần để đo", là dữ liệu hợp lệ, không được đếm ở đây)
+```
+
 ---
 
 ## 2.3 Config Reference (All Threshold Keys)
@@ -372,6 +402,8 @@ Typical message sizes:
 | `tf_max_missing_span_sec` | 0.5 | TF-01 |
 | `tf_jump_distance_m` | 0.5 | TF-02 (reserved) |
 | `payload_zero_byte_min_count` | 5 | PLD-01 |
+| `payload_nan_ratio_min` | 0.05 | PLD-02 |
+| `payload_nan_min_count` | 5 | PLD-02 |
 
 ---
 
@@ -379,7 +411,7 @@ Typical message sizes:
 
 | Severity | Penalty | Count in HS | Example Rules |
 |----------|---------|-------------|--------------|
-| `critical` | −50 | 2 → HS=0 | LOG-01, TF-02 |
+| `critical` | −50 | 2 → HS=0 | LOG-01, TF-02, PLD-02 |
 | `high` | −30 | 2 → HS=40 | LOG-02, FREQ-04, TF-01, PLD-01 |
 | `medium` | −15 | Multiple additive | FREQ-01/02/03, LAT-02/03 |
 | `low` | −5 | Multiple additive | LOG-03, FREQ-05, LAT-01 |

@@ -23,6 +23,7 @@ installed or the bag is not a readable rosbag2 database.
 from __future__ import annotations
 
 import logging
+import math
 import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -70,7 +71,15 @@ def _header_stamp(message: object) -> float | None:
 def _frame_id(message: object) -> str:
     header = getattr(message, "header", None)
     frame_id = getattr(header, "frame_id", "") if header is not None else ""
-    return str(frame_id or "")
+    if frame_id:
+        return str(frame_id)
+    # tf2_msgs/msg/TFMessage has no outer header; the parent frame lives on the
+    # first transform's own header, mirroring :func:`_child_frame_id`.
+    transforms = getattr(message, "transforms", None)
+    if transforms:
+        first_header = getattr(transforms[0], "header", None)
+        return str(getattr(first_header, "frame_id", "") or "")
+    return ""
 
 
 def _child_frame_id(message: object) -> str:
@@ -87,6 +96,47 @@ def _child_frame_id(message: object) -> str:
         child = getattr(getattr(first, "child_frame_id", ""), "frame_id", "") or getattr(first, "child_frame_id", "")
         return str(child)
     return ""
+
+
+def _transforms(message: object) -> list[dict[str, str]]:
+    """Return every (frame_id, child_frame_id) pair broadcast in a tf2_msgs/TFMessage.
+
+    A single ``/tf`` message can batch several independent edges (e.g.
+    ``map->odom``, ``odom->base_footprint``, wheel joints) in one publish.
+    Returning all of them, not just the first, lets per-edge gap and
+    re-parenting detection see an edge that goes silent even while other
+    edges on the same topic keep publishing normally.
+    """
+    transforms = getattr(message, "transforms", None)
+    if not transforms:
+        return []
+    pairs = []
+    for transform in transforms:
+        header = getattr(transform, "header", None)
+        frame_id = str(getattr(header, "frame_id", "") or "")
+        child_frame_id = str(getattr(transform, "child_frame_id", "") or "")
+        if frame_id or child_frame_id:
+            pairs.append({"frame_id": frame_id, "child_frame_id": child_frame_id})
+    return pairs
+
+
+def _nan_ratio(message: object) -> float | None:
+    """Fraction of a LaserScan-shaped message's ``ranges`` array that is NaN.
+
+    NaN has no legitimate meaning in the ``sensor_msgs/LaserScan`` contract
+    (ROS2 uses +/-Inf for readings too far/near to represent), so any NaN
+    fraction reflects sensor or driver corruption. Only the fraction is kept;
+    the array itself is discarded immediately, like every other payload field
+    this reader touches.
+    """
+    ranges = getattr(message, "ranges", None)
+    if ranges is None:
+        return None
+    count = len(ranges)
+    if count == 0:
+        return None
+    nan_count = sum(1 for value in ranges if math.isnan(value))
+    return nan_count / count
 
 
 def _log_level(message: object) -> str | None:
@@ -172,8 +222,11 @@ def iter_rosbag2_decoded(
     Yields:
         Dicts with ``timestamp`` (bag time, seconds), ``topic``, ``node``,
         ``message_type``, ``header`` (``header.stamp`` in seconds or ``None``),
-        ``frame_id``, ``child_frame_id``, ``payload_bytes`` and ``level`` for
-        ``/rosout`` log messages. Payload bodies are never retained.
+        ``frame_id``, ``child_frame_id``, ``transforms`` (every edge broadcast
+        by a ``tf2_msgs/TFMessage``, empty otherwise), ``payload_bytes``,
+        ``level`` for ``/rosout`` log messages and ``nan_ratio`` (fraction of
+        a LaserScan-shaped message's ``ranges`` that decoded as NaN, ``None``
+        otherwise). Payload bodies are never retained.
 
     Raises:
         ImportError: The ``rosbags`` package is not installed.
@@ -195,8 +248,10 @@ def iter_rosbag2_decoded(
                     "header": _header_stamp(message),
                     "frame_id": _frame_id(message),
                     "child_frame_id": _child_frame_id(message),
+                    "transforms": _transforms(message),
                     "payload_bytes": len(rawdata),
                     "level": _log_level(message),
+                    "nan_ratio": _nan_ratio(message),
                 }
     except Exception as exc:
         raise ValueError(f"not a readable rosbag2 database: {file_path}") from exc

@@ -33,6 +33,8 @@ DEFAULT_DIAGNOSTICS_THRESHOLDS = {
     "tf_max_missing_span_sec": 0.5,
     "tf_jump_distance_m": 0.5,
     "payload_zero_byte_min_count": 5,
+    "payload_nan_ratio_min": 0.05,
+    "payload_nan_min_count": 5,
 }
 
 DEFAULT_DIAGNOSTICS_THRESHOLDS_FILE = Path("data/diagnostics/thresholds.json")

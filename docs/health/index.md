@@ -90,9 +90,10 @@ HS = Σ (w_i × S_i)  với i ∈ { log, frequency, latency, tf, payload }
 | LAT-01 | `timestamp_jitter` | low | −5 |
 | LAT-02 | `clock_drift` | medium | −15 |
 | LAT-03 | `header_latency` (>100ms) | medium | −15 |
-| TF-01 | `tf_missing_gap` | high | −30 |
+| TF-01 | `tf_missing_gap` (per edge) | high | −30 |
 | TF-02 | `tf_drift_jump` | critical | −50 |
 | PLD-01 | `payload_zero_byte` | high | −30 |
+| PLD-02 | `payload_nan` | critical | −50 |
 
 ---
 

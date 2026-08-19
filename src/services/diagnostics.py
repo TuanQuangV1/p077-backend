@@ -29,6 +29,10 @@ logger = logging.getLogger(__name__)
 
 _MIN_NUMPY_MESSAGES = 1000
 
+# A topic breaching a rule more often than this is systematically broken rather
+# than suffering discrete incidents; report the worst episodes and stop there.
+_MAX_EPISODES_PER_RULE = 10
+
 _MESSAGE_DTYPE = [
     ("timestamp", "f8"),
     ("topic", "U64"),
@@ -179,6 +183,43 @@ def _gap_stats(timestamps: list[float]) -> tuple[float, float, int]:
     return median_interval, max_interval, diffs.index(max_interval)
 
 
+def _threshold_episodes(
+    spans: list[tuple[float, float, float]],
+    threshold: float,
+) -> list[tuple[float, float, float, int]]:
+    """Merge consecutive over-threshold spans into episodes.
+
+    ``spans`` are ``(start_sec, end_sec, duration_sec)`` in time order. Adjacent
+    breaches belong to one incident, so a sustained rate drop is reported once
+    across its real duration instead of once per message, while breaches
+    separated by healthy traffic stay separate incidents.
+
+    Returns ``(start_sec, end_sec, worst_duration_sec, breach_count)`` per
+    episode, in time order, keeping only the ``_MAX_EPISODES_PER_RULE`` worst
+    when a topic breaches more often than that.
+    """
+    episodes: list[tuple[float, float, float, int]] = []
+    start: float | None = None
+    end = worst = 0.0
+    count = 0
+    for span_start, span_end, duration in spans:
+        if duration > threshold:
+            if start is None:
+                start, worst, count = span_start, duration, 0
+            worst = max(worst, duration)
+            end = span_end
+            count += 1
+        elif start is not None:
+            episodes.append((start, end, worst, count))
+            start = None
+    if start is not None:
+        episodes.append((start, end, worst, count))
+    if len(episodes) > _MAX_EPISODES_PER_RULE:
+        worst_first = sorted(episodes, key=lambda episode: episode[2], reverse=True)
+        episodes = sorted(worst_first[:_MAX_EPISODES_PER_RULE])
+    return episodes
+
+
 def _timestamp_jitter(timestamps: list[float]) -> float:
     """Population std-dev of consecutive inter-message intervals (seconds)."""
     if len(timestamps) < 3:
@@ -203,7 +244,8 @@ def _evaluate_topic_rules(
     thresholds: dict[str, float],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Evaluate frequency-gap, drop-burst and jitter rules for one topic."""
-    median_interval, max_interval, gap_index = _gap_stats(timestamps_arr)
+    median_interval, max_interval, _ = _gap_stats(timestamps_arr)
+    spans = [(float(a), float(b), float(b - a)) for a, b in pairwise(timestamps_arr)]
     detections: list[dict[str, Any]] = []
     logs: list[dict[str, Any]] = []
 
@@ -227,26 +269,29 @@ def _evaluate_topic_rules(
             },
         },
     }
-    if max_interval > threshold:
+    gap_episodes = _threshold_episodes(spans, threshold)
+    for start_sec, end_sec, worst, breaches in gap_episodes:
         detections.append(
             {
                 "kind": "frequency_gap",
                 "topic": topic,
                 "severity": "medium",
                 "confidence": 0.81,
-                "tSec": float(timestamps_arr[gap_index]),
-                "endSec": float(timestamps_arr[gap_index + 1]),
+                "tSec": start_sec,
+                "endSec": end_sec,
                 "evidence": {
-                    "interval_sec": round(max_interval, 4),
+                    "interval_sec": round(worst, 4),
                     "threshold_sec": round(threshold, 4),
+                    "occurrence_count": breaches,
                 },
             }
         )
+    gap_log_payload["details"]["detected"] = bool(gap_episodes)
+    gap_log_payload["details"]["episode_count"] = len(gap_episodes)
+    if gap_episodes:
         gap_log_payload["level"] = "warn"
-        gap_log_payload["details"]["detected"] = True
         logger.warning("diagnostics.rule_detected", extra={"diagnostics": gap_log_payload})
     else:
-        gap_log_payload["details"]["detected"] = False
         logger.debug("diagnostics.rule_evaluated", extra={"diagnostics": gap_log_payload})
     logs.append(gap_log_payload)
 
@@ -263,26 +308,29 @@ def _evaluate_topic_rules(
             "threshold_sec": round(burst_threshold, 4),
         },
     }
-    if max_interval > burst_threshold:
+    burst_episodes = _threshold_episodes(spans, burst_threshold)
+    for start_sec, end_sec, worst, breaches in burst_episodes:
         detections.append(
             {
                 "kind": "message_drop_burst",
                 "topic": topic,
                 "severity": "medium",
                 "confidence": 0.8,
-                "tSec": float(timestamps_arr[gap_index]),
-                "endSec": float(timestamps_arr[gap_index + 1]),
+                "tSec": start_sec,
+                "endSec": end_sec,
                 "evidence": {
-                    "max_gap_sec": round(max_interval, 4),
+                    "max_gap_sec": round(worst, 4),
                     "threshold_sec": round(burst_threshold, 4),
+                    "occurrence_count": breaches,
                 },
             }
         )
+    burst_log_payload["details"]["detected"] = bool(burst_episodes)
+    burst_log_payload["details"]["episode_count"] = len(burst_episodes)
+    if burst_episodes:
         burst_log_payload["level"] = "warn"
-        burst_log_payload["details"]["detected"] = True
         logger.warning("diagnostics.rule_detected", extra={"diagnostics": burst_log_payload})
     else:
-        burst_log_payload["details"]["detected"] = False
         logger.debug("diagnostics.rule_evaluated", extra={"diagnostics": burst_log_payload})
     logs.append(burst_log_payload)
 
@@ -377,12 +425,13 @@ def _evaluate_silent_rule(
     timestamps_arr: list[float],
     observation_end: float,
     thresholds: dict[str, float],
-) -> tuple[dict[str, Any] | None, dict[str, Any]]:
-    """Flag a topic whose publish stream contains a sustained silent gap.
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Flag every sustained silent gap in a topic's publish stream.
 
-    A node's *active* span is not evidence of silence.  Instead, compare the
-    longest inter-message gap (plus a possible trailing gap to the observation
-    end) with both an absolute floor and the topic's normal median cadence.
+    A node's *active* span is not evidence of silence.  Instead, compare each
+    inter-message gap (plus a possible trailing gap to the observation end)
+    with both an absolute floor and the topic's normal median cadence. A topic
+    that falls silent repeatedly yields one detection per outage.
     """
     intervals = [(float(a), float(b), float(b - a)) for a, b in pairwise(timestamps_arr)]
     if observation_end > timestamps_arr[-1]:
@@ -397,7 +446,7 @@ def _evaluate_silent_rule(
     minimum_threshold = float(thresholds["silent_node_min_span_sec"])
     multiplier = float(thresholds["silent_node_gap_multiplier"])
     resolved_gap_threshold = max(minimum_threshold, median_interval * multiplier)
-    gap_start, gap_end, max_gap = max(intervals, key=lambda item: item[2])
+    max_gap = max(duration for _, _, duration in intervals)
     node_log_payload: dict[str, Any] = {
         "event": "diagnostics.rule_evaluation",
         "rule": "silent_node",
@@ -412,32 +461,35 @@ def _evaluate_silent_rule(
             "threshold_sec": round(resolved_gap_threshold, 4),
         },
     }
-    if max_gap > resolved_gap_threshold:
-        node_log_payload["level"] = "warn"
-        node_log_payload["details"]["detected"] = True
-        logger.warning("diagnostics.rule_detected", extra={"diagnostics": node_log_payload})
-        return (
-            {
-                "kind": "silent_node",
-                "topic": topic,
-                "severity": "critical",
-                "confidence": 0.92,
-                "tSec": gap_start,
-                "endSec": gap_end,
-                "evidence": {
-                    "node": node,
-                    "last_timestamp_sec": gap_start,
-                    "resume_timestamp_sec": gap_end,
-                    "silent_duration_sec": round(max_gap, 4),
-                    "threshold_sec": round(resolved_gap_threshold, 4),
-                    "median_interval_sec": round(median_interval, 4),
-                },
+    episodes = _threshold_episodes(intervals, resolved_gap_threshold)
+    detections = [
+        {
+            "kind": "silent_node",
+            "topic": topic,
+            "severity": "critical",
+            "confidence": 0.92,
+            "tSec": start_sec,
+            "endSec": end_sec,
+            "evidence": {
+                "node": node,
+                "last_timestamp_sec": start_sec,
+                "resume_timestamp_sec": end_sec,
+                "silent_duration_sec": round(worst, 4),
+                "threshold_sec": round(resolved_gap_threshold, 4),
+                "median_interval_sec": round(median_interval, 4),
+                "occurrence_count": breaches,
             },
-            node_log_payload,
-        )
-    node_log_payload["details"]["detected"] = False
-    logger.debug("diagnostics.rule_evaluated", extra={"diagnostics": node_log_payload})
-    return None, node_log_payload
+        }
+        for start_sec, end_sec, worst, breaches in episodes
+    ]
+    node_log_payload["details"]["detected"] = bool(episodes)
+    node_log_payload["details"]["episode_count"] = len(episodes)
+    if episodes:
+        node_log_payload["level"] = "warn"
+        logger.warning("diagnostics.rule_detected", extra={"diagnostics": node_log_payload})
+    else:
+        logger.debug("diagnostics.rule_evaluated", extra={"diagnostics": node_log_payload})
+    return detections, node_log_payload
 
 
 def _window_hz(
@@ -696,58 +748,82 @@ def _evaluate_payload_rules(
 
 def _evaluate_tf_rules(
     topic: str,
-    timestamps_arr: list[float],
     pairs: list[tuple[float, str, str]],
     thresholds: dict[str, float],
+    observation_end: float,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Validate TF broadcast integrity for a ``/tf`` / ``/tf_static`` topic.
 
-    Two signals:
+    Two signals, both evaluated **per edge** (grouped by ``child_frame_id``)
+    rather than on the topic's aggregate timestamp stream: a healthy edge
+    (e.g. a wheel joint) publishing throughout a bag would otherwise mask a
+    different edge (e.g. ``odom -> base_footprint``) going silent, which is
+    exactly the failure mode a stalled localization broadcaster produces.
 
-    - ``tf_missing_gap``: a broadcast gap longer than ``tf_max_missing_span_sec``
-      (a stalled broadcaster breaks localization downstream).
+    - ``tf_missing_gap``: a broadcast gap on one edge longer than
+      ``tf_max_missing_span_sec`` (a stalled broadcaster breaks localization
+      downstream). Every sustained gap is reported (via
+      :func:`_threshold_episodes`), not just the worst one. Only ``/tf`` gets
+      a trailing gap to ``observation_end``: ``/tf_static`` is latched and
+      legitimately published once, so treating "never republished" as a gap
+      there would flag every static transform in every bag.
     - ``tf_drift_jump``: a child frame is re-parented to a different parent
       frame (re-rooting / localization switch), surfaced at critical severity.
 
-    ``pairs`` holds ``(timestamp, frame_id, child_frame_id)`` tuples observed on
-    the topic, time-ordered.
+    ``pairs`` holds ``(timestamp, frame_id, child_frame_id)`` tuples — one per
+    broadcast edge observed on the topic (a single ``/tf`` message can batch
+    several edges), not necessarily time-ordered.
     """
     detections: list[dict[str, Any]] = []
     logs: list[dict[str, Any]] = []
 
     missing_threshold = float(thresholds["tf_max_missing_span_sec"])
+    by_child: dict[str, list[tuple[float, str]]] = defaultdict(list)
+    for ts, frame, child in pairs:
+        if child:
+            by_child[child].append((ts, frame))
+
     gap_log: dict[str, Any] = {
         "event": "diagnostics.rule_evaluation",
         "rule": "tf_missing_gap",
         "level": "debug",
         "message": "Evaluated TF missing-transform gap rule.",
-        "details": {"topic": topic, "threshold_sec": missing_threshold},
+        "details": {"topic": topic, "threshold_sec": missing_threshold, "edge_count": len(by_child)},
     }
-    if len(timestamps_arr) >= 2:
-        gaps = [b - a for a, b in pairwise(timestamps_arr)]
-        max_gap = max(gaps)
-        if max_gap > missing_threshold:
-            gap_log["level"] = "warn"
-            gap_log["details"]["detected"] = True
-            idx = gaps.index(max_gap)
+    episode_count = 0
+    for child, entries in by_child.items():
+        entries.sort(key=lambda entry: entry[0])
+        timestamps = [ts for ts, _ in entries]
+        parent = entries[-1][1]
+        spans = [(a, b, b - a) for a, b in pairwise(timestamps)]
+        if topic == "/tf" and observation_end > timestamps[-1]:
+            spans.append((timestamps[-1], observation_end, observation_end - timestamps[-1]))
+        for start_sec, end_sec, worst, occurrence in _threshold_episodes(spans, missing_threshold):
+            episode_count += 1
             detections.append(
                 {
                     "kind": "tf_missing_gap",
                     "topic": topic,
                     "severity": "high",
                     "confidence": 0.86,
-                    "tSec": float(timestamps_arr[idx]),
-                    "endSec": float(timestamps_arr[idx + 1]),
+                    "tSec": start_sec,
+                    "endSec": end_sec,
                     "evidence": {
-                        "gap_sec": round(max_gap, 4),
+                        "child_frame": child,
+                        "parent_frame": parent,
+                        "gap_sec": round(worst, 4),
                         "threshold_sec": round(missing_threshold, 4),
+                        "occurrence_count": occurrence,
                     },
                 }
             )
-        else:
-            gap_log["details"]["detected"] = False
+    gap_log["details"]["detected"] = episode_count > 0
+    gap_log["details"]["episode_count"] = episode_count
+    if episode_count:
+        gap_log["level"] = "warn"
+        logger.warning("diagnostics.rule_detected", extra={"diagnostics": gap_log})
     else:
-        gap_log["details"]["detected"] = False
+        logger.debug("diagnostics.rule_evaluated", extra={"diagnostics": gap_log})
     logs.append(gap_log)
 
     parent_of: dict[str, tuple[str, float]] = {}
@@ -758,7 +834,7 @@ def _evaluate_tf_rules(
         "message": "Evaluated TF drift/jump re-parenting rule.",
         "details": {"topic": topic},
     }
-    for ts, frame, child in pairs:
+    for ts, frame, child in sorted(pairs, key=lambda pair: pair[0]):
         if not child:
             continue
         previous = parent_of.get(child)
@@ -788,17 +864,94 @@ def _evaluate_tf_rules(
     return detections, logs
 
 
+def _evaluate_data_quality_rule(
+    topic: str,
+    samples: list[tuple[float, float]],
+    thresholds: dict[str, float],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Flag sustained NaN corruption in payload arrays such as LaserScan ranges.
+
+    ``samples`` holds ``(timestamp, nan_ratio)`` pairs, time-ordered — the
+    fraction of one message's array (e.g. ``ranges``) that decoded as NaN. A
+    message counts as corrupted once its ratio exceeds
+    ``payload_nan_ratio_min``; a corrupted stretch of at least
+    ``payload_nan_min_count`` consecutive messages is one incident, reported
+    by its real duration (e.g. a failing photodiode segment lasting minutes)
+    instead of once per message.
+    """
+    ratio_threshold = float(thresholds["payload_nan_ratio_min"])
+    min_count = int(thresholds["payload_nan_min_count"])
+    detections: list[dict[str, Any]] = []
+    log_payload: dict[str, Any] = {
+        "event": "diagnostics.rule_evaluation",
+        "rule": "payload_nan",
+        "level": "debug",
+        "message": "Evaluated payload NaN-ratio rule.",
+        "details": {
+            "topic": topic,
+            "message_count": len(samples),
+            "ratio_threshold": ratio_threshold,
+            "min_count": min_count,
+        },
+    }
+
+    episodes: list[tuple[float, float, float, int]] = []
+    start: float | None = None
+    end = worst = 0.0
+    count = 0
+    for ts, ratio in samples:
+        if ratio > ratio_threshold:
+            if start is None:
+                start, worst, count = ts, ratio, 0
+            worst = max(worst, ratio)
+            end = ts
+            count += 1
+        elif start is not None:
+            if count >= min_count:
+                episodes.append((start, end, worst, count))
+            start = None
+    if start is not None and count >= min_count:
+        episodes.append((start, end, worst, count))
+
+    for start_sec, end_sec, worst_ratio, occurrence in episodes:
+        detections.append(
+            {
+                "kind": "payload_nan",
+                "topic": topic,
+                "severity": "critical",
+                "confidence": 0.87,
+                "tSec": start_sec,
+                "endSec": end_sec,
+                "evidence": {
+                    "max_nan_ratio": round(worst_ratio, 4),
+                    "threshold_ratio": ratio_threshold,
+                    "occurrence_count": occurrence,
+                },
+            }
+        )
+    log_payload["details"]["detected"] = bool(episodes)
+    log_payload["details"]["episode_count"] = len(episodes)
+    if episodes:
+        log_payload["level"] = "warn"
+        logger.warning("diagnostics.rule_detected", extra={"diagnostics": log_payload})
+    else:
+        logger.debug("diagnostics.rule_evaluated", extra={"diagnostics": log_payload})
+    return detections, log_payload
+
+
 def _evaluate_auxiliary_rules(
     topic_times: dict[str, list[float]],
     topic_latency: dict[str, list[tuple[float, float]]],
     log_entries: dict[str, list[tuple[float, str]]],
     topic_payload: dict[str, list[tuple[float, int]]],
+    topic_nan: dict[str, list[tuple[float, float]]],
     tf_pairs: dict[str, list[tuple[float, str, str]]],
     thresholds: dict[str, float],
     expected_hz: Mapping[str, float] | None,
     cadence_topics: set[str],
+    observation_end: float,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Run the hz-drop, header-latency, log, payload and TF rule batteries.
+    """Run the hz-drop, header-latency, log, payload, data-quality and TF rule batteries.
 
     Kept separate from :func:`detect_anomalies` so the timing rules stay
     readable and each health indicator group can be reasoned about (and tested)
@@ -829,8 +982,13 @@ def _evaluate_auxiliary_rules(
     for topic, payloads in topic_payload.items():
         detections.extend(_evaluate_payload_rules(topic, sorted(payloads), thresholds))
 
+    for topic, samples in topic_nan.items():
+        nan_detections, nan_log = _evaluate_data_quality_rule(topic, sorted(samples), thresholds)
+        detections.extend(nan_detections)
+        logs.append(nan_log)
+
     for topic, pairs in tf_pairs.items():
-        tf_detections, tf_logs = _evaluate_tf_rules(topic, sorted(topic_times[topic]), pairs, thresholds)
+        tf_detections, tf_logs = _evaluate_tf_rules(topic, pairs, thresholds, observation_end)
         detections.extend(tf_detections)
         logs.extend(tf_logs)
 
@@ -872,14 +1030,19 @@ def detect_anomalies(
       warn entries on /rosout-style topics crossing `log_*_min_count`.
     - `payload_zero_byte`: at least `payload_zero_byte_min_count` messages whose
       `payload_bytes` field is 0.
-    - `tf_missing_gap` / `tf_drift_jump`: broadcast gaps and frame re-parenting
-      on `/tf` / `/tf_static` topics.
+    - `payload_nan`: a stretch of at least `payload_nan_min_count` consecutive
+      messages whose `nan_ratio` field (fraction of e.g. LaserScan `ranges`
+      that decoded as NaN) exceeds `payload_nan_ratio_min`.
+    - `tf_missing_gap` / `tf_drift_jump`: per-edge broadcast gaps and frame
+      re-parenting on `/tf` / `/tf_static` topics, keyed by `child_frame_id` so
+      one silent edge is not masked by other edges still publishing.
 
     Args:
         messages: Iterable of message dicts. Recognized fields include
             `timestamp`, `topic`, `node`, `message_type`, optional `header`
-            (seconds), `frame_id`, `child_frame_id`, `level` and
-            `payload_bytes`.
+            (seconds), `frame_id`, `child_frame_id`, `transforms` (list of
+            `{frame_id, child_frame_id}` for a batched `/tf` publish), `level`,
+            `payload_bytes` and `nan_ratio`.
         thresholds: Optional overrides merged over the persisted defaults via
             `merge_diagnostics_thresholds`. `None` uses the defaults as-is.
         expected_hz: Optional `topic -> expected publish rate` map used to score
@@ -900,6 +1063,7 @@ def detect_anomalies(
     topic_drift: dict[str, list[float]] = defaultdict(list)
     topic_latency: dict[str, list[tuple[float, float]]] = defaultdict(list)
     topic_payload: dict[str, list[tuple[float, int]]] = defaultdict(list)
+    topic_nan: dict[str, list[tuple[float, float]]] = defaultdict(list)
     log_entries: dict[str, list[tuple[float, str]]] = defaultdict(list)
     tf_pairs: dict[str, list[tuple[float, str, str]]] = defaultdict(list)
     total_messages = 0
@@ -919,13 +1083,25 @@ def detect_anomalies(
         payload_bytes = message.get("payload_bytes")
         if payload_bytes is not None:
             topic_payload[topic].append((timestamp, int(payload_bytes)))
+        nan_ratio = message.get("nan_ratio")
+        if nan_ratio is not None:
+            topic_nan[topic].append((timestamp, float(nan_ratio)))
         level = message.get("level")
         if level is not None:
             log_entries[topic].append((timestamp, str(level).lower()))
-        frame_id = str(message.get("frame_id") or "")
-        child_frame_id = str(message.get("child_frame_id") or "")
-        if topic in _TF_TOPICS and (frame_id or child_frame_id):
-            tf_pairs[topic].append((timestamp, frame_id, child_frame_id))
+        if topic in _TF_TOPICS:
+            transforms = message.get("transforms")
+            if transforms:
+                for transform in transforms:
+                    tr_frame = str(transform.get("frame_id") or "")
+                    tr_child = str(transform.get("child_frame_id") or "")
+                    if tr_frame or tr_child:
+                        tf_pairs[topic].append((timestamp, tr_frame, tr_child))
+            else:
+                frame_id = str(message.get("frame_id") or "")
+                child_frame_id = str(message.get("child_frame_id") or "")
+                if frame_id or child_frame_id:
+                    tf_pairs[topic].append((timestamp, frame_id, child_frame_id))
 
     if total_messages == 0:
         empty_log_payload: dict[str, Any] = {
@@ -987,11 +1163,10 @@ def detect_anomalies(
             continue
         node_counts = topic_node_counts[topic]
         node = max(node_counts, key=lambda value: node_counts[value])
-        silent_detection, silent_log = _evaluate_silent_rule(
+        silent_detections, silent_log = _evaluate_silent_rule(
             topic, node, timestamps_arr, observation_end, resolved_thresholds
         )
-        if silent_detection is not None:
-            detections.append(silent_detection)
+        detections.extend(silent_detections)
         logs.append(silent_log)
 
     aux_detections, aux_logs = _evaluate_auxiliary_rules(
@@ -999,10 +1174,12 @@ def detect_anomalies(
         topic_latency,
         log_entries,
         topic_payload,
+        topic_nan,
         tf_pairs,
         resolved_thresholds,
         expected_hz,
         cadence_topics,
+        observation_end,
     )
     detections.extend(aux_detections)
     logs.extend(aux_logs)

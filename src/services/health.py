@@ -49,6 +49,7 @@ GROUP_BY_KIND: dict[str, str] = {
     "tf_drift_jump": "tf",
     # Data Bandwidth & Anomaly
     "payload_zero_byte": "payload",
+    "payload_nan": "payload",
 }
 
 _SEVERITY_PENALTY: dict[str, float] = {
