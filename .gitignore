@@ -69,3 +69,30 @@ frontend/.npmrc
 
 .pytest_cache/
 .ruff_cache/
+
+# Terraform & Infrastructure
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+!*.tfvars.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+terraform.exe
+
+# Playwright & E2E Test Reports
+playwright-report/
+test-results/
+blob-report/
+
+# AI IDE & Local Assistant Folders
+.claude/
+.cursor/
+.codex/
+.opencode/
+.gemini/
+
