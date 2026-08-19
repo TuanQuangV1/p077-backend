@@ -13,6 +13,7 @@ os.environ.setdefault("APP_ENV", "test")
 from src.api import routes
 from src.config import get_settings
 from src.main import app
+from src.services import diagnostics_config
 from src.services.rate_limit import SlidingWindowRateLimiter
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "diagnostics"
@@ -28,6 +29,12 @@ def _isolate_state(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "")
     monkeypatch.setenv("VLLM_BASE_URL", "")
     get_settings.cache_clear()
+    # Real bags warrant a multi-second warm-up grace period (see
+    # diagnostics.py), but it would silently swallow the tiny synthetic
+    # streams (usually starting at t=0 with the fault injected immediately)
+    # nearly every diagnostics test builds. Tests that specifically exercise
+    # pre-roll filtering opt back in via an explicit `thresholds` override.
+    monkeypatch.setitem(diagnostics_config.DEFAULT_DIAGNOSTICS_THRESHOLDS, "pre_roll_grace_sec", 0.0)
     monkeypatch.setattr(routes, "_datasets_cache", routes._DatasetsCache(routes._DATASETS_CACHE_TTL_SEC))
     monkeypatch.setattr(
         routes,

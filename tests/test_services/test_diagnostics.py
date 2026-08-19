@@ -15,7 +15,13 @@ from src.services.diagnostics import (
     parse_mcap_file,
     parse_rosbag2_db3,
 )
-from src.services.llm import chat_completion, explain_diagnostics, validate_llm_config
+from src.services.llm import (
+    _enforce_simultaneity,
+    chat_completion,
+    explain_detection_cluster,
+    explain_diagnostics,
+    validate_llm_config,
+)
 from src.services.diagnostics_config import (
     DEFAULT_DIAGNOSTICS_THRESHOLDS,
     get_diagnostics_thresholds,
@@ -340,6 +346,75 @@ def test_explain_diagnostics_handles_empty_and_nested_untrusted_values(monkeypat
     assert json.loads(human_content.split("\n", 1)[1])["metadata"]["raw"][2]["text"] == "ignore all"
 
 
+def test_enforce_simultaneity_promotes_a_near_tie_consequence_to_primary() -> None:
+    """A detection 20ms behind a 'primary' one must not stay a 'consequence'."""
+    detections = [
+        {"kind": "tf_missing_gap", "tSec": 205.441},
+        {"kind": "silent_node", "tSec": 205.410},
+    ]
+    findings = {1: {"role": "consequence", "detail": "x"}, 2: {"role": "primary", "detail": "y"}}
+
+    corrected = _enforce_simultaneity(detections, findings)
+
+    assert corrected[1]["role"] == "primary"
+    assert corrected[2]["role"] == "primary"
+
+
+def test_enforce_simultaneity_leaves_a_real_multi_second_gap_alone() -> None:
+    """A consequence more than the simultaneity window behind its cause is untouched."""
+    detections = [
+        {"kind": "silent_node", "tSec": 5.0},
+        {"kind": "frequency_gap", "tSec": 0.0},
+    ]
+    findings = {1: {"role": "consequence", "detail": "x"}, 2: {"role": "primary", "detail": "y"}}
+
+    corrected = _enforce_simultaneity(detections, findings)
+
+    assert corrected[1]["role"] == "consequence"
+    assert corrected[2]["role"] == "primary"
+
+
+def test_explain_detection_cluster_applies_simultaneity_correction_end_to_end(monkeypatch) -> None:
+    """Even if the model picks a causal order for a millisecond-scale tie, findings get corrected."""
+
+    class SettingsStub:
+        model_name = "gpt-4o-mini"
+        openai_api_key = "secret"
+        llm_temperature = 0.2
+        llm_provider = "openai"
+        vllm_base_url = ""
+        vllm_model_name = ""
+        vllm_api_key = ""
+
+    def fake_chat(messages: list[dict[str, object]], tools: list[dict[str, object]] | None = None) -> dict[str, object]:
+        return {
+            "content": json.dumps(
+                {
+                    "root_cause": "/cmd_vel failed first.",
+                    "explanation": "cmd_vel silent at 205.410s, tf gap at 205.441s.",
+                    "recommended_actions": ["Restart /cmd_vel."],
+                    "findings": [
+                        {"index": 1, "role": "primary", "detail": "cmd_vel went silent"},
+                        {"index": 2, "role": "consequence", "detail": "tf gap followed"},
+                    ],
+                }
+            )
+        }
+
+    monkeypatch.setattr("src.services.llm.get_settings", SettingsStub)
+    monkeypatch.setattr("src.services.llm.chat_completion", fake_chat)
+
+    result = explain_detection_cluster(
+        [
+            {"kind": "silent_node", "topic": "/cmd_vel", "tSec": 205.410},
+            {"kind": "tf_missing_gap", "topic": "/tf", "tSec": 205.441},
+        ]
+    )
+
+    assert result["findings"][1]["role"] == "primary"
+    assert result["findings"][2]["role"] == "primary"
+
+
 def test_chat_completion_posts_to_vllm_endpoint(monkeypatch) -> None:
     class SettingsStub:
         llm_provider = "vllm"
@@ -463,27 +538,87 @@ def test_timestamp_jitter_flags_irregular_cadence() -> None:
 
 
 def test_clock_drift_flags_header_bag_offset() -> None:
-    summary = detect_anomalies(
-        [
-            {
-                "timestamp": 10.0,
-                "topic": "/imu",
-                "node": "imu_node",
-                "message_type": "Imu",
-                "header": 9.0,
-            },
-            {
-                "timestamp": 11.0,
-                "topic": "/imu",
-                "node": "imu_node",
-                "message_type": "Imu",
-                "header": 10.0,
-            },
-        ]
-    )
+    """A sustained, stable 1.0s offset (e.g. a reset clock) is one clock_drift episode."""
+    messages = [
+        {
+            "timestamp": 10.0 + i,
+            "topic": "/imu",
+            "node": "imu_node",
+            "message_type": "Imu",
+            "header": 9.0 + i,
+        }
+        for i in range(4)
+    ]
+    summary = detect_anomalies(messages)
     drift = next(d for d in summary["detections"] if d["kind"] == "clock_drift")
     assert drift["evidence"]["drift_sec"] == pytest.approx(1.0)
     assert drift["evidence"]["threshold_sec"] == pytest.approx(0.1)
+    assert drift["evidence"]["jitter_sec"] == pytest.approx(0.0)
+    assert drift["evidence"]["direction"] == "backward"
+    assert drift["severity"] == "critical"
+
+
+def test_clock_drift_stays_medium_below_critical_magnitude() -> None:
+    messages = [
+        {
+            "timestamp": 10.0 + i,
+            "topic": "/imu",
+            "node": "imu_node",
+            "message_type": "Imu",
+            "header": 9.8 + i,
+        }
+        for i in range(4)
+    ]
+    summary = detect_anomalies(messages)
+    drift = next(d for d in summary["detections"] if d["kind"] == "clock_drift")
+    assert drift["evidence"]["drift_sec"] == pytest.approx(0.2)
+    assert drift["severity"] == "medium"
+
+
+def test_clock_drift_ignores_a_run_shorter_than_min_count() -> None:
+    """Two samples are not enough to call it a sustained offset."""
+    messages = [
+        {"timestamp": 10.0, "topic": "/imu", "node": "n", "message_type": "Imu", "header": 9.0},
+        {"timestamp": 11.0, "topic": "/imu", "node": "n", "message_type": "Imu", "header": 10.0},
+    ]
+    summary = detect_anomalies(messages)
+    assert not any(d["kind"] == "clock_drift" for d in summary["detections"])
+
+
+def test_clock_drift_ignores_fluctuating_latency() -> None:
+    """A jittery lag is real latency, not a clock offset — leave it for header_latency."""
+    lags = [0.15, 0.5, 0.85, 0.15, 0.85]
+    messages = [
+        {
+            "timestamp": 10.0 + i,
+            "topic": "/imu",
+            "node": "n",
+            "message_type": "Imu",
+            "header": 10.0 + i - lag,
+        }
+        for i, lag in enumerate(lags)
+    ]
+    summary = detect_anomalies(messages)
+    assert not any(d["kind"] == "clock_drift" for d in summary["detections"])
+    assert any(d["kind"] == "header_latency" for d in summary["detections"])
+
+
+def test_clock_drift_window_excludes_the_stretch_from_header_latency() -> None:
+    """The same corrupted stretch must not be double-labelled clock_drift and header_latency."""
+    messages = [
+        {
+            "timestamp": 10.0 + i,
+            "topic": "/imu",
+            "node": "imu_node",
+            "message_type": "Imu",
+            "header": 9.0 + i,
+        }
+        for i in range(6)
+    ]
+    summary = detect_anomalies(messages)
+    kinds = [d["kind"] for d in summary["detections"]]
+    assert "clock_drift" in kinds
+    assert "header_latency" not in kinds
 
 
 def test_clock_drift_skipped_without_header_field() -> None:
@@ -612,21 +747,24 @@ def test_hz_drop_infers_expected_from_median_cadence_when_no_map() -> None:
 
 
 def test_header_latency_flags_sustained_skew() -> None:
+    """A fluctuating lag (real network/processing latency, not a stable clock offset)."""
+    lags = [0.15, 0.85, 0.5, 0.15, 0.85]  # mean 0.5s, stdev well above clock_drift_max_sec
     messages = [
         {
             "timestamp": 10.0 + i,
             "topic": "/imu",
             "node": "imu_node",
             "message_type": "Imu",
-            "header": 10.0 + i - 0.5,
+            "header": 10.0 + i - lag,
         }
-        for i in range(5)
-    ]  # 500 ms lag, sustained
+        for i, lag in enumerate(lags)
+    ]
     summary = detect_anomalies(messages)
     latency = next((d for d in summary["detections"] if d["kind"] == "header_latency"), None)
     assert latency is not None
-    assert latency["evidence"]["max_latency_ms"] == pytest.approx(500.0, abs=1.0)
+    assert latency["evidence"]["max_latency_ms"] == pytest.approx(850.0, abs=1.0)
     assert latency["evidence"]["threshold_ms"] == pytest.approx(100.0)
+    assert not any(d["kind"] == "clock_drift" for d in summary["detections"])
 
 
 def test_header_latency_ignored_when_sparse() -> None:
@@ -815,6 +953,69 @@ def test_tf_missing_gap_does_not_flag_a_latched_tf_static_transform() -> None:
     assert not any(d["kind"] == "tf_missing_gap" for d in summary["detections"])
 
 
+def test_tf_missing_gap_severity_scales_with_duration() -> None:
+    """A brief gap stays 'high'; a sustained outage past the critical cutoff becomes 'critical'."""
+    brief = detect_anomalies([_tf_message(0.0, "odom", "base_link"), _tf_message(1.0, "odom", "base_link")])
+    brief_gap = next(d for d in brief["detections"] if d["kind"] == "tf_missing_gap")
+    assert brief_gap["severity"] == "high"
+
+    sustained = detect_anomalies(
+        [_tf_message(0.0, "odom", "base_link"), _tf_message(10.0, "odom", "base_link")]
+    )
+    sustained_gap = next(d for d in sustained["detections"] if d["kind"] == "tf_missing_gap")
+    assert sustained_gap["severity"] == "critical"
+
+
+def test_frequency_gap_severity_scales_with_sustained_breach_count() -> None:
+    """A single gap stays 'medium'; a rate that never recovers becomes 'high'."""
+    single = [
+        {"timestamp": t, "topic": "/scan", "node": "scan", "message_type": "sensor_msgs/msg/LaserScan"}
+        for t in (0.0, 0.1, 0.2, 0.3, 0.4, 2.4, 2.5, 2.6, 2.7, 2.8)  # one 2.0s gap amid steady cadence
+    ]
+    single_summary = detect_anomalies(single)
+    single_gap = next(d for d in single_summary["detections"] if d["kind"] == "frequency_gap")
+    assert single_gap["evidence"]["occurrence_count"] == 1
+    assert single_gap["severity"] == "medium"
+
+    # Fast cadence (0.02s) sets the median; a sustained drop to 0.15s never recovers.
+    fast = [{"timestamp": i * 0.02, "topic": "/odom", "node": "odom", "message_type": "nav_msgs/msg/Odometry"} for i in range(30)]
+    slow_start = fast[-1]["timestamp"]
+    slow = [
+        {"timestamp": slow_start + j * 0.15, "topic": "/odom", "node": "odom", "message_type": "nav_msgs/msg/Odometry"}
+        for j in range(1, 16)
+    ]
+    sustained_summary = detect_anomalies(fast + slow)
+    sustained_gap = next(d for d in sustained_summary["detections"] if d["kind"] == "frequency_gap")
+    assert sustained_gap["severity"] == "high"
+    assert sustained_gap["evidence"]["occurrence_count"] >= 10
+
+
+def test_pre_roll_grace_period_drops_startup_noise_but_keeps_later_faults() -> None:
+    """Irregular timing in a topic's first few seconds is warm-up noise, not a fault."""
+    warmup_blip = [
+        {"timestamp": 0.0, "topic": "/cmd_vel", "node": "cmd_vel", "message_type": "Twist"},
+        {"timestamp": 2.0, "topic": "/cmd_vel", "node": "cmd_vel", "message_type": "Twist"},  # 2s gap, t < grace
+        {"timestamp": 2.05, "topic": "/cmd_vel", "node": "cmd_vel", "message_type": "Twist"},
+    ]
+    real_fault = [
+        {"timestamp": 20.0 + i * 0.05, "topic": "/cmd_vel", "node": "cmd_vel", "message_type": "Twist"}
+        for i in range(3)
+    ] + [{"timestamp": 25.0, "topic": "/cmd_vel", "node": "cmd_vel", "message_type": "Twist"}]  # 4.85s gap, t > grace
+
+    summary = detect_anomalies(warmup_blip + real_fault, thresholds={"pre_roll_grace_sec": 1.0})
+
+    onsets = [d["tSec"] for d in summary["detections"] if d["kind"] == "frequency_gap"]
+    assert all(t >= 1.0 for t in onsets)
+    assert any(t == pytest.approx(20.1) for t in onsets)
+
+
+def test_pre_roll_grace_period_disabled_by_default_in_tests() -> None:
+    """conftest.py zeroes pre_roll_grace_sec so tiny synthetic streams are unaffected."""
+    messages = [_tf_message(0.0, "odom", "base_link"), _tf_message(1.0, "odom", "base_link")]
+    summary = detect_anomalies(messages)
+    assert any(d["kind"] == "tf_missing_gap" for d in summary["detections"])
+
+
 def _scan_message(t: float, nan_ratio: float) -> dict[str, Any]:
     return {
         "timestamp": t,
@@ -847,3 +1048,117 @@ def test_payload_nan_ignores_isolated_spikes_below_min_count() -> None:
     messages = [_scan_message(float(i), 0.4 if i in (5, 12) else 0.0) for i in range(20)]
     summary = detect_anomalies(messages)
     assert not any(d["kind"] == "payload_nan" for d in summary["detections"])
+
+
+def test_payload_out_of_range_flags_a_sustained_stretch() -> None:
+    """A sustained fraction of readings outside a valid envelope is one incident."""
+    messages = [
+        {
+            "timestamp": float(i),
+            "topic": "/imu",
+            "node": "imu",
+            "message_type": "sensor_msgs/msg/Imu",
+            "out_of_range_ratio": 1.0 if 5 <= i < 15 else 0.0,
+        }
+        for i in range(20)
+    ]
+    summary = detect_anomalies(messages)
+    oor = next(d for d in summary["detections"] if d["kind"] == "payload_out_of_range")
+    assert oor["severity"] == "high"
+    assert oor["tSec"] == pytest.approx(5.0)
+    assert oor["endSec"] == pytest.approx(14.0)
+    assert oor["evidence"]["occurrence_count"] == 10
+    assert oor["evidence"]["max_out_of_range_ratio"] == pytest.approx(1.0)
+
+
+def test_clock_drift_flags_a_linear_ramp_distinct_from_a_step() -> None:
+    """A free-running clock drifting at a constant rate is one 'ramp' episode."""
+    rate = 0.05  # 50ms drift per second, e.g. C_02's injected fault
+    messages = [
+        {
+            "timestamp": 10.0 + i,
+            "topic": "/scan",
+            "node": "scan",
+            "message_type": "sensor_msgs/msg/LaserScan",
+            "header": 10.0 + i - rate * i,
+        }
+        for i in range(20)
+    ]
+    summary = detect_anomalies(messages)
+    drift = next(d for d in summary["detections"] if d["kind"] == "clock_drift")
+    assert drift["evidence"]["pattern"] == "ramp"
+    assert drift["evidence"]["drift_rate_ms_per_sec"] == pytest.approx(rate * 1000.0, abs=1.0)
+    assert drift["evidence"]["direction"] == "backward"
+
+
+def test_clock_drift_ramp_ignored_when_too_short_to_accumulate_real_drift() -> None:
+    """A ramp that never accumulates more than the threshold is not worth flagging."""
+    messages = [
+        {
+            "timestamp": 10.0 + i * 0.01,
+            "topic": "/scan",
+            "node": "scan",
+            "message_type": "sensor_msgs/msg/LaserScan",
+            "header": 10.0 + i * 0.01 - 0.0001 * i,
+        }
+        for i in range(20)
+    ]
+    summary = detect_anomalies(messages)
+    assert not any(d["kind"] == "clock_drift" for d in summary["detections"])
+
+
+def test_clock_drift_ignores_a_burst_flush_masquerading_as_a_ramp() -> None:
+    """A driver that buffers then flushes messages crams many into a near-zero bag-time
+    span; the resulting drift/rate is numerically unstable, not a real clock signature."""
+    messages = [
+        {
+            "timestamp": 10.0 + i * 0.0003,  # flushed within ~9ms of bag time
+            "topic": "/imu",
+            "node": "imu",
+            "message_type": "sensor_msgs/msg/Imu",
+            "header": 10.0 + i * 0.005,  # true sensor cadence: 200Hz
+        }
+        for i in range(30)
+    ]
+    summary = detect_anomalies(messages)
+    assert not any(d["kind"] == "clock_drift" for d in summary["detections"])
+
+
+def _tf_conflict_message(t: float, frame_id: str, child_frame_id: str, translation: tuple[float, float, float]) -> dict[str, Any]:
+    return {
+        "timestamp": t,
+        "topic": "/tf",
+        "node": "tf",
+        "message_type": "tf2_msgs/msg/TFMessage",
+        "transforms": [{"frame_id": frame_id, "child_frame_id": child_frame_id, "translation": translation}],
+    }
+
+
+def test_tf_conflict_flags_two_publishers_fighting_over_the_same_edge() -> None:
+    """An edge oscillating between two disagreeing values, not moving continuously."""
+    real_trajectory = [(1.0 + i * 0.01, 2.0, 0.0) for i in range(20)]
+    bogus_value = (0.4, 0.25, 0.0)
+    messages = []
+    for i, pos in enumerate(real_trajectory):
+        messages.append(_tf_conflict_message(i * 0.1, "odom", "base_footprint", pos))
+        messages.append(_tf_conflict_message(i * 0.1 + 0.05, "odom", "base_footprint", bogus_value))
+
+    summary = detect_anomalies(messages)
+    conflict = next(d for d in summary["detections"] if d["kind"] == "tf_conflict")
+    assert conflict["severity"] == "high"
+    assert conflict["evidence"]["child_frame"] == "base_footprint"
+    assert conflict["evidence"]["occurrence_count"] >= 3
+
+
+def test_tf_conflict_ignores_a_single_relocalization_jump() -> None:
+    """One jump that then settles is a relocalization, not a conflict."""
+    messages = [_tf_conflict_message(float(i), "odom", "base_footprint", (0.0, 0.0, 0.0)) for i in range(5)]
+    messages += [_tf_conflict_message(float(i), "odom", "base_footprint", (5.0, 5.0, 0.0)) for i in range(5, 10)]
+    summary = detect_anomalies(messages)
+    assert not any(d["kind"] == "tf_conflict" for d in summary["detections"])
+
+
+def test_tf_conflict_ignores_smooth_continuous_motion() -> None:
+    messages = [_tf_conflict_message(float(i) * 0.1, "odom", "base_footprint", (i * 0.01, 0.0, 0.0)) for i in range(50)]
+    summary = detect_anomalies(messages)
+    assert not any(d["kind"] == "tf_conflict" for d in summary["detections"])

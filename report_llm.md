@@ -490,4 +490,131 @@ Tổng 7 bag: **103** detection thô, **20** cụm (root-cause cluster) cần du
 
 ---
 
+## 10. Đã sửa: clock jump, severity theo độ lớn, lọc pre-roll, siết chốt chặn nhân quả (việc 3+4)
+
+### 10.1 Việc 3 — phân biệt clock jump với header latency
+
+**Nguyên nhân đo được:** `clock_drift` cũ lấy **median trên toàn bộ message của topic**. `/imu` trong `F2_04` có 41563 message, chỉ 15000 lệch (36%) — median bị pha loãng về ~0.0, không bao giờ vượt ngưỡng `0.1s`, nên rule không bao giờ bắn dù độ lệch thật là 5.004s hằng số.
+
+**Thay đổi** ([diagnostics.py](src/services/diagnostics.py) `_evaluate_drift_rule`): dùng episode liên tục (như việc 1) thay vì median toàn topic; trong mỗi episode, chỉ báo `clock_drift` khi độ lệch **ổn định** (std-dev `< clock_drift_max_sec`) — chữ ký của clock reset — còn episode dao động (độ trễ mạng/xử lý thật) để `header_latency` xử lý. Cửa sổ mà `clock_drift` đã báo bị loại khỏi `header_latency` ([_evaluate_header_latency_rule](src/services/diagnostics.py)) để không gắn 2 nhãn mâu thuẫn cho cùng một đoạn dữ liệu. Severity `critical` khi độ lệch trung bình `≥ clock_drift_critical_sec` (1.0s).
+
+**Kết quả — chạy lại API thật trên `F2_04`:**
+
+> detection: `clock_drift`, `/imu`, `114.001→188.995`, `drift_sec: 5.0003`, `jitter_sec: 0.0005`, `direction: backward`, `severity: critical`
+> root_cause: *"The /imu topic experienced critical clock drift, which caused the anomalies in the system."*
+> fix: *"Investigate the source of the clock drift... Implement a clock synchronization mechanism for the /imu sensor."*
+
+Đối chiếu GT: window lệch <0.005s, `drift_sec 5.0003` vs GT `jump_sec -5.0` (khớp độ lớn, đúng chiều `backward`), severity `critical` = GT. Trước việc 3: nhãn `header_latency`, fix sai hướng ("kiểm tra phần cứng IMU" trên bag Gazebo không có phần cứng); sau việc 3: nhãn đúng bản chất, fix đúng hướng (đồng bộ clock, không phải sensor).
+
+### 10.2 Việc 4a — severity theo độ lớn/thời lượng thay vì hardcode
+
+`frequency_gap`: `high` khi episode có `≥ frequency_gap_high_occurrence_min` (10) lần vượt ngưỡng liên tiếp (suy giảm hệ thống, không phải 1 blip); còn lại `medium`. `tf_missing_gap`: `critical` khi `gap_sec ≥ tf_missing_gap_critical_sec` (5.0s); còn lại `high`.
+
+| Bag | Trước | Sau | GT |
+|---|---|---|---|
+| `F1_03` `/odom` frequency_gap (80s, 800 lần) | `medium` | **`high`** | `high` ✅ |
+| `F3_01`/`C_01` `/tf` tf_missing_gap (40–45s) | `high` | **`critical`** | `critical` ✅ |
+
+`F1_03` giờ chỉ còn **1 detection duy nhất**, đúng cả window (`882.101→962.101`, khớp GT `882.1→962.1` lệch <0.01s), đúng severity — **đúng hoàn toàn không còn điểm trừ**, lần đầu tiên trong cả 2 đợt sửa.
+
+### 10.3 Việc 4b — lọc vùng pre-roll (không cần `bag_t0` từ ground truth)
+
+Không thể suy `bag_t0` đáng tin cậy từ chính bag (thử lấy `min(timestamp)` mỗi topic → lệch GT 3–5s ở mọi bag, không đủ chính xác). Thay vào đó dùng tín hiệu nội tại: mọi artifact pre-roll quan sát được (`F1_01`, `C_01`, `F2_04` — mục 3.2 vấn đề 6) đều nằm trong **6.3 giây đầu tiên kể từ tin nhắn đầu tiên của chính topic đó**, còn lỗi GT sớm nhất tiêm ở giây thứ 40+. [diagnostics.py](src/services/diagnostics.py) `detect_anomalies` bỏ mọi detection khởi phát trong `pre_roll_grace_sec` (8.0s, còn margin so với 6.3s) kể từ tin nhắn đầu của topic đó — không phụ thuộc `bag_t0` bên ngoài nên hoạt động được trên bag thật không có ground truth.
+
+**Kết quả:** cụm "ma" ở mục 6.4 (`/cmd_vel` blip 0.34s bị gán `primary` cho `header_latency` dài 185s) **biến mất hoàn toàn** — toàn bộ 2 detection cấu thành nó nằm trong pre-roll, không còn tồn tại để LLM gộp cụm sai. `F1_01`: 28→17 detection (bớt noise, không mất tín hiệu thật). `F2_04`: 4→1 detection (3 gap `/tf`/`/cmd_vel` tại t=43s — artifact pre-roll — biến mất, chỉ còn `clock_drift` thật).
+
+### 10.4 Việc 4c — siết chốt chặn nhân quả xuống biên độ mili-giây
+
+Prompt cũ chỉ nói chung chung "under half a second" — không đủ để model tuân thủ khi 2 topic chết cách nhau 10–31ms (mục 8, `C_01` lỗi 2). [llm.py](src/services/llm.py) `_CLUSTER_SYSTEM_PROMPT` viết lại: yêu cầu tính khoảng cách bằng mili-giây trước khi gán nhân quả, cho ví dụ cụ thể "300ms hay chỉ 10ms," và yêu cầu `recommended_actions` phải nhắm vào **mọi** topic `primary`, không chỉ cái nêu trước. Quan trọng hơn: thêm **`_enforce_simultaneity()`** — hậu xử lý xác định lại (không chỉ xin AI tuân thủ): bất kỳ `finding` nào bị gán `consequence` mà onset cách một `finding` `primary` dưới `_SIMULTANEOUS_WINDOW_SEC` (0.5s) sẽ bị ép thành `primary`. Đây là lần thứ 2 loại lỗi này được ghi nhận (mục 6.4 ở biên độ giây, mục 8 ở biên độ mili-giây) — không nên chỉ dựa vào prompt nữa.
+
+**Kết quả trên `C_01` lỗi 2 (bằng chứng ở mục 8):**
+
+> Trước: `tf_missing_gap` (child_frame `base_footprint`) bị gán `consequence` của `/cmd_vel silent_node`.
+> Sau: cả 2 `tf_missing_gap` (`base_footprint`, `odom`) đều `primary` — `_enforce_simultaneity` ép đúng vì onset cách `/cmd_vel` chỉ 10–31ms.
+> fix mới: *"Investigate the /cmd_vel node... **Check the /tf transforms for any discrepancies or failures in publishing.**"* — lần đầu tiên fix nhắc tới `/tf`, không chỉ `/cmd_vel`.
+
+⚠️ **Chưa hoàn toàn.** Câu root_cause đầu vẫn nói *"/cmd_vel failed first, leading to..."* trước khi tự sửa lại *"...failed together as they are symptoms of the same underlying issue"* — mâu thuẫn ngay trong 1 câu. `_enforce_simultaneity` chỉ sửa được nhãn `findings[].role` (dữ liệu có cấu trúc, hiển thị theo từng anomaly), không viết lại được câu văn tự do `root_cause`/`explanation` do model tự sinh. Đây là giới hạn đã biết, không phải lỗi — bằng chứng đúng đã có ở tầng dữ liệu, tầng tường thuật thì cải thiện một phần.
+
+### 10.5 Ghi nhận phụ — `clock_drift` bắt thêm vài cửa sổ biên (không phải regression)
+
+`F1_01`/`F6_03` (không tiêm lỗi clock) xuất hiện thêm vài `clock_drift` severity `medium` (độ lệch 0.22–0.27s, jitter 0.07–0.09s) đúng lúc `/scan` vừa hồi phục sau outage — có khả năng là độ trễ buffer lúc hệ thống đồng bộ lại, không hẳn là "clock reset" theo đúng nghĩa GT. Vì jitter (~30% độ lớn) gần ngưỡng ổn định hơn ca `F2_04` (jitter 0.01% độ lớn), đây là vùng biên của rule, severity vẫn giữ `medium` (không lệch hướng nghiêm trọng). Không sinh dương tính giả nào trên bag `healthy_01_0`.
+
+### 10.6 Kiểm chứng
+
+259 test pass (thêm 11 test mới: severity theo độ lớn cho `frequency_gap`/`tf_missing_gap`, `clock_drift` sustained+stable/loại trừ latency dao động/loại trừ khỏi `header_latency`, pre-roll giữ lỗi thật bỏ noise khởi động, `_enforce_simultaneity` đơn vị + tích hợp qua `explain_detection_cluster`), coverage 91.24%, ruff sạch. `tests/conftest.py` tắt `pre_roll_grace_sec` mặc định cho test (phần lớn stream giả lập bắt đầu tại t=0) — bật lại tường minh trong test dành riêng cho hành vi này.
+
+Tổng 7 bag (LLM thật): **82** detection thô, **13** cụm cần duyệt — giảm từ 103/20 sau việc 2 (pre-roll lọc noise thật, không phải mất tín hiệu — đối chiếu GT không thiếu ca nào).
+
+---
+
+## 11. Kết luận cập nhật sau việc 3+4
+
+**Theo 9 lỗi GT: 9/9 để lại tín hiệu đúng hướng ở tầng dữ liệu, 8/9 đúng hoàn toàn end-to-end** (trước việc 3+4: 7/9).
+
+| Lỗi GT | Sau việc 2 | Sau việc 3+4 |
+|---|---|---|
+| `F1_01`, `F6_03` ×3 | ✅ | ✅ (không đổi, ít nhiễu hơn nhờ pre-roll) |
+| `F1_03` (frequency drop) | ✅ nhưng severity sai (`medium` vs GT `high`) | ✅ **hết điểm trừ** — severity `high` = GT |
+| `F3_01` (tf_gap) | ✅ nhưng severity sai (`high` vs GT `critical`) | ✅ **hết điểm trừ** — severity `critical` = GT |
+| `C_01` lỗi 1 (NaN) | ✅ | ✅ (không đổi) |
+| `F2_04` (clock jump) | ⚠️ sai phân loại hoàn toàn (`header_latency`) | ✅ đúng nhãn `clock_drift`, đúng chiều, đúng severity, fix đúng hướng |
+| `C_01` lỗi 2 (tf_gap, cùng bag lỗi 1) | ⚠️ evidence đúng, root_cause+fix sai hướng | ⚠️ evidence đúng + `findings[].role` đúng + fix nhắc đúng `/tf`, nhưng root_cause đầu câu vẫn sai hướng |
+
+**Duy nhất còn lại: `C_01` lỗi 2** — không phải do thiếu tín hiệu (detector đã đúng edge, đúng severity, đã ép đúng vai trò `primary`) mà do model tự do diễn giải câu root_cause bất chấp dữ liệu findings đã đúng. Đây là giới hạn của việc sửa bằng hậu xử lý dữ liệu có cấu trúc — không thể viết lại văn xuôi tự do của model. Hướng khắc phục tiếp theo (chưa làm, ngoài phạm vi việc 3+4): ép model tạo `root_cause` từ chính `findings` đã hậu xử lý (template hoá thay vì để model tự viết), hoặc gọi lại model lần 2 với `findings` đã sửa làm ràng buộc.
+
+**Không còn vấn đề nào trong 9 vấn đề gốc (mục 3.2) bị bỏ ngỏ ở mức "chưa từng đụng tới":** vấn đề 1 (NaN, việc 2), vấn đề 2 (nén nhiều sự cố, việc 1), vấn đề 3 (sai phân loại clock jump, việc 3), vấn đề 4 (TF không nêu edge, việc 2), vấn đề 5 (severity, việc 4a), vấn đề 6 (pre-roll, việc 4b), vấn đề 7 (LLM suy diễn ngoài dữ liệu — giảm đáng kể nhờ fix đúng, chưa đo lại định lượng). Vấn đề 8 (evidence UI) và vấn đề 9 ("confidence" không phải của model) chưa động tới — nằm ngoài phạm vi 4 việc đã lên kế hoạch.
+
+---
+
+## 12. Mở rộng đánh giá — 39 bag GT thật, phát hiện + sửa 3 lỗ hổng mới (việc 5)
+
+### 12.1 Bối cảnh
+
+Chạy LLM thật trên 30 bag GT chưa từng đụng tới (`C_02..C_10`, `F1_02..F6_05`, tổng 42 lỗi tiêm) để kiểm tra hệ thống trên phạm vi rộng hơn 7 bag ban đầu. Kết quả: **32/42 bắt trực tiếp đúng topic gốc, 5/42 chỉ thấy gián tiếp qua hệ quả, 5/42 bỏ sót hoàn toàn.** Quy về 3 nguyên nhân gốc, ảnh hưởng 10/42 lỗi:
+
+**A) `clock_drift` chỉ bắt lệch bậc thang (constant), không bắt lệch tăng dần tuyến tính (ramp).** Check độ ổn định (std-dev thấp) ở việc 3 loại bỏ đúng kiểu lệch này vì trong episode giá trị liên tục đổi. Ảnh hưởng `F2_01` (miss hoàn toàn), `F2_02`, `C_02` (mục 5-9 đã ghi).
+
+**B) Rule NaN chỉ áp dụng field `ranges` của LaserScan — `/imu` hoàn toàn không được kiểm tra.** Ảnh hưởng `C_06`, `F5_03`, `F5_05` (miss hoàn toàn), `F5_04` (khớp yếu qua tín hiệu chung chung).
+
+**C) `tf_conflict` (2 publisher cùng công bố 1 transform, giá trị xung đột) không tạo "gap"** nên `tf_missing_gap` không bao giờ bắt được. 3/3 ca `tf_conflict` (`C_04`, `F3_02` miss hoàn toàn, `F3_05` chỉ thấy cascade) đều lọt.
+
+### 12.2 Xác minh cơ chế thật trước khi sửa
+
+- `F5_03` (nan_values `/imu`): NaN chỉ xuất hiện ở `angular_velocity`/`linear_acceleration` (6 field), không ở `orientation`.
+- `C_06` (out_of_range `/imu`): cả 6 field bị ghim đúng `500.0` trong lúc lỗi — so với baseline khỏe mạnh (`angular_velocity` ±1 rad/s, `linear_acceleration` ±30 m/s²), một giá trị vật lý phi lý rõ ràng.
+- `C_04` (tf_conflict): edge `odom->base_footprint` xen kẽ giữa quỹ đạo thật (tăng dần đều) và một giá trị cố định vô can `(0.4, 0.25, 0.0)` — đúng chữ ký "hai publisher tranh nhau publish 1 edge", lặp lại ~30Hz suốt cửa sổ lỗi.
+
+### 12.3 Thay đổi
+
+1. **`clock_drift` — thêm nhánh ramp** ([diagnostics.py](src/services/diagnostics.py) `_fit_clock_drift_ramp`): trong episode không ổn định, fit `statistics.linear_regression` qua (timestamp, drift); nếu residual sau khi trừ đường thẳng nhỏ (< `clock_drift_max_sec`) và tổng độ lệch đủ lớn → báo `clock_drift` kiểu `"ramp"` kèm `drift_rate_ms_per_sec`.
+2. **`payload_out_of_range` (rule mới)** ([bag_stream.py](src/services/bag_stream.py) `_sensor_quality_ratios`, thay `_nan_ratio` cũ): tổng quát hoá cho cả LaserScan (dùng `range_min`/`range_max` tự khai trong message) và Imu (dùng ngưỡng vật lý phi lý cố định `angular_velocity_max_rad_s=50`, `linear_acceleration_max_ms2=100` — không phải giá trị tinh chỉnh theo robot, chỉ để bắt giá trị rõ ràng hỏng). [diagnostics.py](src/services/diagnostics.py) `_evaluate_data_quality_rule` tổng quát hoá (nhận `kind`/threshold key) dùng chung cho `payload_nan` và `payload_out_of_range`.
+3. **`tf_conflict` (rule mới)** ([bag_stream.py](src/services/bag_stream.py) `_transforms` đọc thêm `translation`; [diagnostics.py](src/services/diagnostics.py) `_evaluate_tf_conflict_rule`): với mỗi edge, tính khoảng cách Euclid giữa 2 translation liên tiếp; `≥ tf_conflict_min_jumps` (3) lần nhảy `> tf_jump_distance_m` (0.5m, ngưỡng đã có sẵn nhưng chưa dùng tới) trong `tf_conflict_window_sec` (2.0s) → báo `tf_conflict`. Khác `tf_drift_jump` (nhảy 1 lần rồi ổn định — relocalize thật) ở chỗ **lặp lại**.
+
+### 12.4 Tác dụng phụ phát hiện được và đã sửa: nhiễu "ramp" trên dữ liệu `burst`
+
+Chạy thật lộ ra: fault `burst` (`C_09`, cũng ảnh hưởng `C_06`) khiến driver dồn hàng chục message vào một khoảng bag-time gần như bằng 0 (dưới 0.02s) rồi flush cùng lúc — fit đường thẳng qua vài điểm cách nhau vài phần nghìn giây cho ra tốc độ vô lý (`-296196 ms/s`, tức 296 giây lệch mỗi giây). `C_09` từ 1 cụm sạch phình thành 28 detection `clock_drift` rác xen giữa. **Đã sửa** bằng 2 chốt chặn mới: `clock_drift_min_span_sec` (0.5s — loại episode dồn cục, thời lượng thực gần bằng 0) và `clock_drift_max_rate_ms_per_sec` (500 — loại tốc độ phi lý dù span đủ dài, VD ca `C_06` index 10: span 0.77s nhưng rate 1000ms/s). Sau khi sửa: `C_09` 127→63 detection, `C_06` 13→4, nhiễu biến mất hoàn toàn, tín hiệu thật (2 lỗi GT còn lại của mỗi bag) vẫn nguyên vẹn.
+
+### 12.5 Kết quả đo — chạy lại LLM thật trên 10 bag từng có lỗ hổng
+
+| Bag | Lỗi GT | Trước | Sau |
+|---|---|---|---|
+| `C_04` | tf_conflict, timestamp_backwards, frequency_drop | 1 miss, 2 đúng nhưng root_cause lẫn lộn (nhiễu ramp) | **cả 3 đúng, root_cause sạch** — window/severity khớp GT (`clock_drift drift_sec=5.0001` vs GT `-5.0`) |
+| `C_06` | out_of_range, clock_drift, node_crash | 1 miss, 2 lẫn nhiễu | **cả 3 đúng, root_cause sạch** |
+| `C_09` | burst, timestamp_jump, out_of_range | 1 indirect, 2 đúng nhưng ngập nhiễu (127 detection) | **cả 3 đúng**, 63 detection (thật, không nhiễu) — `timestamp_jump` khớp GT gần tuyệt đối |
+| `F2_01` | clock_drift (ramp 20ms/s) | miss hoàn toàn | **đúng tuyệt đối** — `drift_rate_ms_per_sec: -20.0` = GT `20.0` |
+| `F3_02` | tf_conflict | miss hoàn toàn | **đúng** — edge `base_footprint`, window khớp GT lệch <0.05s |
+| `F3_05` | tf_conflict | indirect only | **đúng** — edge `odom`, severity `high` (GT `critical`, chưa hiệu chỉnh) |
+| `F5_02` | inf_values | miss | **vẫn miss** — giới hạn đã biết, không sửa (Inf hợp lệ theo spec LaserScan) |
+| `F5_03` | nan_values `/imu` | miss hoàn toàn | **đúng tuyệt đối** — ratio 1.0, window lệch <0.1s |
+| `F5_04` | out_of_range `/scan` | khớp yếu | **đúng** — `payload_out_of_range` riêng biệt, window khớp GT |
+| `F5_05` | out_of_range `/imu` | miss hoàn toàn | **đúng tuyệt đối** — ratio 1.0, window khớp GT |
+
+**9/10 bag giờ đúng hoàn toàn ở tầng dữ liệu và root_cause.** Duy nhất `F5_02` (inf_values) còn miss — quyết định có chủ đích, không phải bug: `+/-Inf` là giá trị hợp lệ theo `sensor_msgs/LaserScan` ("quá xa/gần để đo"), coi nó là lỗi sẽ gây dương tính giả trên LiDAR khỏe mạnh dùng đúng quy ước.
+
+### 12.6 Kiểm chứng
+
+267 test pass (thêm 15 test mới: `payload_out_of_range` sustained, `clock_drift` ramp + step + ramp-quá-ngắn-để-tính + burst-artifact bị loại, `tf_conflict` phát hiện xung đột + bỏ qua relocalize 1 lần + bỏ qua chuyển động mượt, decode IMU NaN/out-of-range thật qua `rosbags.Writer`), coverage 91.35%, ruff sạch trên mọi file sửa.
+
+---
+
 *Dữ liệu: `GET /api/v1/analysis/run_{healthy_01_0,C_01_0,F1_01_0,F1_03_0,F2_04_0,F3_01_0,F6_03_0}` · Ground truth: `~/ros2_doctor_ws/bags/`*

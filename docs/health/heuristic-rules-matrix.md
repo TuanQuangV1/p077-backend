@@ -15,15 +15,15 @@ Full Rule ID / Condition / Penalty / UI-warning table. Penalties là per-detecti
 | **LOG** | `LOG-01` | `log_fatal` | `count(fatal) ≥ 1` | −50 (critical) | 🔴 Red band "FATAL on /rosout" |
 | **LOG** | `LOG-02` | `log_error_burst` | `count(error) ≥ 3` trong burst window | −30 (high) | 🔴 Red band "ERROR burst" |
 | **LOG** | `LOG-03` | `log_warn_storm` | `count(warn) ≥ 10` trong window | −5 (low) | 🟡 Yellow band "WARN storm" |
-| **FREQ** | `FREQ-01` | `frequency_gap` | `max interval > max(0.08s, median × 1.5)` | −15 (medium) | 🟡 Band on lane |
+| **FREQ** | `FREQ-01` | `frequency_gap` | `max interval > max(0.08s, median × 1.5)` | −15 (medium) / −30 (high, sustained ≥10 breaches) | 🟡 Band on lane |
 | **FREQ** | `FREQ-02` | `message_drop_burst` | `single interval > 1.0s` | −15 (medium) | 🟡 Band on lane |
 | **FREQ** | `FREQ-03` | `hz_drop` | `window rate < expected × 0.70` (drop > 30%) | −15 (medium) | 🟡 Lane + "−X% Hz" badge |
 | **FREQ** | `FREQ-04` | `hz_drop_critical` | `window rate < expected × 0.50` (drop > 50%) | −30 (high) | 🔴 Lane + "−X% Hz" badge |
 | **FREQ** | `FREQ-05` | `silent_node` | `node active span ≥ 0.3s` | −5 (low) | ⚪ "Node silent" |
 | **LAT** | `LAT-01` | `timestamp_jitter` | `std-dev intervals > 0.02s` | −5 (low) | ⚪ "Jitter" |
-| **LAT** | `LAT-02` | `clock_drift` | `median |bag − header| > 0.1s` | −15 (medium) | 🟡 "Clock drift" |
+| **LAT** | `LAT-02` | `clock_drift` | sustained (≥3 msg) `|bag − header| > 0.1s`, stable (std-dev < 0.1s) | −15 (medium) / −50 (critical, ≥1.0s offset) | 🟡 "Clock drift" |
 | **LAT** | `LAT-03` | `header_latency` | `≥3 messages với lag > 100ms` | −15 (medium) | 🟡 "Stale stamps" |
-| **TF** | `TF-01` | `tf_missing_gap` | `consecutive gap > 0.5s` **on one edge** (grouped by `child_frame_id`) | −30 (high) | 🔴 Edge turns red (Disconnected) |
+| **TF** | `TF-01` | `tf_missing_gap` | `consecutive gap > 0.5s` **on one edge** (grouped by `child_frame_id`) | −30 (high) / −50 (critical, gap ≥5.0s) | 🔴 Edge turns red (Disconnected) |
 | **TF** | `TF-02` | `tf_drift_jump` | `child frame re-parented` (VD: odom → map) | −50 (critical) | 🔴 "Localization jump" |
 | **PLD** | `PLD-01` | `payload_zero_byte` | `≥5 messages với payload_bytes == 0` | −30 (high) | 🔴 "PointCloud → 0 B" |
 | **PLD** | `PLD-02` | `payload_nan` | `≥5 tin nhắn liên tiếp` có tỉ lệ NaN trong `ranges` `> 5%` | −50 (critical) | 🔴 "Sensor payload NaN" |
@@ -223,20 +223,22 @@ Drop threshold: 20 × 0.70 = 14 Hz
 | Thuộc tính | Giá trị |
 |------------|---------|
 | Detection Kind | `clock_drift` |
-| Severity | `medium` |
-| Penalty | −15 |
-| Threshold | `clock_drift_max_sec = 0.1` |
-| Điều kiện | `median |bag_timestamp − header.stamp| > 0.1s` |
-| UI | 🟡 "Clock drift" |
+| Severity | `medium` (offset < 1.0s) / `critical` (offset ≥ `clock_drift_critical_sec`) |
+| Penalty | −15 / −50 |
+| Threshold | `clock_drift_max_sec = 0.1`, `clock_drift_min_count = 3`, `clock_drift_critical_sec = 1.0` |
+| Điều kiện | Đợt liên tục `≥ clock_drift_min_count` message có `\|bag_timestamp − header.stamp\| > clock_drift_max_sec` **và ổn định** (std-dev của offset trong đợt `< clock_drift_max_sec`) |
+| UI | 🟡/🔴 "Clock drift" |
+
+**Sustained + stable, không phải median toàn topic.** Bản cũ lấy median trên **toàn bộ** message của topic — một lỗi chỉ chiếm một phần bag (VD 75s trong tổng 250s) bị pha loãng bởi phần khỏe mạnh, không bao giờ vượt ngưỡng. Bản hiện tại nhóm theo đợt liên tục vượt ngưỡng (giống `_threshold_episodes`), rồi kiểm tra độ ổn định: một node restart/reset clock tạo ra độ lệch **gần như hằng số** (std-dev nhỏ) trong suốt đợt lỗi — khác với độ trễ mạng/xử lý thật, vốn **dao động** message này sang message khác. Chỉ đợt ổn định mới được báo `clock_drift`; đợt dao động bị bỏ qua ở đây để `header_latency` xử lý, và cửa sổ mà `clock_drift` đã báo sẽ bị loại khỏi đánh giá `header_latency` để tránh gắn 2 nhãn mâu thuẫn cho cùng một đoạn dữ liệu.
 
 **ROS2 Context:**
 ```
-# Clock drift = system clock không sync
+# Clock drift = system clock không sync (offset ổn định, ít dao động)
 # Thường do:
-# - NTPD không chạy
-# - Docker container clock drift
-# - VM clock issues
+# - Node restart, clock khởi tạo lại về mốc cũ (offset hằng số)
+# - NTPD không chạy / Docker container clock drift / VM clock issues
 # 100ms drift = nghiêm trọng cho real-time control
+# ≥1.0s = critical: chữ ký rõ ràng của clock reset, không phải latency
 ```
 
 #### LAT-03: header_latency (>100ms)
@@ -388,6 +390,7 @@ Typical message sizes:
 |-----|---------|---------|
 | `frequency_gap_min_threshold_sec` | 0.08 | FREQ-01 |
 | `frequency_gap_multiplier` | 1.5 | FREQ-01 |
+| `frequency_gap_high_occurrence_min` | 10 | FREQ-01 severity |
 | `max_gap_burst_sec` | 1.0 | FREQ-02 |
 | `silent_node_min_span_sec` | 0.3 | FREQ-05 |
 | `hz_drop_warn_pct` | 0.30 | FREQ-03 |
@@ -395,15 +398,19 @@ Typical message sizes:
 | `hz_drop_min_messages` | 50 | FREQ-03/04 guard |
 | `timestamp_jitter_max_sec` | 0.02 | LAT-01 |
 | `clock_drift_max_sec` | 0.1 | LAT-02 |
+| `clock_drift_min_count` | 3 | LAT-02 sustained guard |
+| `clock_drift_critical_sec` | 1.0 | LAT-02 severity |
 | `header_latency_max_ms` | 100 | LAT-03 |
 | `log_error_min_count` | 3 | LOG-02 |
 | `log_warn_min_count` | 10 | LOG-03 |
 | `log_fatal_min_count` | 1 | LOG-01 |
 | `tf_max_missing_span_sec` | 0.5 | TF-01 |
+| `tf_missing_gap_critical_sec` | 5.0 | TF-01 severity |
 | `tf_jump_distance_m` | 0.5 | TF-02 (reserved) |
 | `payload_zero_byte_min_count` | 5 | PLD-01 |
 | `payload_nan_ratio_min` | 0.05 | PLD-02 |
 | `payload_nan_min_count` | 5 | PLD-02 |
+| `pre_roll_grace_sec` | 8.0 | Toàn cục — bỏ mọi detection khởi phát trong N giây đầu kể từ tin nhắn đầu tiên của topic đó |
 
 ---
 

@@ -44,8 +44,10 @@ _KIND_TITLES = {
     "log_warn_storm": "Warning storm on {topic}",
     "payload_zero_byte": "Empty payload on {topic}",
     "payload_nan": "NaN corruption on {topic}",
+    "payload_out_of_range": "Out-of-range readings on {topic}",
     "tf_missing_gap": "TF broadcast gap on {topic}",
     "tf_drift_jump": "TF frame re-parenting on {topic}",
+    "tf_conflict": "TF conflicting publishers on {topic}",
 }
 
 _KIND_LABELS = {
@@ -62,8 +64,10 @@ _KIND_LABELS = {
     "log_warn_storm": "Log warning storm",
     "payload_zero_byte": "Empty sensor payload",
     "payload_nan": "NaN sensor corruption",
+    "payload_out_of_range": "Out-of-range sensor reading",
     "tf_missing_gap": "TF broadcast gap",
     "tf_drift_jump": "TF frame jump",
+    "tf_conflict": "TF conflicting publishers",
 }
 
 _DEFAULT_MODEL = "vllm/qwen2.5-coder-32b"
@@ -183,6 +187,11 @@ def _anomaly_summaries(run_id: str, detections: list[dict[str, Any]]) -> list[di
             "occurrence_count",
             "child_frame",
             "max_nan_ratio",
+            "max_out_of_range_ratio",
+            "max_jump_m",
+            "drift_rate_ms_per_sec",
+            "direction",
+            "pattern",
         ):
             if key in evidence:
                 metric_parts.append(f"{key.replace('_', ' ')} {evidence[key]}")

@@ -219,14 +219,49 @@ def test_iter_rosbag2_decoded_reads_every_tf_edge_and_scan_nan_ratio(tmp_path: P
 
     tf_row = rows["/tf"]
     assert tf_row["transforms"] == [
-        {"frame_id": "map", "child_frame_id": "odom"},
-        {"frame_id": "odom", "child_frame_id": "base_footprint"},
+        {"frame_id": "map", "child_frame_id": "odom", "translation": (0.0, 0.0, 0.0)},
+        {"frame_id": "odom", "child_frame_id": "base_footprint", "translation": (0.0, 0.0, 0.0)},
     ]
     assert tf_row["nan_ratio"] is None
+    assert tf_row["out_of_range_ratio"] is None
 
     scan_row = rows["/scan"]
     assert scan_row["nan_ratio"] == pytest.approx(0.5)
+    assert scan_row["out_of_range_ratio"] == pytest.approx(0.0)
     assert scan_row["transforms"] == []
+
+
+def test_iter_rosbag2_decoded_reads_imu_nan_and_out_of_range_ratios(tmp_path: Path) -> None:
+    """An Imu message has no `ranges`; NaN/out-of-range are read from its 6 motion fields."""
+    typestore = get_typestore(Stores.ROS2_HUMBLE)
+    imu_cls = typestore.get_msgdef("sensor_msgs/msg/Imu").cls
+    header_cls = typestore.get_msgdef("std_msgs/msg/Header").cls
+    time_cls = typestore.get_msgdef("builtin_interfaces/msg/Time").cls
+    vector_cls = typestore.get_msgdef("geometry_msgs/msg/Vector3").cls
+    quat_cls = typestore.get_msgdef("geometry_msgs/msg/Quaternion").cls
+
+    def _imu(av: tuple[float, float, float], la: tuple[float, float, float]) -> Any:
+        return imu_cls(
+            header=header_cls(stamp=time_cls(sec=0, nanosec=0), frame_id="imu_link"),
+            orientation=quat_cls(0.0, 0.0, 0.0, 1.0),
+            orientation_covariance=np.zeros(9),
+            angular_velocity=vector_cls(*av),
+            angular_velocity_covariance=np.zeros(9),
+            linear_acceleration=vector_cls(*la),
+            linear_acceleration_covariance=np.zeros(9),
+        )
+
+    bag_dir = tmp_path / "bag"
+    with Writer(bag_dir, version=9) as writer:
+        conn = writer.add_connection("/imu", "sensor_msgs/msg/Imu", typestore=typestore)
+        # One NaN component (1/6) and one implausibly-large component (1/6).
+        imu = _imu(av=(float("nan"), 0.0, 0.0), la=(500.0, 0.0, 9.8))
+        writer.write(conn, 0, typestore.serialize_cdr(imu, conn.msgtype))
+
+    rows = list(iter_rosbag2_decoded(bag_dir))
+    assert len(rows) == 1
+    assert rows[0]["nan_ratio"] == pytest.approx(1 / 6)
+    assert rows[0]["out_of_range_ratio"] == pytest.approx(1 / 6)
 
 
 def test_infer_node_heuristic_and_override() -> None:

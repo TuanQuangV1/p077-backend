@@ -23,6 +23,10 @@ DEFAULT_DIAGNOSTICS_THRESHOLDS = {
     "timestamp_jitter_max_sec": 0.02,
     "max_gap_burst_sec": 1.0,
     "clock_drift_max_sec": 0.1,
+    "clock_drift_min_count": 3,
+    "clock_drift_critical_sec": 1.0,
+    "clock_drift_min_span_sec": 0.5,
+    "clock_drift_max_rate_ms_per_sec": 500.0,
     "hz_drop_warn_pct": 0.30,
     "hz_drop_critical_pct": 0.50,
     "hz_drop_min_messages": 50,
@@ -31,10 +35,17 @@ DEFAULT_DIAGNOSTICS_THRESHOLDS = {
     "log_warn_min_count": 10,
     "log_fatal_min_count": 1,
     "tf_max_missing_span_sec": 0.5,
+    "tf_missing_gap_critical_sec": 5.0,
     "tf_jump_distance_m": 0.5,
     "payload_zero_byte_min_count": 5,
     "payload_nan_ratio_min": 0.05,
     "payload_nan_min_count": 5,
+    "payload_out_of_range_ratio_min": 0.05,
+    "payload_out_of_range_min_count": 5,
+    "frequency_gap_high_occurrence_min": 10,
+    "pre_roll_grace_sec": 8.0,
+    "tf_conflict_window_sec": 2.0,
+    "tf_conflict_min_jumps": 3,
 }
 
 DEFAULT_DIAGNOSTICS_THRESHOLDS_FILE = Path("data/diagnostics/thresholds.json")

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import statistics
 from collections import defaultdict
 from itertools import pairwise
@@ -231,13 +232,6 @@ def _timestamp_jitter(timestamps: list[float]) -> float:
     return float(statistics.pstdev(intervals)) if len(intervals) >= 2 else 0.0
 
 
-def _median_abs(values: list[float]) -> float:
-    """Median of the absolute values, vectorized for large inputs."""
-    if len(values) >= _MIN_NUMPY_MESSAGES:
-        return float(np.median(np.abs(np.asarray(values, dtype=float))))
-    return float(statistics.median(abs(value) for value in values))
-
-
 def _evaluate_topic_rules(
     topic: str,
     timestamps_arr: list[float],
@@ -269,13 +263,19 @@ def _evaluate_topic_rules(
             },
         },
     }
+    high_occurrence_min = thresholds["frequency_gap_high_occurrence_min"]
     gap_episodes = _threshold_episodes(spans, threshold)
     for start_sec, end_sec, worst, breaches in gap_episodes:
         detections.append(
             {
                 "kind": "frequency_gap",
                 "topic": topic,
-                "severity": "medium",
+                # A sustained run of breaches (cadence never recovers) is a
+                # systemic degradation, not a transient blip: rank it higher
+                # than a single long gap the same rule would otherwise also
+                # catch (e.g. a dead topic), which already gets a `critical`
+                # sibling detection from `silent_node` on the same window.
+                "severity": "high" if breaches >= high_occurrence_min else "medium",
                 "confidence": 0.81,
                 "tSec": start_sec,
                 "endSec": end_sec,
@@ -374,15 +374,174 @@ def _evaluate_topic_rules(
     return detections, logs
 
 
+def _clock_drift_detection(
+    topic: str,
+    start_sec: float,
+    end_sec: float,
+    drift_sec: float,
+    jitter_sec: float,
+    occurrence_count: int,
+    threshold: float,
+    critical_sec: float,
+    pattern: str,
+    rate_ms_per_sec: float | None = None,
+) -> dict[str, Any]:
+    evidence: dict[str, Any] = {
+        "drift_sec": round(drift_sec, 4),
+        "jitter_sec": round(jitter_sec, 4),
+        "threshold_sec": round(threshold, 4),
+        "direction": "backward" if drift_sec > 0 else "forward",
+        "occurrence_count": occurrence_count,
+        "pattern": pattern,
+    }
+    if rate_ms_per_sec is not None:
+        evidence["drift_rate_ms_per_sec"] = round(rate_ms_per_sec, 4)
+    return {
+        "kind": "clock_drift",
+        "topic": topic,
+        "severity": "critical" if abs(drift_sec) >= critical_sec else "medium",
+        "confidence": 0.88,
+        "tSec": start_sec,
+        "endSec": end_sec,
+        "evidence": evidence,
+    }
+
+
+def _fit_clock_drift_ramp(
+    ep_samples: list[tuple[float, float]],
+    threshold: float,
+    max_rate_ms_per_sec: float,
+) -> tuple[float, float, float] | None:
+    """Fit a straight line to an episode's drift samples and test how well it fits.
+
+    A free-running (unsynced) sensor clock drifts at a roughly constant rate,
+    so its offset over time is a straight line with only small residual
+    noise — unlike real network/processing latency, which has no such trend.
+    Returns ``(slope_sec_per_sec, residual_std_sec, total_drift_sec)`` when
+    the fit is tight (residual std-dev below ``threshold``), the accumulated
+    drift is itself non-trivial, and the rate stays under
+    ``max_rate_ms_per_sec`` — a handful of points spanning a fraction of a
+    second can fit a "line" perfectly by chance, but the resulting slope is
+    numerically unstable (dividing by a near-zero time span) and physically
+    implausible for a real clock; that noise, not a genuine ramp, is rejected
+    here. Otherwise returns ``None``.
+    """
+    if len(ep_samples) < 3:
+        return None
+    timestamps = [ts for ts, _ in ep_samples]
+    values = [drift for _, drift in ep_samples]
+    try:
+        fit = statistics.linear_regression(timestamps, values)
+    except statistics.StatisticsError:
+        return None
+    residuals = [value - (fit.intercept + fit.slope * ts) for ts, value in ep_samples]
+    residual_spread = statistics.pstdev(residuals)
+    total_drift = fit.slope * (timestamps[-1] - timestamps[0])
+    if (
+        residual_spread < threshold
+        and abs(total_drift) > threshold
+        and abs(fit.slope) * 1000.0 <= max_rate_ms_per_sec
+    ):
+        return fit.slope, residual_spread, total_drift
+    return None
+
+
 def _evaluate_drift_rule(
     topic: str,
-    drifts: list[float],
-    timestamps_arr: list[float],
+    samples: list[tuple[float, float]],
     thresholds: dict[str, float],
-) -> tuple[dict[str, Any] | None, dict[str, Any]]:
-    """Evaluate the clock-drift rule for one topic (bag vs header timestamp)."""
-    drift = _median_abs(drifts)
-    drift_threshold = thresholds["clock_drift_max_sec"]
+) -> tuple[list[dict[str, Any]], dict[str, Any], list[tuple[float, float]]]:
+    """Flag sustained clock-offset episodes, distinct from fluctuating network latency.
+
+    A node that restarts and resets its clock produces a near-constant
+    header/bag-time offset for as long as the stale clock is in effect — the
+    offset's own std-dev stays small relative to its magnitude. A sensor
+    running an unsynced free-running clock instead produces an offset that
+    grows *linearly* over time (a constant drift rate) — not stable, but not
+    random either: its deviation from a straight line stays small. Real
+    network or processing latency looks similar in *average* magnitude but
+    fluctuates message to message with no such trend. A whole-topic median
+    (the previous approach) also misses a fault confined to part of the
+    recording: it gets diluted by the healthy majority of messages and never
+    crosses the threshold. This evaluates sustained runs (via the same
+    threshold-episode grouping as the other rules) and reports the stable or
+    linear ones as `clock_drift`; a fluctuating run is left for
+    :func:`_evaluate_header_latency_rule` to explain as latency instead.
+
+    ``samples`` holds ``(timestamp, signed drift)`` pairs, time-ordered, where
+    ``drift = bag_timestamp - header_timestamp``: positive means the header
+    stamp reads *behind* the bag/receive time (a backward clock jump).
+
+    Returns the detections, the rule-evaluation log entry, and the
+    ``(start, end)`` windows that fired — callers exclude those windows from
+    `header_latency` so the same corrupted stretch is not double-labelled.
+    """
+    threshold = float(thresholds["clock_drift_max_sec"])
+    min_count = int(thresholds["clock_drift_min_count"])
+    critical_sec = float(thresholds["clock_drift_critical_sec"])
+    min_span = float(thresholds["clock_drift_min_span_sec"])
+    max_rate = float(thresholds["clock_drift_max_rate_ms_per_sec"])
+
+    raw_episodes: list[tuple[float, float, list[tuple[float, float]]]] = []
+    start: float | None = None
+    end = 0.0
+    episode_samples: list[tuple[float, float]] = []
+    for ts, drift in samples:
+        if abs(drift) > threshold:
+            if start is None:
+                start, episode_samples = ts, []
+            episode_samples.append((ts, drift))
+            end = ts
+        elif start is not None:
+            raw_episodes.append((start, end, episode_samples))
+            start = None
+    if start is not None:
+        raw_episodes.append((start, end, episode_samples))
+
+    detections: list[dict[str, Any]] = []
+    fired_windows: list[tuple[float, float]] = []
+    for start_sec, end_sec, ep_samples in raw_episodes:
+        # A driver that buffers messages and flushes them in a batch (the
+        # `burst` fault) crams many messages into a near-zero bag-time span;
+        # any drift/rate computed over that span is numerically unstable
+        # (dividing by ~0 time), not a real clock signature. Require a
+        # minimum real duration before trusting either classification below.
+        if len(ep_samples) < min_count or end_sec - start_sec < min_span:
+            continue
+        values = [drift for _, drift in ep_samples]
+        spread = statistics.pstdev(values)
+        if spread < threshold:
+            # Stable offset: a step jump (e.g. a node restart resetting the clock).
+            mean_drift = statistics.fmean(values)
+            detections.append(
+                _clock_drift_detection(
+                    topic, start_sec, end_sec, mean_drift, spread, len(ep_samples), threshold, critical_sec, "step"
+                )
+            )
+            fired_windows.append((start_sec, end_sec))
+            continue
+
+        # Not stable — check whether it is instead a clean linear ramp (a
+        # free-running clock drifting at a constant rate) rather than jitter.
+        ramp = _fit_clock_drift_ramp(ep_samples, threshold, max_rate)
+        if ramp is not None:
+            slope, residual_spread, total_drift = ramp
+            detections.append(
+                _clock_drift_detection(
+                    topic,
+                    start_sec,
+                    end_sec,
+                    total_drift,
+                    residual_spread,
+                    len(ep_samples),
+                    threshold,
+                    critical_sec,
+                    "ramp",
+                    rate_ms_per_sec=slope * 1000.0,
+                )
+            )
+            fired_windows.append((start_sec, end_sec))
+
     drift_log_payload: dict[str, Any] = {
         "event": "diagnostics.rule_evaluation",
         "rule": "clock_drift",
@@ -390,33 +549,18 @@ def _evaluate_drift_rule(
         "message": "Evaluated clock drift rule.",
         "details": {
             "topic": topic,
-            "message_count": len(drifts),
-            "drift_sec": round(drift, 4),
-            "threshold_sec": round(drift_threshold, 4),
+            "message_count": len(samples),
+            "threshold_sec": round(threshold, 4),
+            "episode_count": len(detections),
+            "detected": bool(detections),
         },
     }
-    if drift > drift_threshold:
+    if detections:
         drift_log_payload["level"] = "warn"
-        drift_log_payload["details"]["detected"] = True
         logger.warning("diagnostics.rule_detected", extra={"diagnostics": drift_log_payload})
-        return (
-            {
-                "kind": "clock_drift",
-                "topic": topic,
-                "severity": "medium",
-                "confidence": 0.85,
-                "tSec": float(timestamps_arr[0]),
-                "endSec": float(timestamps_arr[-1]),
-                "evidence": {
-                    "drift_sec": round(drift, 4),
-                    "threshold_sec": round(drift_threshold, 4),
-                },
-            },
-            drift_log_payload,
-        )
-    drift_log_payload["details"]["detected"] = False
-    logger.debug("diagnostics.rule_evaluated", extra={"diagnostics": drift_log_payload})
-    return None, drift_log_payload
+    else:
+        logger.debug("diagnostics.rule_evaluated", extra={"diagnostics": drift_log_payload})
+    return detections, drift_log_payload, fired_windows
 
 
 def _evaluate_silent_rule(
@@ -627,14 +771,24 @@ def _evaluate_header_latency_rule(
     topic: str,
     latencies: list[tuple[float, float]],
     thresholds: dict[str, float],
+    exclude_windows: list[tuple[float, float]] | None = None,
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     """Flag sustained publish/header timestamp skew above 100 ms.
 
     ``latencies`` holds ``(bag_timestamp, publish_lag_sec)`` pairs. The rule
     fires when at least ``_HEADER_LATENCY_MIN_SUSTAINED`` messages lag more than
-    ``header_latency_max_ms`` behind their header stamp.
+    ``header_latency_max_ms`` behind their header stamp. ``exclude_windows``
+    (from :func:`_evaluate_drift_rule`) removes samples already explained by a
+    stable clock-offset episode, so the same corrupted stretch is not
+    double-labelled as both `clock_drift` and `header_latency`.
     """
     threshold_sec = float(thresholds["header_latency_max_ms"]) / 1000.0
+    if exclude_windows:
+        latencies = [
+            (ts, lag)
+            for ts, lag in latencies
+            if not any(start <= ts <= end for start, end in exclude_windows)
+        ]
     over = [(ts, lag) for ts, lag in latencies if lag > threshold_sec]
     log_payload: dict[str, Any] = {
         "event": "diagnostics.rule_evaluation",
@@ -748,7 +902,7 @@ def _evaluate_payload_rules(
 
 def _evaluate_tf_rules(
     topic: str,
-    pairs: list[tuple[float, str, str]],
+    pairs: list[tuple[float, str, str, tuple[float, float, float] | None]],
     thresholds: dict[str, float],
     observation_end: float,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -770,16 +924,18 @@ def _evaluate_tf_rules(
     - ``tf_drift_jump``: a child frame is re-parented to a different parent
       frame (re-rooting / localization switch), surfaced at critical severity.
 
-    ``pairs`` holds ``(timestamp, frame_id, child_frame_id)`` tuples — one per
-    broadcast edge observed on the topic (a single ``/tf`` message can batch
-    several edges), not necessarily time-ordered.
+    ``pairs`` holds ``(timestamp, frame_id, child_frame_id, translation)``
+    tuples — one per broadcast edge observed on the topic (a single ``/tf``
+    message can batch several edges), not necessarily time-ordered.
+    ``translation`` is unused here; see :func:`_evaluate_tf_conflict_rule`.
     """
     detections: list[dict[str, Any]] = []
     logs: list[dict[str, Any]] = []
 
     missing_threshold = float(thresholds["tf_max_missing_span_sec"])
+    critical_gap_sec = float(thresholds["tf_missing_gap_critical_sec"])
     by_child: dict[str, list[tuple[float, str]]] = defaultdict(list)
-    for ts, frame, child in pairs:
+    for ts, frame, child, _translation in pairs:
         if child:
             by_child[child].append((ts, frame))
 
@@ -804,7 +960,7 @@ def _evaluate_tf_rules(
                 {
                     "kind": "tf_missing_gap",
                     "topic": topic,
-                    "severity": "high",
+                    "severity": "critical" if worst >= critical_gap_sec else "high",
                     "confidence": 0.86,
                     "tSec": start_sec,
                     "endSec": end_sec,
@@ -834,7 +990,7 @@ def _evaluate_tf_rules(
         "message": "Evaluated TF drift/jump re-parenting rule.",
         "details": {"topic": topic},
     }
-    for ts, frame, child in sorted(pairs, key=lambda pair: pair[0]):
+    for ts, frame, child, _translation in sorted(pairs, key=lambda pair: pair[0]):
         if not child:
             continue
         previous = parent_of.get(child)
@@ -864,29 +1020,138 @@ def _evaluate_tf_rules(
     return detections, logs
 
 
-def _evaluate_data_quality_rule(
+def _evaluate_tf_conflict_rule(
     topic: str,
-    samples: list[tuple[float, float]],
+    pairs: list[tuple[float, str, str, tuple[float, float, float] | None]],
     thresholds: dict[str, float],
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Flag sustained NaN corruption in payload arrays such as LaserScan ranges.
+    """Flag an edge whose translation repeatedly jumps between two disagreeing publishers.
 
-    ``samples`` holds ``(timestamp, nan_ratio)`` pairs, time-ordered — the
-    fraction of one message's array (e.g. ``ranges``) that decoded as NaN. A
-    message counts as corrupted once its ratio exceeds
-    ``payload_nan_ratio_min``; a corrupted stretch of at least
-    ``payload_nan_min_count`` consecutive messages is one incident, reported
-    by its real duration (e.g. a failing photodiode segment lasting minutes)
-    instead of once per message.
+    Two nodes launched to publish the same ``(parent, child)`` edge produce a
+    broadcast stream that alternates between two unrelated trajectories — the
+    edge "teleports" back and forth every time the other publisher's message
+    lands, instead of moving continuously. This never shows up as a gap
+    (`tf_missing_gap` sees a healthy publish rate) or a re-parenting
+    (`tf_drift_jump` sees the same parent throughout), so it needs its own
+    signal: repeated large jumps in the *value*, not the timing.
+
+    Differs from a one-time relocalization jump (e.g. AMCL correcting once)
+    by repeating: at least ``tf_conflict_min_jumps`` jumps larger than
+    ``tf_jump_distance_m``, clustered within ``tf_conflict_window_sec`` of
+    each other. A single jump that then settles is left unflagged.
+
+    ``pairs`` holds ``(timestamp, frame_id, child_frame_id, translation)``
+    tuples; entries without a translation (e.g. flat dicts built by callers
+    that never populated it) are skipped, so this rule stays silent rather
+    than false-flagging when geometry is unavailable.
     """
-    ratio_threshold = float(thresholds["payload_nan_ratio_min"])
-    min_count = int(thresholds["payload_nan_min_count"])
+    jump_distance = float(thresholds["tf_jump_distance_m"])
+    window_sec = float(thresholds["tf_conflict_window_sec"])
+    min_jumps = int(thresholds["tf_conflict_min_jumps"])
+
+    by_child: dict[str, list[tuple[float, tuple[float, float, float]]]] = defaultdict(list)
+    for ts, _frame, child, translation in pairs:
+        if child and translation is not None:
+            by_child[child].append((ts, translation))
+
+    detections: list[dict[str, Any]] = []
+    for child, entries in by_child.items():
+        entries.sort(key=lambda entry: entry[0])
+        jump_events = [
+            (ts_b, math.dist(pos_a, pos_b))
+            for (_, pos_a), (ts_b, pos_b) in pairwise(entries)
+            if math.dist(pos_a, pos_b) > jump_distance
+        ]
+        # `_threshold_episodes` groups by span *duration* exceeding a
+        # threshold; jump clustering instead needs consecutive jump events
+        # *closer together* than `window_sec` to merge into one episode, so
+        # it is grouped directly here rather than reusing that helper.
+        episodes: list[tuple[float, float, float, int]] = []
+        ep_start: float | None = None
+        ep_end = ep_worst = 0.0
+        ep_count = 0
+        prev_ts: float | None = None
+        for ts, distance in jump_events:
+            if prev_ts is not None and ts - prev_ts > window_sec:
+                if ep_start is not None and ep_count >= min_jumps:
+                    episodes.append((ep_start, ep_end, ep_worst, ep_count))
+                ep_start = None
+            if ep_start is None:
+                ep_start, ep_worst, ep_count = ts, distance, 0
+            ep_worst = max(ep_worst, distance)
+            ep_end = ts
+            ep_count += 1
+            prev_ts = ts
+        if ep_start is not None and ep_count >= min_jumps:
+            episodes.append((ep_start, ep_end, ep_worst, ep_count))
+
+        for start_sec, end_sec, worst_distance, occurrence in episodes:
+            detections.append(
+                {
+                    "kind": "tf_conflict",
+                    "topic": topic,
+                    "severity": "high",
+                    "confidence": 0.82,
+                    "tSec": start_sec,
+                    "endSec": end_sec,
+                    "evidence": {
+                        "child_frame": child,
+                        "max_jump_m": round(worst_distance, 4),
+                        "threshold_m": round(jump_distance, 4),
+                        "occurrence_count": occurrence,
+                    },
+                }
+            )
+
+    log_payload: dict[str, Any] = {
+        "event": "diagnostics.rule_evaluation",
+        "rule": "tf_conflict",
+        "level": "debug",
+        "message": "Evaluated TF conflicting-publisher rule.",
+        "details": {
+            "topic": topic,
+            "threshold_m": jump_distance,
+            "edge_count": len(by_child),
+            "detected": bool(detections),
+            "episode_count": len(detections),
+        },
+    }
+    if detections:
+        log_payload["level"] = "warn"
+        logger.warning("diagnostics.rule_detected", extra={"diagnostics": log_payload})
+    else:
+        logger.debug("diagnostics.rule_evaluated", extra={"diagnostics": log_payload})
+    return detections, log_payload
+
+
+def _evaluate_data_quality_rule(
+    topic: str,
+    kind: str,
+    evidence_ratio_key: str,
+    samples: list[tuple[float, float]],
+    ratio_threshold: float,
+    min_count: int,
+    severity: str,
+    confidence: float,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Flag a sustained ratio of corrupted payload values (NaN or out-of-range).
+
+    ``samples`` holds ``(timestamp, ratio)`` pairs, time-ordered — the
+    fraction of one message's numeric fields (e.g. LaserScan ``ranges``, or
+    an Imu's angular_velocity/linear_acceleration) that decoded as NaN, or
+    fell outside a valid envelope. A message counts as corrupted once its
+    ratio exceeds ``ratio_threshold``; a corrupted stretch of at least
+    ``min_count`` consecutive messages is one incident, reported by its real
+    duration (e.g. a failing photodiode segment lasting minutes) instead of
+    once per message. Shared by `payload_nan` and `payload_out_of_range`,
+    which differ only in which ratio field feeds them and their severity.
+    """
     detections: list[dict[str, Any]] = []
     log_payload: dict[str, Any] = {
         "event": "diagnostics.rule_evaluation",
-        "rule": "payload_nan",
+        "rule": kind,
         "level": "debug",
-        "message": "Evaluated payload NaN-ratio rule.",
+        "message": f"Evaluated {kind} rule.",
         "details": {
             "topic": topic,
             "message_count": len(samples),
@@ -916,14 +1181,14 @@ def _evaluate_data_quality_rule(
     for start_sec, end_sec, worst_ratio, occurrence in episodes:
         detections.append(
             {
-                "kind": "payload_nan",
+                "kind": kind,
                 "topic": topic,
-                "severity": "critical",
-                "confidence": 0.87,
+                "severity": severity,
+                "confidence": confidence,
                 "tSec": start_sec,
                 "endSec": end_sec,
                 "evidence": {
-                    "max_nan_ratio": round(worst_ratio, 4),
+                    evidence_ratio_key: round(worst_ratio, 4),
                     "threshold_ratio": ratio_threshold,
                     "occurrence_count": occurrence,
                 },
@@ -945,11 +1210,13 @@ def _evaluate_auxiliary_rules(
     log_entries: dict[str, list[tuple[float, str]]],
     topic_payload: dict[str, list[tuple[float, int]]],
     topic_nan: dict[str, list[tuple[float, float]]],
-    tf_pairs: dict[str, list[tuple[float, str, str]]],
+    topic_out_of_range: dict[str, list[tuple[float, float]]],
+    tf_pairs: dict[str, list[tuple[float, str, str, tuple[float, float, float] | None]]],
     thresholds: dict[str, float],
     expected_hz: Mapping[str, float] | None,
     cadence_topics: set[str],
     observation_end: float,
+    clock_drift_windows: dict[str, list[tuple[float, float]]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Run the hz-drop, header-latency, log, payload, data-quality and TF rule batteries.
 
@@ -971,7 +1238,9 @@ def _evaluate_auxiliary_rules(
     for topic, latencies in topic_latency.items():
         if topic.rstrip("/").endswith("cmd_vel"):
             continue
-        latency_detection, latency_log = _evaluate_header_latency_rule(topic, latencies, thresholds)
+        latency_detection, latency_log = _evaluate_header_latency_rule(
+            topic, latencies, thresholds, clock_drift_windows.get(topic)
+        )
         if latency_detection is not None:
             detections.append(latency_detection)
         logs.append(latency_log)
@@ -983,14 +1252,42 @@ def _evaluate_auxiliary_rules(
         detections.extend(_evaluate_payload_rules(topic, sorted(payloads), thresholds))
 
     for topic, samples in topic_nan.items():
-        nan_detections, nan_log = _evaluate_data_quality_rule(topic, sorted(samples), thresholds)
+        nan_detections, nan_log = _evaluate_data_quality_rule(
+            topic,
+            "payload_nan",
+            "max_nan_ratio",
+            sorted(samples),
+            float(thresholds["payload_nan_ratio_min"]),
+            int(thresholds["payload_nan_min_count"]),
+            severity="critical",
+            confidence=0.87,
+        )
         detections.extend(nan_detections)
         logs.append(nan_log)
+
+    for topic, samples in topic_out_of_range.items():
+        oor_detections, oor_log = _evaluate_data_quality_rule(
+            topic,
+            "payload_out_of_range",
+            "max_out_of_range_ratio",
+            sorted(samples),
+            float(thresholds["payload_out_of_range_ratio_min"]),
+            int(thresholds["payload_out_of_range_min_count"]),
+            severity="high",
+            confidence=0.83,
+        )
+        detections.extend(oor_detections)
+        logs.append(oor_log)
 
     for topic, pairs in tf_pairs.items():
         tf_detections, tf_logs = _evaluate_tf_rules(topic, pairs, thresholds, observation_end)
         detections.extend(tf_detections)
         logs.extend(tf_logs)
+
+    for topic, pairs in tf_pairs.items():
+        conflict_detections, conflict_log = _evaluate_tf_conflict_rule(topic, pairs, thresholds)
+        detections.extend(conflict_detections)
+        logs.append(conflict_log)
 
     return detections, logs
 
@@ -1010,39 +1307,67 @@ def detect_anomalies(
 
     - `frequency_gap`: for each topic with >= 2 messages, a gap is flagged when
       the max inter-message interval exceeds `max(frequency_gap_min_threshold_sec,
-      median_interval * frequency_gap_multiplier)`.
+      median_interval * frequency_gap_multiplier)`. Severity is `high` when an
+      episode sustains at least `frequency_gap_high_occurrence_min` breaches
+      (a systemic cadence drop, not a single blip), else `medium`.
     - `message_drop_burst`: a single inter-message interval exceeding the
       absolute ceiling `max_gap_burst_sec` (independent of the median).
     - `timestamp_jitter`: the population std-dev of inter-message intervals of
       a topic exceeding `timestamp_jitter_max_sec`.
     - `silent_node`: for each node with >= 2 messages, a node is flagged when
       its active span (last - first timestamp) reaches `silent_node_min_span_sec`.
-    - `clock_drift`: the median |bag timestamp - header timestamp| of a topic
-      exceeding `clock_drift_max_sec`. Only evaluated when messages carry a
-      `header` field (e.g. produced by the light-decode bag reader).
+    - `clock_drift`: a sustained run of `>= clock_drift_min_count` messages
+      whose |bag timestamp - header timestamp| exceeds `clock_drift_max_sec`
+      and either stays stable (std-dev below `clock_drift_max_sec` — a node
+      clock reset producing a near-constant offset) or follows a clean linear
+      ramp (an unsynced free-running clock drifting at a constant rate;
+      residual std-dev after a line fit stays below `clock_drift_max_sec`).
+      Fluctuating latency with no such pattern is left for `header_latency`.
+      Severity is `critical` when the total offset reaches
+      `clock_drift_critical_sec`, else `medium`. Only evaluated when messages
+      carry a `header` field.
     - `hz_drop` / `hz_drop_critical`: a time window whose effective publish rate
       falls more than `hz_drop_warn_pct` / `hz_drop_critical_pct` below the
       expected rate (from `expected_hz`, else the peak window rate). Requires at
       least `hz_drop_min_messages` messages.
     - `header_latency`: at least `_HEADER_LATENCY_MIN_SUSTAINED` messages whose
-      bag timestamp lags their `header.stamp` by more than `header_latency_max_ms`.
+      bag timestamp lags their `header.stamp` by more than `header_latency_max_ms`,
+      excluding any stretch already explained by a `clock_drift` episode.
     - `log_fatal` / `log_error_burst` / `log_warn_storm`: counts of fatal/error/
       warn entries on /rosout-style topics crossing `log_*_min_count`.
     - `payload_zero_byte`: at least `payload_zero_byte_min_count` messages whose
       `payload_bytes` field is 0.
     - `payload_nan`: a stretch of at least `payload_nan_min_count` consecutive
-      messages whose `nan_ratio` field (fraction of e.g. LaserScan `ranges`
-      that decoded as NaN) exceeds `payload_nan_ratio_min`.
+      messages whose `nan_ratio` field (fraction of e.g. LaserScan `ranges` or
+      an Imu's angular_velocity/linear_acceleration that decoded as NaN)
+      exceeds `payload_nan_ratio_min`.
+    - `payload_out_of_range`: a stretch of at least
+      `payload_out_of_range_min_count` consecutive messages whose
+      `out_of_range_ratio` field (fraction of readings outside a valid
+      envelope — a LaserScan's own `range_min`/`range_max`, or an Imu's
+      physically-implausible ceiling) exceeds `payload_out_of_range_ratio_min`.
     - `tf_missing_gap` / `tf_drift_jump`: per-edge broadcast gaps and frame
       re-parenting on `/tf` / `/tf_static` topics, keyed by `child_frame_id` so
-      one silent edge is not masked by other edges still publishing.
+      one silent edge is not masked by other edges still publishing. Severity
+      is `critical` when the gap reaches `tf_missing_gap_critical_sec`, else
+      `high`.
+    - `tf_conflict`: an edge whose translation repeatedly (>= `tf_conflict_min_jumps`
+      times, clustered within `tf_conflict_window_sec`) jumps more than
+      `tf_jump_distance_m` and back — two publishers disagreeing on the same
+      edge, distinct from `tf_drift_jump`'s one-time re-parenting.
+
+    Detections whose onset falls within `pre_roll_grace_sec` of that topic's
+    own first observed message are dropped: recorder/simulator warm-up
+    produces irregular timing on every topic's first few messages, which
+    otherwise reads identically to a real anomaly.
 
     Args:
         messages: Iterable of message dicts. Recognized fields include
             `timestamp`, `topic`, `node`, `message_type`, optional `header`
             (seconds), `frame_id`, `child_frame_id`, `transforms` (list of
-            `{frame_id, child_frame_id}` for a batched `/tf` publish), `level`,
-            `payload_bytes` and `nan_ratio`.
+            `{frame_id, child_frame_id, translation}` for a batched `/tf`
+            publish), `level`, `payload_bytes`, `nan_ratio` and
+            `out_of_range_ratio`.
         thresholds: Optional overrides merged over the persisted defaults via
             `merge_diagnostics_thresholds`. `None` uses the defaults as-is.
         expected_hz: Optional `topic -> expected publish rate` map used to score
@@ -1060,12 +1385,12 @@ def detect_anomalies(
     topic_times: dict[str, list[float]] = defaultdict(list)
     topic_message_types: dict[str, set[str]] = defaultdict(set)
     topic_node_counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    topic_drift: dict[str, list[float]] = defaultdict(list)
     topic_latency: dict[str, list[tuple[float, float]]] = defaultdict(list)
     topic_payload: dict[str, list[tuple[float, int]]] = defaultdict(list)
     topic_nan: dict[str, list[tuple[float, float]]] = defaultdict(list)
+    topic_out_of_range: dict[str, list[tuple[float, float]]] = defaultdict(list)
     log_entries: dict[str, list[tuple[float, str]]] = defaultdict(list)
-    tf_pairs: dict[str, list[tuple[float, str, str]]] = defaultdict(list)
+    tf_pairs: dict[str, list[tuple[float, str, str, tuple[float, float, float] | None]]] = defaultdict(list)
     total_messages = 0
     for message in messages:
         timestamp = float(message["timestamp"])
@@ -1078,7 +1403,6 @@ def detect_anomalies(
         header = message.get("header")
         if header is not None:
             drift = timestamp - float(header)
-            topic_drift[topic].append(drift)
             topic_latency[topic].append((timestamp, drift))
         payload_bytes = message.get("payload_bytes")
         if payload_bytes is not None:
@@ -1086,6 +1410,9 @@ def detect_anomalies(
         nan_ratio = message.get("nan_ratio")
         if nan_ratio is not None:
             topic_nan[topic].append((timestamp, float(nan_ratio)))
+        out_of_range_ratio = message.get("out_of_range_ratio")
+        if out_of_range_ratio is not None:
+            topic_out_of_range[topic].append((timestamp, float(out_of_range_ratio)))
         level = message.get("level")
         if level is not None:
             log_entries[topic].append((timestamp, str(level).lower()))
@@ -1095,13 +1422,16 @@ def detect_anomalies(
                 for transform in transforms:
                     tr_frame = str(transform.get("frame_id") or "")
                     tr_child = str(transform.get("child_frame_id") or "")
+                    tr_translation = transform.get("translation")
+                    if tr_translation is not None:
+                        tr_translation = tuple(float(v) for v in tr_translation)
                     if tr_frame or tr_child:
-                        tf_pairs[topic].append((timestamp, tr_frame, tr_child))
+                        tf_pairs[topic].append((timestamp, tr_frame, tr_child, tr_translation))
             else:
                 frame_id = str(message.get("frame_id") or "")
                 child_frame_id = str(message.get("child_frame_id") or "")
                 if frame_id or child_frame_id:
-                    tf_pairs[topic].append((timestamp, frame_id, child_frame_id))
+                    tf_pairs[topic].append((timestamp, frame_id, child_frame_id, None))
 
     if total_messages == 0:
         empty_log_payload: dict[str, Any] = {
@@ -1146,13 +1476,15 @@ def detect_anomalies(
         detections.extend(topic_detections)
         logs.extend(topic_logs)
 
-    for topic, drifts in topic_drift.items():
-        drift_detection, drift_log = _evaluate_drift_rule(
-            topic, drifts, sorted(topic_times[topic]), resolved_thresholds
+    clock_drift_windows: dict[str, list[tuple[float, float]]] = defaultdict(list)
+    for topic, samples in topic_latency.items():
+        drift_detections, drift_log, drift_windows = _evaluate_drift_rule(
+            topic, sorted(samples), resolved_thresholds
         )
-        if drift_detection is not None:
-            detections.append(drift_detection)
+        detections.extend(drift_detections)
         logs.append(drift_log)
+        if drift_windows:
+            clock_drift_windows[topic].extend(drift_windows)
 
     observation_end = max(timestamp for timestamps in topic_times.values() for timestamp in timestamps)
     for topic, timestamps in topic_times.items():
@@ -1175,14 +1507,31 @@ def detect_anomalies(
         log_entries,
         topic_payload,
         topic_nan,
+        topic_out_of_range,
         tf_pairs,
         resolved_thresholds,
         expected_hz,
         cadence_topics,
         observation_end,
+        clock_drift_windows,
     )
     detections.extend(aux_detections)
     logs.extend(aux_logs)
+
+    # Recorder/simulator warm-up produces irregular publish timing for the
+    # first few seconds of every topic's own life, independent of any real
+    # fault; without a filter these look identical to a genuine anomaly. No
+    # injected fault in the framework's dataset starts inside the observed
+    # warm-up window (worst case ~6.3s), so excluding each topic's own first
+    # `pre_roll_grace_sec` never masks a real incident.
+    pre_roll_grace = float(resolved_thresholds["pre_roll_grace_sec"])
+    if pre_roll_grace > 0:
+        topic_start = {topic: min(timestamps) for topic, timestamps in topic_times.items()}
+        detections = [
+            d
+            for d in detections
+            if float(d.get("tSec", 0.0)) >= topic_start.get(str(d.get("topic", "")), float("-inf")) + pre_roll_grace
+        ]
 
     result = {
         "summary": {
