@@ -654,7 +654,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     }
     # Handle HILT subcommands
     if args.command == "hilt":
-        subcommand_handlers = {
+        subcommand_handlers: dict[str, Callable[[argparse.Namespace], int]] = {
             "list": _cmd_hilt,
             "review": _cmd_hilt,
             "iterate": _cmd_hilt_iterate,
