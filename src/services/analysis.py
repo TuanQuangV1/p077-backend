@@ -18,13 +18,14 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+from src.config import get_settings
 from src.models.schemas import AIResultSummary, AnalysisRun, EvidenceItem
 from src.services import run_store
 from src.services.bag_stream import iter_bag_messages
 from src.services.diagnostics import detect_anomalies
 from src.services.experiments import experiment_bag_files, list_experiments
 from src.services.health import compute_health_summary
-from src.services.llm import explain_detection_cluster, is_llm_configured
+from src.services.llm import _compute_cost_usd, explain_detection_cluster, is_llm_configured
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +208,7 @@ def _anomaly_summaries(run_id: str, detections: list[dict[str, Any]]) -> list[di
                 "topics": [topic],
                 "confidence": float(detection.get("confidence", 0.5)),
                 "metric": "; ".join(metric_parts) or f"detected on {topic}",
+                "evidence": evidence,
             }
         )
     return summaries
@@ -267,6 +269,23 @@ def _canned_ai_results(run_id: str, detections: list[dict[str, Any]]) -> list[AI
     ]
 
 
+def _finding_detail(explanation: dict[str, Any], finding: dict[str, str] | None) -> str:
+    detail = str(explanation.get("explanation", ""))
+    if finding and finding.get("detail"):
+        detail = f"{finding['role']}: {finding['detail']}"
+    return detail
+
+
+def _evidence_item(
+    detection: dict[str, Any], explanation: dict[str, Any], finding: dict[str, str] | None
+) -> EvidenceItem:
+    return EvidenceItem(
+        topic=detection.get("topic", "/unknown"),
+        tSec=float(detection.get("tSec", 0.0)),
+        detail=_finding_detail(explanation, finding),
+    )
+
+
 def _ai_result_from_explanation(
     run_id: str,
     index: int,
@@ -274,12 +293,11 @@ def _ai_result_from_explanation(
     explanation: dict[str, Any],
     model: str = "llm-explain",
     finding: dict[str, str] | None = None,
+    evidence: list[EvidenceItem] | None = None,
+    latency_ms: int = 0,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
 ) -> AIResultSummary:
-    topic = detection.get("topic", "/unknown")
-    t_sec = float(detection.get("tSec", 0.0))
-    detail = str(explanation.get("explanation", ""))
-    if finding and finding.get("detail"):
-        detail = f"{finding['role']}: {finding['detail']}"
     return AIResultSummary(
         id=f"ai_{index:03d}",
         runId=run_id,
@@ -289,12 +307,12 @@ def _ai_result_from_explanation(
         confidence=float(detection.get("confidence", 0.5)),
         explanation=str(explanation.get("explanation", "")),
         suggestedFix=[str(a) for a in explanation.get("recommended_actions", [])],
-        evidence=[EvidenceItem(topic=topic, tSec=t_sec, detail=detail)],
+        evidence=evidence if evidence is not None else [_evidence_item(detection, explanation, finding)],
         reviewStatus="pending",
         model=model,
-        latencyMs=0,
-        promptTokens=0,
-        completionTokens=0,
+        latencyMs=latency_ms,
+        promptTokens=prompt_tokens,
+        completionTokens=completion_tokens,
         vllmRequestId=f"vllm_req_{index:03d}",
     )
 
@@ -356,13 +374,31 @@ def _build_ai_results(run_id: str, detections: list[dict[str, Any]]) -> list[AIR
                 )
             continue
         findings = explanation.get("findings", {})
+        usage = explanation.get("usage") or {}
+        # A reviewer opening any one result in a cluster should see the whole
+        # incident's evidence chain, not just its own detection — build every
+        # finding's EvidenceItem once, then reorder per row so each row's own
+        # item stays first (preserves the existing evidence[0] contract).
+        cluster_evidence = [
+            _evidence_item(detections[position], explanation, findings.get(offset))
+            for offset, position in enumerate(cluster, start=1)
+        ]
         for offset, position in enumerate(cluster, start=1):
+            own = offset - 1
+            ordered_evidence = [cluster_evidence[own], *cluster_evidence[:own], *cluster_evidence[own + 1 :]]
             results[position] = _ai_result_from_explanation(
                 run_id,
                 position + 1,
                 detections[position],
                 explanation,
                 finding=findings.get(offset),
+                evidence=ordered_evidence,
+                # One chat_completion call explains the whole cluster; attribute
+                # its usage to the first result only so summing promptTokens
+                # across all AI results of a run doesn't overcount by cluster size.
+                latency_ms=int(usage.get("latency_ms", 0)) if offset == 1 else 0,
+                prompt_tokens=int(usage.get("prompt_tokens", 0)) if offset == 1 else 0,
+                completion_tokens=int(usage.get("completion_tokens", 0)) if offset == 1 else 0,
             )
     return [results[position] for position in sorted(results)]
 
@@ -380,6 +416,30 @@ def _persist_review_items(run: AnalysisRun, ai_results: list[AIResultSummary]) -
             }
             for index, result in enumerate(ai_results, start=1)
         ]
+    )
+
+
+def _finalize_run_llm_usage(
+    run: AnalysisRun, ai_results: list[AIResultSummary], started: float
+) -> AnalysisRun:
+    """Roll per-result token/latency usage up into the run and price it.
+
+    Runs the LLM explain step, so must run after `_build_ai_results` — the
+    dashboard's "mean diagnosis time" is meant to cover parse through AI
+    conclusion, which this also corrects (the prior timestamp was taken
+    before that step ran, so it never included it).
+    """
+    prompt_tokens = sum(result.promptTokens for result in ai_results)
+    completion_tokens = sum(result.completionTokens for result in ai_results)
+    settings = get_settings()
+    resolved_model = settings.model_name if settings.llm_provider == "openai" else settings.vllm_model_name
+    return run.model_copy(
+        update={
+            "totalLatencyMs": int((time.perf_counter() - started) * 1000),
+            "promptTokens": prompt_tokens,
+            "completionTokens": completion_tokens,
+            "costUsd": _compute_cost_usd(resolved_model, prompt_tokens, completion_tokens),
+        }
     )
 
 
@@ -438,6 +498,7 @@ def run_analysis(dataset_id: str, model: str | None = None) -> dict[str, Any]:
             total_messages = 0
 
     ai_results = _build_ai_results(run.id, detections)
+    run = _finalize_run_llm_usage(run, ai_results, started)
     report_health = compute_health_summary(detections, total_messages=total_messages)
     run_store.save_run(run.model_dump())
     run_store.save_run_anomalies(run.id, detections)

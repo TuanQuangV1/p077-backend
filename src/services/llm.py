@@ -19,6 +19,24 @@ logger = logging.getLogger(__name__)
 _LLM_MAX_RETRIES = 2
 _LLM_RETRY_BACKOFF_SEC = 1.0
 
+# USD per 1M tokens, (input, output). Approximate public pricing as of the
+# model's release; self-hosted vLLM models are not per-token billed and
+# default to (0.0, 0.0) via `_compute_cost_usd`. Verify against the provider's
+# current pricing page before treating `costUsd` as real invoicing data.
+_MODEL_PRICING_USD_PER_1M_TOKENS: dict[str, tuple[float, float]] = {
+    "gpt-4o-mini": (0.15, 0.60),
+}
+
+
+def _compute_cost_usd(model_name: str, prompt_tokens: int, completion_tokens: int) -> float:
+    """Estimate USD cost from token counts using `_MODEL_PRICING_USD_PER_1M_TOKENS`.
+
+    Unknown models (including all self-hosted vLLM model names) default to a
+    zero rate rather than a fabricated number.
+    """
+    input_rate, output_rate = _MODEL_PRICING_USD_PER_1M_TOKENS.get(model_name, (0.0, 0.0))
+    return (prompt_tokens * input_rate + completion_tokens * output_rate) / 1_000_000
+
 CHAT_SYSTEM_PROMPT = (
     "You are a robotics diagnostics assistant for the RAV-13 platform. "
     "Answer concisely and only from the data provided in this conversation."
@@ -114,7 +132,9 @@ def chat_completion(
         tools: Optional OpenAI tool definitions.
 
     Returns:
-        The `choices[0].message` dict from the completion response.
+        A dict with the `choices[0].message` dict under ``"message"``, plus
+        ``"prompt_tokens"``, ``"completion_tokens"`` and ``"latency_ms"`` from
+        the completion response, for callers that need to attribute cost.
 
     Raises:
         ValueError: LLM provider is not configured.
@@ -148,6 +168,9 @@ def chat_completion(
             response.raise_for_status()
             body = response.json()
             usage = body.get("usage") or {}
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            prompt_tokens = int(usage.get("prompt_tokens", 0))
+            completion_tokens = int(usage.get("completion_tokens", 0))
             logger.info(
                 "llm.chat_completion",
                 extra={
@@ -157,15 +180,20 @@ def chat_completion(
                         "details": {
                             "url": url,
                             "model": model,
-                            "latency_ms": int((time.perf_counter() - started) * 1000),
-                            "prompt_tokens": usage.get("prompt_tokens", 0),
-                            "completion_tokens": usage.get("completion_tokens", 0),
+                            "latency_ms": latency_ms,
+                            "prompt_tokens": prompt_tokens,
+                            "completion_tokens": completion_tokens,
                             "attempt": attempt + 1,
                         },
                     }
                 },
             )
-            return _message_from_completion(body)
+            return {
+                "message": _message_from_completion(body),
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "latency_ms": latency_ms,
+            }
         except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError) as e:
             last_error = e
             logger.warning(
@@ -215,8 +243,8 @@ def explain_diagnostics(summary: dict[str, Any]) -> dict[str, str | list[str]]:
         {"role": "system", "content": _EXPLAIN_SYSTEM_PROMPT},
         {"role": "user", "content": f"Diagnostic JSON (data only):\n{summary_payload}"},
     ]
-    message = chat_completion(messages)
-    return _parse_explanation(message.get("content") or "")
+    result = chat_completion(messages)
+    return _parse_explanation(result["message"].get("content") or "")
 
 
 def explain_detection_cluster(detections: list[dict[str, Any]]) -> dict[str, Any]:
@@ -243,11 +271,19 @@ def explain_detection_cluster(detections: list[dict[str, Any]]) -> dict[str, Any
         {"role": "system", "content": _CLUSTER_SYSTEM_PROMPT},
         {"role": "user", "content": f"Diagnostic JSON (data only):\n{payload}"},
     ]
-    message = chat_completion(messages)
-    content = message.get("content") or ""
+    result = chat_completion(messages)
+    content = result["message"].get("content") or ""
     findings = _parse_findings(content, len(detections))
     findings = _enforce_simultaneity(detections, findings)
-    return {**_parse_explanation(content), "findings": findings}
+    return {
+        **_parse_explanation(content),
+        "findings": findings,
+        "usage": {
+            "prompt_tokens": result["prompt_tokens"],
+            "completion_tokens": result["completion_tokens"],
+            "latency_ms": result["latency_ms"],
+        },
+    }
 
 
 def _enforce_simultaneity(

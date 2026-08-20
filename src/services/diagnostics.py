@@ -1135,11 +1135,17 @@ def _evaluate_tf_conflict_rule(
             episodes.append((ep_start, ep_end, ep_worst, ep_count))
 
         for start_sec, end_sec, worst_distance, occurrence in episodes:
+            # A conflict on `odom` (the map->odom edge, AMCL-owned) corrupts every
+            # downstream frame in a standard Nav2 TF tree, so it is critical; a
+            # conflict lower in the tree (e.g. odom->base_footprint) stays high.
+            # Ground-truth evidence: `child_frame == "odom"` -> critical in both
+            # observed cases, `base_footprint` -> high in both observed cases.
+            severity = "critical" if child == "odom" else "high"
             detections.append(
                 {
                     "kind": "tf_conflict",
                     "topic": topic,
-                    "severity": "high",
+                    "severity": severity,
                     "confidence": 0.82,
                     "tSec": start_sec,
                     "endSec": end_sec,

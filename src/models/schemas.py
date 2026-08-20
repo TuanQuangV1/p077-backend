@@ -62,6 +62,7 @@ class AnomalySummary(BaseModel):
     topics: list[str]
     confidence: float
     metric: str
+    evidence: dict[str, object] = Field(default_factory=dict)
 
 
 class EvidenceItem(BaseModel):

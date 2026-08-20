@@ -16,6 +16,7 @@ from src.services.diagnostics import (
     parse_rosbag2_db3,
 )
 from src.services.llm import (
+    _compute_cost_usd,
     _enforce_simultaneity,
     chat_completion,
     explain_detection_cluster,
@@ -248,7 +249,7 @@ def test_explain_diagnostics_serializes_summary_for_prompt(monkeypatch) -> None:
 
     def fake_chat(messages: list[dict[str, object]], tools: list[dict[str, object]] | None = None) -> dict[str, object]:
         captured["messages"] = messages
-        return {"content": "root cause from llm"}
+        return {"message": {"content": "root cause from llm"}, "prompt_tokens": 0, "completion_tokens": 0, "latency_ms": 0}
 
     def get_settings() -> SettingsStub:
         return SettingsStub()
@@ -304,7 +305,7 @@ def test_explain_diagnostics_uses_configured_openai_provider(monkeypatch) -> Non
     ) -> dict[str, object]:
         nonlocal called
         called = True
-        return {"content": "live openai diagnosis"}
+        return {"message": {"content": "live openai diagnosis"}, "prompt_tokens": 0, "completion_tokens": 0, "latency_ms": 0}
 
     def get_settings() -> SettingsStub:
         return SettingsStub()
@@ -332,7 +333,7 @@ def test_explain_diagnostics_handles_empty_and_nested_untrusted_values(monkeypat
 
     def fake_chat(messages: list[dict[str, object]], tools: list[dict[str, object]] | None = None) -> dict[str, object]:
         captured["messages"] = messages
-        return {"content": "ok"}
+        return {"message": {"content": "ok"}, "prompt_tokens": 0, "completion_tokens": 0, "latency_ms": 0}
 
     def get_settings() -> SettingsStub:
         return SettingsStub()
@@ -387,19 +388,18 @@ def test_explain_detection_cluster_applies_simultaneity_correction_end_to_end(mo
         vllm_api_key = ""
 
     def fake_chat(messages: list[dict[str, object]], tools: list[dict[str, object]] | None = None) -> dict[str, object]:
-        return {
-            "content": json.dumps(
-                {
-                    "root_cause": "/cmd_vel failed first.",
-                    "explanation": "cmd_vel silent at 205.410s, tf gap at 205.441s.",
-                    "recommended_actions": ["Restart /cmd_vel."],
-                    "findings": [
-                        {"index": 1, "role": "primary", "detail": "cmd_vel went silent"},
-                        {"index": 2, "role": "consequence", "detail": "tf gap followed"},
-                    ],
-                }
-            )
-        }
+        content = json.dumps(
+            {
+                "root_cause": "/cmd_vel failed first.",
+                "explanation": "cmd_vel silent at 205.410s, tf gap at 205.441s.",
+                "recommended_actions": ["Restart /cmd_vel."],
+                "findings": [
+                    {"index": 1, "role": "primary", "detail": "cmd_vel went silent"},
+                    {"index": 2, "role": "consequence", "detail": "tf gap followed"},
+                ],
+            }
+        )
+        return {"message": {"content": content}, "prompt_tokens": 0, "completion_tokens": 0, "latency_ms": 0}
 
     monkeypatch.setattr("src.services.llm.get_settings", SettingsStub)
     monkeypatch.setattr("src.services.llm.chat_completion", fake_chat)
@@ -431,7 +431,10 @@ def test_chat_completion_posts_to_vllm_endpoint(monkeypatch) -> None:
             return None
 
         def json(self) -> dict[str, object]:
-            return {"choices": [{"message": {"content": "hi", "tool_calls": [{"id": "t1"}]}}]}
+            return {
+                "choices": [{"message": {"content": "hi", "tool_calls": [{"id": "t1"}]}}],
+                "usage": {"prompt_tokens": 12, "completion_tokens": 34},
+            }
 
     def fake_post(url, headers=None, json=None, timeout=None):
         captured["url"] = url
@@ -445,7 +448,7 @@ def test_chat_completion_posts_to_vllm_endpoint(monkeypatch) -> None:
     monkeypatch.setattr("src.services.llm.get_settings", get_settings)
     monkeypatch.setattr("httpx.post", fake_post)
 
-    message = chat_completion(
+    result = chat_completion(
         [{"role": "user", "content": "hello"}],
         tools=[{"type": "function", "function": {"name": "f", "parameters": {}}}],
     )
@@ -455,8 +458,20 @@ def test_chat_completion_posts_to_vllm_endpoint(monkeypatch) -> None:
     assert captured["json"]["model"] == "qwen2.5-coder-32b"
     assert captured["json"]["temperature"] == 0.2
     assert captured["json"]["tools"][0]["type"] == "function"
-    assert message["content"] == "hi"
-    assert message["tool_calls"][0]["id"] == "t1"
+    assert result["message"]["content"] == "hi"
+    assert result["message"]["tool_calls"][0]["id"] == "t1"
+    assert result["prompt_tokens"] == 12
+    assert result["completion_tokens"] == 34
+    assert result["latency_ms"] >= 0
+
+
+def test_compute_cost_usd_prices_a_known_model() -> None:
+    cost = _compute_cost_usd("gpt-4o-mini", prompt_tokens=1_000_000, completion_tokens=1_000_000)
+    assert cost == pytest.approx(0.15 + 0.60)
+
+
+def test_compute_cost_usd_defaults_unknown_models_to_zero() -> None:
+    assert _compute_cost_usd("qwen2.5-coder-32b", prompt_tokens=1000, completion_tokens=1000) == 0.0
 
 
 def test_parse_rosbag2_db3_reads_topics_and_timestamps(tmp_path) -> None:
@@ -1231,6 +1246,21 @@ def test_tf_conflict_flags_two_publishers_fighting_over_the_same_edge() -> None:
     assert conflict["severity"] == "high"
     assert conflict["evidence"]["child_frame"] == "base_footprint"
     assert conflict["evidence"]["occurrence_count"] >= 3
+
+
+def test_tf_conflict_flags_map_to_odom_conflict_as_critical() -> None:
+    """A conflict on the map->odom edge corrupts the whole TF tree, unlike odom->base_footprint."""
+    real_trajectory = [(1.0 + i * 0.01, 2.0, 0.0) for i in range(20)]
+    bogus_value = (0.6, -0.3, 0.0)
+    messages = []
+    for i, pos in enumerate(real_trajectory):
+        messages.append(_tf_conflict_message(i * 0.1, "map", "odom", pos))
+        messages.append(_tf_conflict_message(i * 0.1 + 0.05, "map", "odom", bogus_value))
+
+    summary = detect_anomalies(messages)
+    conflict = next(d for d in summary["detections"] if d["kind"] == "tf_conflict")
+    assert conflict["severity"] == "critical"
+    assert conflict["evidence"]["child_frame"] == "odom"
 
 
 def test_tf_conflict_ignores_a_single_relocalization_jump() -> None:
