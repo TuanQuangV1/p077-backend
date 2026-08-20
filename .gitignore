@@ -70,4 +70,11 @@ frontend/.npmrc
 .pytest_cache/
 .ruff_cache/
 
+# Terraform local working directories
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.hcl
+.terraform.lock.hcl
 terraform/gcp/.terraform/
