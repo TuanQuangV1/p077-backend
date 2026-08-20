@@ -7,16 +7,21 @@ disk-fill denial of service.
 
 import logging
 import os
-from datetime import UTC, datetime
-from pathlib import Path
 import re
 import shutil
 import sqlite3
+import threading
+import time
 import zipfile
+from contextlib import suppress
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, BinaryIO
 
 import yaml
 from dotenv import load_dotenv
+
+from src.services import perf
 
 DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 
@@ -32,19 +37,43 @@ ROS2_ROBOT_MAP = {
     "/imu": "amr-delivery",
 }
 
+_EXPERIMENTS_CACHE_TTL_SEC = float(os.environ.get("EXPERIMENTS_CACHE_TTL_SEC", "30"))
+
+_cache_lock = threading.Lock()
+_cached_state: tuple[float, list[dict[str, Any]]] | None = None
+
+
+def _set_cached_state(state: tuple[float, list[dict[str, Any]]] | None) -> None:
+    global _cached_state  # noqa: PLW0603 - cache state lives at module scope
+    _cached_state = state
+
 
 def list_experiments() -> list[dict[str, Any]]:
-    """Scan data/ subfolders and return items for folders containing bag files."""
-    if not DATA_DIR.exists():
-        return []
-    results = []
-    for folder in sorted(DATA_DIR.iterdir()):
-        if not folder.is_dir():
-            continue
-        item = _load_item(folder)
-        if item:
-            results.append(item)
-    return results
+    """Scan data/ subfolders and return items for folders containing bag files.
+
+    Results are cached for ``EXPERIMENTS_CACHE_TTL_SEC`` seconds (default 30)
+    because the scan reads bag metadata, which is expensive for large bags.
+    Uploads and deletions invalidate the cache automatically.
+    """
+    with _cache_lock:
+        now = time.monotonic()
+        if _cached_state is not None and now - _cached_state[0] < _EXPERIMENTS_CACHE_TTL_SEC:
+            return list(_cached_state[1])
+        results: list[dict[str, Any]] = []
+        if DATA_DIR.exists():
+            for folder in sorted(DATA_DIR.iterdir()):
+                if not folder.is_dir():
+                    continue
+                item = _load_item(folder)
+                if item:
+                    results.append(item)
+        _set_cached_state((now, results))
+        return list(results)
+
+
+def _invalidate_experiments_cache() -> None:
+    with _cache_lock:
+        _set_cached_state(None)
 
 
 def _bag_files(folder: Path) -> list[Path]:
@@ -130,7 +159,7 @@ def _read_bagfile_info_from_db3(folder: Path) -> dict[str, Any] | None:
     if db3 is None:
         return None
     try:
-        conn = sqlite3.connect(f"file:{db3}?mode=ro", uri=True)
+        conn = perf.open_connection(f"file:{db3}?mode=ro", uri=True, source=f"bag.metadata:{db3.name}")
         try:
             tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             if "topics" not in tables:
@@ -178,54 +207,55 @@ def _read_bagfile_info_from_db3(folder: Path) -> dict[str, Any] | None:
 def _read_bagfile_info_from_mcap(folder: Path) -> dict[str, Any] | None:
     """Derive bagfile information from the first ``.mcap`` in `folder`.
 
-    Uses ``rosbags`` (:class:`rosbags.highlevel.AnyReader`) to walk the
-    message index of the file: only per-topic message counts and timestamp
-    bounds are collected, never the message payloads themselves. Returns None
+    Reads the MCAP summary/index section (chunk index, per-channel message
+    counts and statistics) instead of iterating every message, so listing
+    datasets is O(index size) and never deserializes payloads. Returns None
     when the file cannot be opened as a valid MCAP recording.
     """
     mcap = next((f for f in _bag_files(folder) if f.suffix.lower() == ".mcap"), None)
     if mcap is None:
         return None
     try:
-        from rosbags.highlevel import AnyReader  # noqa: PLC0415 - optional dependency
+        from rosbags.rosbag2.storage_mcap import McapReader  # noqa: PLC0415 - optional dependency
 
-        counts: dict[str, int] = {}
-        starts: dict[str, int] = {}
-        ends: dict[str, int] = {}
-        topics: dict[str, str] = {}
-        with AnyReader([mcap]) as reader:
-            for connection, timestamp_ns, _rawdata in reader.messages():
-                topic = connection.topic
-                counts[topic] = counts.get(topic, 0) + 1
-                starts[topic] = min(starts.get(topic, timestamp_ns), timestamp_ns)
-                ends[topic] = max(ends.get(topic, timestamp_ns), timestamp_ns)
-                topics.setdefault(topic, connection.msgtype)
+        reader = McapReader(mcap)
+        try:
+            reader.open()
+            stats = reader.statistics
+            if stats is None:
+                return None
+            counts = stats.channel_message_counts
+            topics_with_message_count = [
+                {
+                    "topic_metadata": {
+                        "name": channel.topic,
+                        "type": channel.schema,
+                        "serialization_format": "cdr",
+                        "offered_qos_profiles": {},
+                    },
+                    "message_count": counts.get(channel.id, 0),
+                }
+                for channel in sorted(reader.channels.values(), key=lambda c: c.id)
+            ]
+            if stats.message_count:
+                start_ns = stats.start_time
+                end_ns = stats.end_time
+            else:
+                start_ns = 0
+                end_ns = 0
+            return {
+                "version": 4,
+                "storage_identifier": "mcap",
+                "duration": {"nanoseconds": max(0, end_ns - start_ns)},
+                "starting_time": {"nanoseconds_since_epoch": start_ns},
+                "message_count": stats.message_count,
+                "topics_with_message_count": topics_with_message_count,
+            }
+        finally:
+            with suppress(Exception):
+                reader.close()
     except Exception:
         return None
-
-    message_count = sum(counts.values())
-    start_ns = min(starts.values(), default=0)
-    end_ns = max(ends.values(), default=start_ns)
-    topics_with_message_count = [
-        {
-            "topic_metadata": {
-                "name": topic,
-                "type": msgtype,
-                "serialization_format": "cdr",
-                "offered_qos_profiles": {},
-            },
-            "message_count": counts.get(topic, 0),
-        }
-        for topic, msgtype in topics.items()
-    ]
-    return {
-        "version": 4,
-        "storage_identifier": "mcap",
-        "duration": {"nanoseconds": max(0, end_ns - start_ns)},
-        "starting_time": {"nanoseconds_since_epoch": start_ns},
-        "message_count": message_count,
-        "topics_with_message_count": topics_with_message_count,
-    }
 
 
 def _ensure_timestamp_index(db3_path: Path) -> None:
@@ -243,7 +273,7 @@ def _ensure_timestamp_index(db3_path: Path) -> None:
     if db3_path.suffix.lower() != ".db3":
         return
     try:
-        conn = sqlite3.connect(str(db3_path))
+        conn = perf.open_connection(str(db3_path), source=f"bag.index:{db3_path.name}")
         try:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_topic_time ON messages(topic_id, timestamp)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_time ON messages(timestamp)")
@@ -399,6 +429,7 @@ def save_uploaded_rosbag(filename: str, source: BinaryIO) -> dict[str, Any]:
     item = _load_item(folder)
     if item is None:
         raise ValueError("uploaded rosbag could not be indexed")
+    _invalidate_experiments_cache()
     return item
 
 
@@ -417,6 +448,7 @@ def delete_experiment(dataset_id: str) -> bool:
     if not folder.is_dir():
         return False
     shutil.rmtree(folder)
+    _invalidate_experiments_cache()
     return True
 
 

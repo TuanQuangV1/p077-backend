@@ -18,6 +18,14 @@ jobs:
           fetch-depth: 0
 
       - name: Run Gitleaks
+        if: env.ACT != 'true'
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Gitleaks (local)
+        if: env.ACT == 'true'
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz -o /tmp/gitleaks.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp
+          /tmp/gitleaks detect --redact -v --exit-code=1 --report-format=json --report-path=gitleaks-report.json

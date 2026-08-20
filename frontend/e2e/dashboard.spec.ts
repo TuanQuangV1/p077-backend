@@ -26,9 +26,9 @@ test("dashboard exposes the full sidebar navigation", async ({ page }) => {
         "Datasets",
         "Analysis",
         "Human Review",
-        "VLLM Monitoring",
-        "Reports",
-        "Architecture",
+        "Giám sát VLLM",
+        "Báo cáo",
+        "Kiến trúc",
     ]) {
         await expect(page.getByRole("link", { name: label })).toBeVisible()
     }

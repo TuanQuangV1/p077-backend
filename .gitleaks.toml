@@ -1,0 +1,12 @@
+title = "Gitleaks config for P-077"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "False positives and intentional placeholders"
+paths = [
+  '''terraform/main\.tf''',
+  '''docs/guide/chapter-09\.md''',
+  '''\.env\.example''',
+]

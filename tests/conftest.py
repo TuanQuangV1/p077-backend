@@ -13,7 +13,7 @@ os.environ.setdefault("APP_ENV", "test")
 from src.api import routes
 from src.config import get_settings
 from src.main import app
-from src.services import diagnostics_config
+from src.services import diagnostics_config, experiments
 from src.services.rate_limit import SlidingWindowRateLimiter
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "diagnostics"
@@ -35,7 +35,7 @@ def _isolate_state(tmp_path, monkeypatch):
     # nearly every diagnostics test builds. Tests that specifically exercise
     # pre-roll filtering opt back in via an explicit `thresholds` override.
     monkeypatch.setitem(diagnostics_config.DEFAULT_DIAGNOSTICS_THRESHOLDS, "pre_roll_grace_sec", 0.0)
-    monkeypatch.setattr(routes, "_datasets_cache", routes._DatasetsCache(routes._DATASETS_CACHE_TTL_SEC))
+    monkeypatch.setattr(experiments, "_cached_state", None)
     monkeypatch.setattr(
         routes,
         "_rate_limiter",

@@ -119,9 +119,7 @@ class IterativeDebugger:
         """
         if triggers:
             return False
-        if iteration >= self.settings.hilt_max_iterations:
-            return False
-        return True
+        return iteration < self.settings.hilt_max_iterations
 
     def build_hilt_payload(self, trigger_reasons: list[str]) -> dict[str, Any]:
         """Build summary JSON payload for expert review.

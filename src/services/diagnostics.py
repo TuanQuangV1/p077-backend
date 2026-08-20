@@ -1453,9 +1453,23 @@ def detect_anomalies(
     tf_pairs: dict[str, list[tuple[float, str, str, tuple[float, float, float] | None]]] = defaultdict(list)
     total_messages = 0
     for message in messages:
-        timestamp = float(message["timestamp"])
-        topic = str(message["topic"])
-        node = str(message["node"])
+        try:
+            timestamp = float(message["timestamp"])
+            topic = str(message["topic"])
+            node = str(message["node"])
+        except (KeyError, TypeError, ValueError):
+            # Skip malformed messages that are missing required fields.
+            logger.debug(
+                "diagnostics.message_skipped",
+                extra={
+                    "diagnostics": {
+                        "event": "diagnostics.message_skipped",
+                        "level": "debug",
+                        "details": {"keys": list(message.keys()) if hasattr(message, "keys") else []},
+                    }
+                },
+            )
+            continue
         total_messages += 1
         topic_times[topic].append(timestamp)
         topic_message_types[topic].add(str(message.get("message_type") or ""))

@@ -25,6 +25,7 @@ from __future__ import annotations
 import logging
 import math
 import sqlite3
+import struct
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -33,9 +34,37 @@ import numpy as np
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
 
+from src.services import perf
+
 logger = logging.getLogger(__name__)
 
 _Message = dict[str, Any]
+
+# CDR field kinds as used by ``rosbags`` typestores (Nodetype values).
+_NT_BASE, _NT_NAME, _NT_ARRAY, _NT_SEQUENCE = 1, 2, 3, 4
+
+_CDR_SIZEMAP = {
+    "bool": 1,
+    "byte": 1,
+    "char": 1,
+    "int8": 1,
+    "int16": 2,
+    "int32": 4,
+    "int64": 8,
+    "uint8": 1,
+    "uint16": 2,
+    "uint32": 4,
+    "uint64": 8,
+    "float32": 4,
+    "float64": 8,
+}
+
+# Per-message-type field plans: (name, desc, pre_align, post_align, static_size).
+# Alignment values only depend on the message type, so they are computed once
+# per type instead of once per field per message (the dominant cost for large
+# bags). The typestore may vary between readers, but message type names are
+# unique across ROS2 typestores, so plans can be shared safely; a benign race
+# under the GIL may compute the same plan twice at worst.
 
 
 def _infer_node(topic: str, node_map: Mapping[str, str] | None) -> str:
@@ -196,13 +225,254 @@ def _sensor_quality_ratios(message: object) -> tuple[float | None, float | None]
 
 def _log_level(message: object) -> str | None:
     """Map a ``rosgraph_msgs/msg/Log`` level int to a severity label."""
-    level = getattr(message, "level", None)
+    level = message.get("level") if isinstance(message, dict) else getattr(message, "level", None)
+    return _log_level_label(level)
+
+
+def _log_level_label(level: object) -> str | None:
+    """Map a raw log level int to a severity label (None when not an int)."""
     if not isinstance(level, int):
         return None
     for flag, label in ((16, "fatal"), (8, "error"), (4, "warn"), (2, "info"), (1, "debug")):
         if level & flag:
             return label
     return None
+
+
+# ---------------------------------------------------------------------------
+# Lightweight CDR field extraction
+#
+# The analysis pipeline only needs a handful of fields per message (header
+# stamp, frame_id, child_frame_id, log level). Deserializing every CDR
+# message in full is the dominant cost on large bags, so the fields are read
+# straight from the raw bytes using the same layout rules as the ``rosbags``
+# deserializers (``rosbags.serde.utils`` align / align_after). Unknown
+# message types fall back to the full deserializer, so behaviour never
+# changes for exotic messages.
+# ---------------------------------------------------------------------------
+
+
+def _cdr_align(desc: Any, store: Any) -> int:
+    """Alignment requirement of a CDR field, mirroring rosbags ``align``."""
+    kind = desc[0]
+    if kind == _NT_BASE:
+        name = desc[1][0]
+        return 4 if name.endswith("string") else _CDR_SIZEMAP[name]
+    if kind == _NT_NAME:
+        return _cdr_align(store.get_msgdef(desc[1]).fields[0][1], store)
+    if kind == _NT_ARRAY:
+        return _cdr_align(desc[1][0], store)
+    return 4  # SEQUENCE
+
+
+def _cdr_align_after(desc: Any, store: Any) -> int:
+    """Alignment carried past a CDR field, mirroring rosbags ``align_after``."""
+    kind = desc[0]
+    if kind == _NT_BASE:
+        name = desc[1][0]
+        return 1 if name.endswith("string") else _CDR_SIZEMAP[name]
+    if kind == _NT_NAME:
+        return _cdr_align_after(store.get_msgdef(desc[1]).fields[-1][1], store)
+    if kind == _NT_ARRAY:
+        return _cdr_align_after(desc[1][0], store)
+    return min(4, _cdr_align_after(desc[1][0], store))  # SEQUENCE
+
+
+def _cdr_read_string(data: bytes, pos: int) -> tuple[str, int]:
+    """Read a CDR string (int32 length prefix, trailing NUL excluded)."""
+    length = int.from_bytes(data[pos : pos + 4], "little", signed=True)
+    if length <= 1:
+        return "", pos + 4 + length
+    return data[pos + 4 : pos + 4 + length - 1].decode("utf-8", errors="replace"), pos + 4 + length
+
+
+# Field plan per message type: (name, desc, pre_align, post_align, static_size).
+# Alignments are static per type, so they are computed once instead of per message.
+_CDR_PLANS: dict[str, tuple[tuple[str, Any, int, int, int], ...]] = {}
+
+
+def _cdr_plan(store: Any, msgtype: str) -> tuple[tuple[str, Any, int, int, int], ...]:
+    """Return the cached CDR field plan for a message type.
+
+    Each entry is ``(name, desc, pre_align, post_align, static_size)`` where
+    ``static_size`` is the fixed byte size of the field when its layout does
+    not depend on runtime data (-1 for strings/sequences), so fields without
+    interesting content can be skipped with a single pointer move.
+    """
+    plan = _CDR_PLANS.get(msgtype)
+    if plan is None:
+        plan = tuple(
+            (
+                fname,
+                desc,
+                _cdr_align(desc, store),
+                _cdr_align_after(desc, store),
+                _cdr_field_static_size(store, desc) or -1,
+            )
+            for fname, desc in store.get_msgdef(msgtype).fields
+        )
+        _CDR_PLANS[msgtype] = plan
+    return plan
+
+
+# Static serialized size per message type in bytes (-1 when the layout depends
+# on runtime data, e.g. strings/sequences). Computed once per type so fields
+# without interesting content can be skipped in a single jump instead of being
+# walked field by field.
+_CDR_STATIC_SIZES: dict[str, int] = {}
+
+
+def _cdr_static_size(store: Any, msgtype: str) -> int:
+    """Return the static CDR size of a message type, or -1 when dynamic."""
+    size = _CDR_STATIC_SIZES.get(msgtype)
+    if size is None:
+        size = _cdr_compute_static_size(store, msgtype)
+        _CDR_STATIC_SIZES[msgtype] = size
+    return size
+
+
+def _cdr_compute_static_size(store: Any, msgtype: str) -> int:
+    """Compute the static serialized size of a message type (-1 if dynamic)."""
+    plan = _cdr_plan(store, msgtype)
+    base_align = plan[0][2]
+    total = 0
+    aligned = 8
+    for _, desc, pre_align, post_align, _ in plan:
+        if pre_align > base_align:
+            return -1
+        if aligned < pre_align:
+            total = (total + pre_align - 1) & -pre_align
+        size = _cdr_field_static_size(store, desc)
+        if size is None:
+            return -1
+        total += size
+        aligned = post_align
+    return total
+
+
+def _cdr_field_static_size(store: Any, desc: Any) -> int | None:
+    """Static CDR size of a single field, or None when layout is dynamic."""
+    kind = desc[0]
+    if kind == _NT_BASE:
+        name = desc[1][0]
+        return None if name.endswith("string") else _CDR_SIZEMAP[name]
+    if kind == _NT_NAME:
+        size = _cdr_static_size(store, desc[1])
+        return None if size < 0 else size
+    if kind == _NT_ARRAY:
+        subdesc, count = desc[1]
+        if subdesc[0] == _NT_BASE and not subdesc[1][0].endswith("string"):
+            return int(count) * int(_CDR_SIZEMAP[subdesc[1][0]])
+        return None
+    return None  # SEQUENCE is always dynamic
+
+
+def _cdr_walk(data: bytes, pos: int, msgtype: str, store: Any, extract: dict[str, Any] | None) -> int:
+    """Parse (or skip) every field of a message, recording ``extract`` keys."""
+    aligned = 8
+    for fname, desc, pre_align, post_align, static in _cdr_plan(store, msgtype):
+        if aligned < pre_align:
+            pos = (pos + pre_align - 1) & -pre_align
+        if static >= 0 and not (extract is not None and fname in extract):
+            pos += static
+        else:
+            pos = _cdr_read_field(data, pos, fname, desc, store, extract)
+        aligned = post_align
+    return pos
+
+
+def _cdr_read_field(  # noqa: PLR0911
+    data: bytes,
+    pos: int,
+    fname: str,
+    desc: Any,
+    store: Any,
+    extract: dict[str, Any] | None,
+) -> int:
+    """Advance past one CDR field, extracting named fields when requested.
+
+    Intentionally long: each CDR field kind maps to its own branch.
+    """
+    kind = desc[0]
+    if kind == _NT_BASE:
+        name = desc[1][0]
+        if name.endswith("string"):
+            value, pos = _cdr_read_string(data, pos)
+            if extract is not None and fname in extract:
+                extract[fname] = value
+            return pos
+        size = _CDR_SIZEMAP[name]
+        if extract is not None and fname in extract and size == 1:
+            extract[fname] = int(data[pos])
+        return pos + size
+    if kind == _NT_NAME:
+        if extract is not None and fname in extract and desc[1] == "std_msgs/msg/Header":
+            sec = int.from_bytes(data[pos : pos + 4], "little", signed=False)
+            nanosec = int.from_bytes(data[pos + 4 : pos + 8], "little", signed=False)
+            frame_id, pos = _cdr_read_string(data, pos + 8)
+            extract["header"] = float(sec) + float(nanosec) * 1e-9
+            extract["frame_id"] = frame_id
+            return pos
+        size = _cdr_static_size(store, desc[1])
+        if size >= 0:
+            return pos + size
+        return _cdr_walk(data, pos, desc[1], store, extract)
+    if kind == _NT_ARRAY:
+        subdesc, count = desc[1]
+        if subdesc[0] == _NT_BASE and not subdesc[1][0].endswith("string"):
+            return pos + int(count) * int(_CDR_SIZEMAP[subdesc[1][0]])
+        elem_align = _cdr_align(subdesc, store)
+        elem_after = _cdr_align_after(subdesc, store)
+        for idx in range(count):
+            if idx and elem_after < elem_align:
+                pos = (pos + elem_align - 1) & -elem_align
+            pos = _cdr_read_field(data, pos, "", subdesc, store, None)
+        return pos
+    # SEQUENCE
+    subdesc = desc[1][0]
+    count = int.from_bytes(data[pos : pos + 4], "little", signed=True)
+    pos += 4
+    if count <= 0:
+        return pos
+    elem_align = _cdr_align(subdesc, store)
+    if subdesc[0] == _NT_BASE:
+        if subdesc[1][0].endswith("string"):
+            for _ in range(count):
+                pos = (pos + 3) & -4
+                _, pos = _cdr_read_string(data, pos)
+        else:
+            pos = (pos + elem_align - 1) & -elem_align
+            pos += count * _CDR_SIZEMAP[subdesc[1][0]]
+        return pos
+    pos = (pos + elem_align - 1) & -elem_align
+    if extract is not None and fname == "transforms" and subdesc[1] == "geometry_msgs/msg/TransformStamped":
+        pos = _cdr_walk(data, pos, subdesc[1], store, {"child_frame_id": None})
+        for _ in range(count - 1):
+            pos = (pos + elem_align - 1) & -elem_align
+            pos = _cdr_walk(data, pos, subdesc[1], store, None)
+    else:
+        for _ in range(count):
+            pos = (pos + elem_align - 1) & -elem_align
+            pos = _cdr_walk(data, pos, subdesc[1], store, None)
+    return pos
+
+
+def _cdr_extract(rawdata: bytes, msgtype: str, store: Any) -> dict[str, Any] | None:
+    """Lightly parse the fields diagnostics needs from raw CDR bytes.
+
+    Returns a dict with any of ``header`` (seconds), ``frame_id``,
+    ``child_frame_id``, ``level`` (raw log level int) — or None when the
+    message type is unknown or the data is not little-endian CDR2, so
+    callers can fall back to a full deserializer.
+    """
+    if len(rawdata) < 5 or not bool(rawdata[1]):
+        return None
+    try:
+        extract: dict[str, Any] = {"header": None, "child_frame_id": None, "level": None}
+        _cdr_walk(rawdata, 4, msgtype, store, extract)
+        return extract
+    except (IndexError, KeyError, ValueError, struct.error):
+        return None
 
 
 def iter_rosbag2_messages(path: str | Path, include_size: bool = False) -> Iterator[_Message]:
@@ -229,7 +499,11 @@ def iter_rosbag2_messages(path: str | Path, include_size: bool = False) -> Itera
         sqlite3.DatabaseError: The file is not a readable rosbag2 database.
     """
     file_path = Path(path)
-    conn = sqlite3.connect(f"file:{file_path.resolve()}?mode=ro", uri=True)
+    conn = perf.open_connection(
+        f"file:{file_path.resolve()}?mode=ro",
+        uri=True,
+        source=f"bag.db3:{file_path.name}",
+    )
     try:
         if include_size:
             rows = conn.execute(
@@ -313,6 +587,36 @@ def iter_rosbag2_decoded(
                 }
     except Exception as exc:
         raise ValueError(f"not a readable rosbag2 database: {file_path}") from exc
+
+
+def _decode_message(
+    rawdata: bytes,
+    msgtype: str,
+    reader: Any,
+    typestore: Any,
+) -> dict[str, Any]:
+    """Decode only the message fields diagnostics needs.
+
+    Prefers the lightweight CDR extractor (no full deserialization); falls
+    back to the full ``rosbags`` deserializer for unknown message types.
+    """
+    if not rawdata:
+        return {}
+    extract = _cdr_extract(rawdata, msgtype, typestore)
+    if extract is not None:
+        return {
+            "header": extract.get("header"),
+            "frame_id": extract.get("frame_id", ""),
+            "child_frame_id": extract.get("child_frame_id") or "",
+            "level": _log_level_label(extract.get("level")),
+        }
+    decoded = reader.deserialize(rawdata, msgtype)
+    return {
+        "header": _header_stamp(decoded),
+        "frame_id": _frame_id(decoded),
+        "child_frame_id": _child_frame_id(decoded),
+        "level": _log_level(decoded),
+    }
 
 
 def _is_db3_path(path: str | Path) -> bool:

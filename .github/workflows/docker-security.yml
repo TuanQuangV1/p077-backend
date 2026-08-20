@@ -11,6 +11,9 @@ jobs:
   docker-scan:
     runs-on: ubuntu-latest
 
+    env:
+      DOCKER_BUILDKIT: 1
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,21 +23,41 @@ jobs:
           docker build --target backend -t app-backend:${{ github.sha }} .
 
       - name: Scan backend image
-        uses: aquasecurity/trivy-action@0.28.0
+        if: env.ACT != 'true'
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           image-ref: app-backend:${{ github.sha }}
           format: table
           exit-code: 1
           severity: HIGH,CRITICAL
 
+      - name: Scan backend image (local)
+        if: env.ACT == 'true'
+        run: |
+          IGNORE=$(grep -E '^CVE-' .trivyignore | tr '\n' ' ')
+          docker run --rm --entrypoint sh \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            ghcr.io/aquasecurity/trivy:0.56.1 \
+            -c "printf '%s\n' '$IGNORE' | tr ' ' '\n' > /.trivyignore && trivy image --ignorefile /.trivyignore --format table --severity HIGH,CRITICAL --exit-code 1 app-backend:${{ github.sha }}"
+
       - name: Build frontend image
         run: |
           docker build --target frontend -t app-frontend:${{ github.sha }} .
 
       - name: Scan frontend image
-        uses: aquasecurity/trivy-action@0.28.0
+        if: env.ACT != 'true'
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           image-ref: app-frontend:${{ github.sha }}
           format: table
           exit-code: 1
           severity: HIGH,CRITICAL
+
+      - name: Scan frontend image (local)
+        if: env.ACT == 'true'
+        run: |
+          IGNORE=$(grep -E '^CVE-' .trivyignore | tr '\n' ' ')
+          docker run --rm --entrypoint sh \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            ghcr.io/aquasecurity/trivy:0.56.1 \
+            -c "printf '%s\n' '$IGNORE' | tr ' ' '\n' > /.trivyignore && trivy image --ignorefile /.trivyignore --format table --severity HIGH,CRITICAL --exit-code 1 app-frontend:${{ github.sha }}"

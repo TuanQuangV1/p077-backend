@@ -1,0 +1,15 @@
+azure_location             = "eastus"
+environment                = "production"
+app_name                   = "ai20krosbag"
+domain_name                = "yourdomain.com"
+backend_container_image    = "acrai20krosbagprod.azurecr.io/backend:latest"
+frontend_container_image   = "acrai20krosbagprod.azurecr.io/frontend:latest"
+backend_port               = 8000
+frontend_port              = 3000
+cpu                        = 0.5
+memory                     = "1.0Gi"
+cors_origins               = "https://yourdomain.com,https://api.yourdomain.com"
+enable_persistent_storage  = true
+acr_sku                    = "Basic"  # Can upgrade to Standard for production geo-replication if needed
+min_replicas               = 0        # Scale to zero when idle
+max_replicas               = 5

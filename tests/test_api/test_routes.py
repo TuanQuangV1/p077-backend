@@ -339,7 +339,8 @@ async def test_chat_upstream_error_returns_500(client, monkeypatch):
 
     response = await client.post("/api/v1/chat", json={"message": "hello"})
     assert response.status_code == 500
-    assert "vllm exploded" in response.json()["detail"]
+    # Error detail should be a generic message, not the raw internal exception
+    assert "LLM request failed" in response.json()["detail"]
 
 
 @pytest.mark.asyncio

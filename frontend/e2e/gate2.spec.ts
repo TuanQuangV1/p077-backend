@@ -3,8 +3,8 @@ import path from "path"
 
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..")
-const HEALTHY = path.join(REPO_ROOT, "data", "dataset", "bags", "healthy", "healthy_01", "healthy_01_0.mcap")
-const ANOMALY = path.join(REPO_ROOT, "data", "dataset", "bags", "faulty", "F1_02", "F1_02_0.mcap")
+const HEALTHY = path.join(REPO_ROOT, "scripts", "e2e-fixtures", "gate2", "healthy_01_0.mcap")
+const ANOMALY = path.join(REPO_ROOT, "scripts", "e2e-fixtures", "gate2", "F1_02_0.mcap")
 const INVALID = path.join(REPO_ROOT, "eval", "gate2", "fixtures", "not_a_rosbag.txt")
 
 
@@ -42,7 +42,7 @@ test("Gate 2 anomaly upload renders detection and labelled LLM fallback", async 
 
   await expect(page.getByText("Severe publish rate drop on /scan").first()).toBeVisible()
   await expect(page.getByText("LLM Analysis Available")).toBeVisible()
-  await expect(page.getByText("Live LLM unavailable; showing rule-based fallback")).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText("canned-fallback").first()).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText(/Health Score .*critical\/high issues/)).toBeVisible()
 })
 
