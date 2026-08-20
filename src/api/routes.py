@@ -211,14 +211,14 @@ async def chat(
             analysis="",
         )
     try:
-        message = await anyio.to_thread.run_sync(
+        result = await anyio.to_thread.run_sync(
             chat_completion,
             [
                 {"role": "system", "content": CHAT_SYSTEM_PROMPT},
                 {"role": "user", "content": request.message},
             ],
         )
-        return ChatResponse(response=message.get("content", ""), analysis="")
+        return ChatResponse(response=result["message"].get("content", ""), analysis="")
     except Exception as e:
         logger.warning(
             "chat.upstream_failed",
@@ -390,7 +390,7 @@ async def dashboard_overview() -> DashboardOverviewResponse:
             "anomalies": len(all_anomalies),
             "criticalOpen": open_critical,
             "meanTimeToDiagnoseSec": (int(sum(latency_ms) / len(latency_ms) / 1000) if latency_ms else 0),
-            "inferenceCostUsd": round(sum(r["costUsd"] for r in runs), 2),
+            "inferenceCostUsd": round(sum(r["costUsd"] for r in runs), 4),
             "tokens": sum(r["promptTokens"] + r["completionTokens"] for r in runs),
             "reviewPending": sum(1 for r in review_items if r["reviewStatus"] == "pending"),
         },
@@ -412,7 +412,7 @@ async def dashboard_overview() -> DashboardOverviewResponse:
                 "bags": len(entry["bags"]),
                 "anomalies": entry["anomalies"],
                 "p95Ms": _p95(entry["latencies"]),
-                "costUsd": round(entry["cost"], 2),
+                "costUsd": round(entry["cost"], 4),
             }
             for date, entry in sorted(trend_by_date.items())
         ],

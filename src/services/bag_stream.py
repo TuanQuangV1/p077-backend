@@ -23,6 +23,7 @@ installed or the bag is not a readable rosbag2 database.
 from __future__ import annotations
 
 import logging
+import math
 import sqlite3
 import struct
 from pathlib import Path
@@ -99,7 +100,15 @@ def _header_stamp(message: object) -> float | None:
 def _frame_id(message: object) -> str:
     header = getattr(message, "header", None)
     frame_id = getattr(header, "frame_id", "") if header is not None else ""
-    return str(frame_id or "")
+    if frame_id:
+        return str(frame_id)
+    # tf2_msgs/msg/TFMessage has no outer header; the parent frame lives on the
+    # first transform's own header, mirroring :func:`_child_frame_id`.
+    transforms = getattr(message, "transforms", None)
+    if transforms:
+        first_header = getattr(transforms[0], "header", None)
+        return str(getattr(first_header, "frame_id", "") or "")
+    return ""
 
 
 def _child_frame_id(message: object) -> str:
@@ -116,6 +125,102 @@ def _child_frame_id(message: object) -> str:
         child = getattr(getattr(first, "child_frame_id", ""), "frame_id", "") or getattr(first, "child_frame_id", "")
         return str(child)
     return ""
+
+
+def _transforms(message: object) -> list[dict[str, Any]]:
+    """Return every (frame_id, child_frame_id, translation) broadcast in a TFMessage.
+
+    A single ``/tf`` message can batch several independent edges (e.g.
+    ``map->odom``, ``odom->base_footprint``, wheel joints) in one publish.
+    Returning all of them, not just the first, lets per-edge gap and
+    re-parenting detection see an edge that goes silent even while other
+    edges on the same topic keep publishing normally. ``translation`` (a
+    3-tuple, or ``None`` if unavailable) lets a downstream rule spot the same
+    edge being overwritten by two disagreeing publishers — one continuous
+    trajectory interleaved with a second, unrelated one — which never shows
+    up as a timing gap.
+    """
+    transforms = getattr(message, "transforms", None)
+    if not transforms:
+        return []
+    pairs = []
+    for transform in transforms:
+        header = getattr(transform, "header", None)
+        frame_id = str(getattr(header, "frame_id", "") or "")
+        child_frame_id = str(getattr(transform, "child_frame_id", "") or "")
+        translation = getattr(getattr(transform, "transform", None), "translation", None)
+        translation_xyz = (
+            (float(translation.x), float(translation.y), float(translation.z)) if translation is not None else None
+        )
+        if frame_id or child_frame_id:
+            pairs.append(
+                {"frame_id": frame_id, "child_frame_id": child_frame_id, "translation": translation_xyz}
+            )
+    return pairs
+
+
+# Physically implausible ceilings for a ground mobile robot's raw IMU
+# readings — not meant to be finely tuned per platform, just wide enough that
+# no legitimate motion or collision crosses them, so any breach reflects
+# sensor/driver corruption (saturation, garbage scaling) rather than dynamics.
+_IMU_ANGULAR_VELOCITY_MAX_RAD_S = 50.0
+_IMU_LINEAR_ACCELERATION_MAX_MS2 = 100.0
+
+
+def _sensor_quality_ratios(message: object) -> tuple[float | None, float | None]:
+    """Return ``(nan_ratio, out_of_range_ratio)`` for a LaserScan- or Imu-shaped message.
+
+    NaN has no legitimate meaning in either message's numeric fields (ROS2
+    uses +/-Inf for a LaserScan reading too far/near to represent, and an IMU
+    reading is either a real measurement or absent — never NaN), so any NaN
+    fraction reflects sensor or driver corruption.
+
+    "Out of range" is evaluated differently per shape: a LaserScan declares
+    its own valid envelope (``range_min``/``range_max``), so a reading outside
+    it is unambiguously invalid by the message's own contract. An Imu message
+    carries no such self-declared bound, so ``angular_velocity`` /
+    ``linear_acceleration`` are checked against the physically-implausible
+    ceilings above instead.
+
+    Only the fractions are kept; the arrays/fields themselves are discarded
+    immediately, like every other payload field this reader touches. Returns
+    ``(None, None)`` for any other message shape.
+    """
+    ranges = getattr(message, "ranges", None)
+    if ranges is not None:
+        count = len(ranges)
+        if count == 0:
+            return None, None
+        range_min = float(getattr(message, "range_min", 0.0))
+        range_max = float(getattr(message, "range_max", math.inf))
+        nan_count = 0
+        out_of_range_count = 0
+        for value in ranges:
+            if math.isnan(value):
+                nan_count += 1
+            elif not math.isinf(value) and (value < range_min or value > range_max):
+                out_of_range_count += 1
+        return nan_count / count, out_of_range_count / count
+
+    angular_velocity = getattr(message, "angular_velocity", None)
+    linear_acceleration = getattr(message, "linear_acceleration", None)
+    if angular_velocity is not None and linear_acceleration is not None:
+        readings = [
+            (angular_velocity.x, _IMU_ANGULAR_VELOCITY_MAX_RAD_S),
+            (angular_velocity.y, _IMU_ANGULAR_VELOCITY_MAX_RAD_S),
+            (angular_velocity.z, _IMU_ANGULAR_VELOCITY_MAX_RAD_S),
+            (linear_acceleration.x, _IMU_LINEAR_ACCELERATION_MAX_MS2),
+            (linear_acceleration.y, _IMU_LINEAR_ACCELERATION_MAX_MS2),
+            (linear_acceleration.z, _IMU_LINEAR_ACCELERATION_MAX_MS2),
+        ]
+        count = len(readings)
+        nan_count = sum(1 for value, _ in readings if math.isnan(value))
+        out_of_range_count = sum(
+            1 for value, limit in readings if not math.isnan(value) and abs(value) > limit
+        )
+        return nan_count / count, out_of_range_count / count
+
+    return None, None
 
 
 def _log_level(message: object) -> str | None:
@@ -446,8 +551,12 @@ def iter_rosbag2_decoded(
     Yields:
         Dicts with ``timestamp`` (bag time, seconds), ``topic``, ``node``,
         ``message_type``, ``header`` (``header.stamp`` in seconds or ``None``),
-        ``frame_id``, ``child_frame_id``, ``payload_bytes`` and ``level`` for
-        ``/rosout`` log messages. Payload bodies are never retained.
+        ``frame_id``, ``child_frame_id``, ``transforms`` (every edge broadcast
+        by a ``tf2_msgs/TFMessage``, empty otherwise), ``payload_bytes``,
+        ``level`` for ``/rosout`` log messages, ``nan_ratio`` and
+        ``out_of_range_ratio`` (fractions of a LaserScan/Imu-shaped message's
+        numeric fields that decoded as NaN / fell outside a valid envelope,
+        ``None`` for other shapes). Payload bodies are never retained.
 
     Raises:
         ImportError: The ``rosbags`` package is not installed.
@@ -459,19 +568,22 @@ def iter_rosbag2_decoded(
 
     try:
         with AnyReader([file_path]) as reader:
-            typestore = reader.typestore
             for connection, timestamp_ns, rawdata in reader.messages():
-                message = _decode_message(rawdata, connection.msgtype, reader, typestore)
+                message = reader.deserialize(rawdata, connection.msgtype) if rawdata else None
+                nan_ratio, out_of_range_ratio = _sensor_quality_ratios(message)
                 yield {
                     "timestamp": timestamp_ns / 1_000_000_000,
                     "topic": connection.topic,
                     "node": _infer_node(connection.topic, node_map),
                     "message_type": connection.msgtype,
-                    "header": message.get("header"),
-                    "frame_id": message.get("frame_id", ""),
-                    "child_frame_id": message.get("child_frame_id", ""),
+                    "header": _header_stamp(message),
+                    "frame_id": _frame_id(message),
+                    "child_frame_id": _child_frame_id(message),
+                    "transforms": _transforms(message),
                     "payload_bytes": len(rawdata),
-                    "level": message.get("level"),
+                    "level": _log_level(message),
+                    "nan_ratio": nan_ratio,
+                    "out_of_range_ratio": out_of_range_ratio,
                 }
     except Exception as exc:
         raise ValueError(f"not a readable rosbag2 database: {file_path}") from exc

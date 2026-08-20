@@ -237,7 +237,7 @@ def _cmd_chat(args: argparse.Namespace) -> int:
         _error("LLM is not configured (set llm_provider and credentials in .env)")
         return 1
     try:
-        message = chat_completion(
+        result = chat_completion(
             [
                 {"role": "system", "content": CHAT_SYSTEM_PROMPT},
                 {"role": "user", "content": args.message},
@@ -246,7 +246,7 @@ def _cmd_chat(args: argparse.Namespace) -> int:
     except Exception as exc:
         _error(str(exc))
         return 1
-    _emit(args, {"response": message.get("content", "")})
+    _emit(args, {"response": result["message"].get("content", "")})
     return 0
 
 
