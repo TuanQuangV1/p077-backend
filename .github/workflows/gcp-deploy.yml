@@ -1,0 +1,214 @@
+name: CD - GCP Deployment
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: gcp-deployment-${{ github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  GCP_PROJECT_ID: ai20k-p077
+  GCP_REGION: asia-southeast1
+  GCP_TFSTATE_BUCKET: tfstate-ai20k-p077-gcp
+  GCP_DOTENV: ${{ secrets.GCP_DOTENV }}
+
+jobs:
+  verification:
+    name: Run GCP Verification Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Backend Dependencies
+        run: pip install -e .[dev]
+
+      - name: Run Ruff Lint
+        run: ruff check src/ tests/
+
+      - name: Run Pytest
+        run: pytest tests/ --cov=src --cov-fail-under=75
+        env:
+          APP_ENV: test
+          OPENAI_API_KEY: test-key-gcp
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: pnpm install
+
+      - name: Frontend Typecheck
+        working-directory: frontend
+        run: pnpm lint
+
+  deploy-gcp:
+    name: Build & Deploy to GCP (${{ matrix.environment }})
+    needs: verification
+    runs-on: ubuntu-latest
+    if: ${{ matrix.branch == github.ref_name }}
+    strategy:
+      matrix:
+        include:
+          - environment: staging
+            branch: develop
+            zone: asia-southeast1-a
+            machine_type: e2-small
+          - environment: production
+            branch: main
+            zone: asia-southeast1-a
+            machine_type: e2-medium
+
+    env:
+      VM_NAME: ai20k-p077-${{ matrix.environment }}
+      ZONE: ${{ matrix.zone }}
+      BACKEND_IMAGE: asia-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/backend:${{ github.sha }}
+      FRONTEND_IMAGE: asia-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/frontend:${{ github.sha }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Bootstrap GCS tfstate bucket & APIs (idempotent)
+        run: |
+          gcloud storage buckets create gs://${{ env.GCP_TFSTATE_BUCKET }} \
+            --location=${{ env.GCP_REGION }} --project=${{ env.GCP_PROJECT_ID }} || true
+          gcloud services enable \
+            compute.googleapis.com \
+            artifactregistry.googleapis.com \
+            storage.googleapis.com \
+            iam.googleapis.com \
+            --project=${{ env.GCP_PROJECT_ID }} || true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker asia-docker.pkg.dev --quiet
+
+      - name: Build & Push Backend Image
+        run: |
+          docker build --target backend \
+            -t ${{ env.BACKEND_IMAGE }} \
+            -t asia-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/backend:latest .
+          docker push ${{ env.BACKEND_IMAGE }}
+          docker push asia-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/backend:latest
+
+      - name: Build & Push Frontend Image
+        run: |
+          docker build --target frontend \
+            --build-arg API_PROXY_TARGET=http://backend:8000 \
+            -t ${{ env.FRONTEND_IMAGE }} \
+            -t asia-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/frontend:latest .
+          docker push ${{ env.FRONTEND_IMAGE }}
+          docker push asia-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/frontend:latest
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.7"
+
+      - name: Terraform Init & Apply (GCP ${{ matrix.environment }})
+        working-directory: terraform/gcp
+        run: |
+          terraform init
+          terraform plan \
+            -var-file=environments/${{ matrix.environment }}.tfvars \
+            -var="backend_image=${{ env.BACKEND_IMAGE }}" \
+            -var="frontend_image=${{ env.FRONTEND_IMAGE }}" \
+            -var="github_service_account=${{ secrets.GCP_SERVICE_ACCOUNT }}" \
+            -var="machine_type=${{ matrix.machine_type }}" \
+            -out=tfplan
+          terraform apply -auto-approve tfplan
+
+      - name: Retrieve Public IP
+        id: ip
+        run: |
+          IP=$(gcloud compute addresses describe ${{ env.VM_NAME }}-ip \
+            --region=${{ env.GCP_REGION }} --project=${{ env.GCP_PROJECT_ID }} \
+            --format="value(address)")
+          echo "ip=${IP}" >> "$GITHUB_OUTPUT"
+          echo "Deploying to http://${IP}"
+
+      - name: Prepare .env for VM
+        run: |
+          mkdir -p /tmp/gcp-deploy
+          : > /tmp/gcp-deploy/.env
+          if [ -n "${GCP_DOTENV:-}" ]; then
+            printf '%s\n' "$GCP_DOTENV" > /tmp/gcp-deploy/.env
+          fi
+          grep -q '^APP_ENV=' /tmp/gcp-deploy/.env 2>/dev/null || \
+            echo "APP_ENV=${{ matrix.environment }}" >> /tmp/gcp-deploy/.env
+          cp docker-compose.gcp.yml /tmp/gcp-deploy/docker-compose.gcp.yml
+          cp nginx/gcp-nginx.conf /tmp/gcp-deploy/nginx.conf
+          cp scripts/gcp/deploy.sh /tmp/gcp-deploy/deploy.sh
+
+      - name: Upload Deploy Files to VM
+        run: |
+          gcloud compute ssh --quiet --zone=${{ env.ZONE }} \
+            --command="mkdir -p /tmp/gcp-deploy" \
+            ${{ env.VM_NAME }} --project=${{ env.GCP_PROJECT_ID }}
+          gcloud compute scp --quiet --zone=${{ env.ZONE }} \
+            /tmp/gcp-deploy/.env \
+            /tmp/gcp-deploy/docker-compose.gcp.yml \
+            /tmp/gcp-deploy/nginx.conf \
+            /tmp/gcp-deploy/deploy.sh \
+            ${{ env.VM_NAME }}:/tmp/gcp-deploy/ \
+            --project=${{ env.GCP_PROJECT_ID }}
+
+      - name: Deploy Stack on VM
+        run: |
+          gcloud compute ssh --quiet --zone=${{ env.ZONE }} \
+            --command="sudo mkdir -p /opt/app && \
+              sudo mv -f /tmp/gcp-deploy/.env /opt/app/.env && \
+              sudo mv -f /tmp/gcp-deploy/docker-compose.gcp.yml /opt/app/docker-compose.gcp.yml && \
+              sudo mv -f /tmp/gcp-deploy/nginx.conf /opt/app/nginx.conf && \
+              sudo mv -f /tmp/gcp-deploy/deploy.sh /opt/app/deploy.sh && \
+              sudo bash /opt/app/deploy.sh ${{ env.BACKEND_IMAGE }} ${{ env.FRONTEND_IMAGE }}" \
+            ${{ env.VM_NAME }} --project=${{ env.GCP_PROJECT_ID }}
+
+      - name: GCP Automated Health Check Gate
+        run: |
+          echo "Executing GCP ${{ matrix.environment }} Health Check Gate..."
+          curl --fail --connect-timeout 10 --max-time 15 --retry 6 --retry-delay 10 \
+            http://${{ steps.ip.outputs.ip }}/health
+          echo ""
+          echo "GCP ${{ matrix.environment }} frontend: http://${{ steps.ip.outputs.ip }}"
