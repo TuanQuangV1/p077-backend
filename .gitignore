@@ -69,3 +69,5 @@ frontend/.npmrc
 
 .pytest_cache/
 .ruff_cache/
+
+terraform/gcp/.terraform/
