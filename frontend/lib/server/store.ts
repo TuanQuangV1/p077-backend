@@ -11,6 +11,7 @@ import type {
   AnalysisRun,
   Anomaly,
   AnomalyKind,
+  DemoAnomalyKind,
   Feedback,
   LogEvent,
   Report,
@@ -92,7 +93,7 @@ const NODES = [
 ]
 
 interface AnomalyTemplate {
-  kind: AnomalyKind
+  kind: DemoAnomalyKind
   title: string
   severity: Severity
   topics: string[]
@@ -290,10 +291,10 @@ const ANOMALY_TEMPLATES: AnomalyTemplate[] = [
   },
 ]
 
-const templateByKind = new Map(ANOMALY_TEMPLATES.map((t) => [t.kind, t]))
+const templateByKind = new Map<AnomalyKind, AnomalyTemplate>(ANOMALY_TEMPLATES.map((t) => [t.kind, t]))
 export const anomalyTemplate = (kind: AnomalyKind) => templateByKind.get(kind) ?? ANOMALY_TEMPLATES[0]
 
-export const KIND_LABEL: Record<AnomalyKind, string> = {
+export const KIND_LABEL: Record<DemoAnomalyKind, string> = {
   tf_timeout: "TF timeout",
   lidar_dropout: "Lidar dropout",
   costmap_stale: "Costmap stale",
@@ -302,8 +303,6 @@ export const KIND_LABEL: Record<AnomalyKind, string> = {
   nav_recovery: "Nav recovery",
   topic_hz_drop: "Rate drop",
   message_drop: "Message drop",
-  header_latency: "Header latency",
-  timestamp_jitter: "Timestamp jitter",
 }
 
 /* ------------------------------------------------------------------ */

@@ -7,6 +7,7 @@ in-memory rate limiting protect the public endpoints.
 """
 
 import functools
+import hmac
 import logging
 import os
 import json
@@ -20,6 +21,7 @@ import anyio
 import httpx
 from fastapi import (
     APIRouter,
+    Body,
     Depends,
     File,
     Header,
@@ -100,7 +102,7 @@ def _require_auth(authorization: str | None = Header(default=None)) -> None:
     token = get_settings().api_auth_token
     if not token:
         return
-    if authorization != f"Bearer {token}":
+    if authorization is None or not hmac.compare_digest(authorization, f"Bearer {token}"):
         raise HTTPException(status_code=401, detail="invalid or missing API token")
 
 
@@ -211,14 +213,14 @@ async def chat(
             analysis="",
         )
     try:
-        message = await anyio.to_thread.run_sync(
+        result = await anyio.to_thread.run_sync(
             chat_completion,
             [
                 {"role": "system", "content": CHAT_SYSTEM_PROMPT},
                 {"role": "user", "content": request.message},
             ],
         )
-        return ChatResponse(response=message.get("content", ""), analysis="")
+        return ChatResponse(response=result["message"].get("content", ""), analysis="")
     except Exception as e:
         logger.warning(
             "chat.upstream_failed",
@@ -390,7 +392,7 @@ async def dashboard_overview() -> DashboardOverviewResponse:
             "anomalies": len(all_anomalies),
             "criticalOpen": open_critical,
             "meanTimeToDiagnoseSec": (int(sum(latency_ms) / len(latency_ms) / 1000) if latency_ms else 0),
-            "inferenceCostUsd": round(sum(r["costUsd"] for r in runs), 2),
+            "inferenceCostUsd": round(sum(r["costUsd"] for r in runs), 4),
             "tokens": sum(r["promptTokens"] + r["completionTokens"] for r in runs),
             "reviewPending": sum(1 for r in review_items if r["reviewStatus"] == "pending"),
         },
@@ -412,7 +414,7 @@ async def dashboard_overview() -> DashboardOverviewResponse:
                 "bags": len(entry["bags"]),
                 "anomalies": entry["anomalies"],
                 "p95Ms": _p95(entry["latencies"]),
-                "costUsd": round(entry["cost"], 2),
+                "costUsd": round(entry["cost"], 4),
             }
             for date, entry in sorted(trend_by_date.items())
         ],
@@ -761,7 +763,10 @@ async def diagnose(request: DiagnosticsRequest) -> DiagnosticsSummaryResponse:
 
 
 @router.post("/analysis/explain", response_model=DiagnosticsExplanationResponse)
-async def explain(request: DiagnosticsExplanationRequest) -> DiagnosticsExplanationResponse:
+async def explain(
+    request: DiagnosticsExplanationRequest,
+    _rate_limited: None = Depends(_check_rate_limit),
+) -> DiagnosticsExplanationResponse:
     """Explain diagnostics results with the LLM.
 
     Sends the analysis summary to the LLM to generate a root cause and
@@ -836,6 +841,7 @@ async def hilt_iterate(
     anomaly_id: str = Query(..., description="Anomaly ID"),
     test_pass: bool = Query(..., description="Whether engineer test passed"),
     test_comment: str = Query(default="", description="Engineer test comment"),
+    _rate_limited: None = Depends(_check_rate_limit),
 ) -> AIResultSummary:
     """Run one iteration of the iterative debug loop.
 
@@ -918,7 +924,7 @@ async def hilt_iterate(
 async def hilt_fix(
     run_id: str,
     anomaly_id: str = Query(..., description="Anomaly ID"),
-    payload: HiltFixRequest = ...,
+    payload: HiltFixRequest = Body(...),
 ) -> HiltFixResponse:
     """Record expert fix for an escalated anomaly.
 

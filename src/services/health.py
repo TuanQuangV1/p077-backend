@@ -47,8 +47,11 @@ GROUP_BY_KIND: dict[str, str] = {
     # TF Tree Integrity
     "tf_missing_gap": "tf",
     "tf_drift_jump": "tf",
+    "tf_conflict": "tf",
     # Data Bandwidth & Anomaly
     "payload_zero_byte": "payload",
+    "payload_nan": "payload",
+    "payload_out_of_range": "payload",
 }
 
 _SEVERITY_PENALTY: dict[str, float] = {

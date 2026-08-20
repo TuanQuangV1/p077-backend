@@ -25,7 +25,7 @@ from src.services.bag_stream import iter_bag_messages
 from src.services.diagnostics import detect_anomalies
 from src.services.experiments import experiment_bag_files, list_experiments
 from src.services.health import compute_health_summary
-from src.services.llm import explain_diagnostics, is_llm_configured
+from src.services.llm import _compute_cost_usd, explain_detection_cluster, is_llm_configured
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +44,11 @@ _KIND_TITLES = {
     "log_error_burst": "Error burst on {topic}",
     "log_warn_storm": "Warning storm on {topic}",
     "payload_zero_byte": "Empty payload on {topic}",
+    "payload_nan": "NaN corruption on {topic}",
+    "payload_out_of_range": "Out-of-range readings on {topic}",
     "tf_missing_gap": "TF broadcast gap on {topic}",
     "tf_drift_jump": "TF frame re-parenting on {topic}",
+    "tf_conflict": "TF conflicting publishers on {topic}",
 }
 
 _KIND_LABELS = {
@@ -61,11 +64,18 @@ _KIND_LABELS = {
     "log_error_burst": "Log error burst",
     "log_warn_storm": "Log warning storm",
     "payload_zero_byte": "Empty sensor payload",
+    "payload_nan": "NaN sensor corruption",
+    "payload_out_of_range": "Out-of-range sensor reading",
     "tf_missing_gap": "TF broadcast gap",
     "tf_drift_jump": "TF frame jump",
+    "tf_conflict": "TF conflicting publishers",
 }
 
 _DEFAULT_MODEL = "vllm/qwen2.5-coder-32b"
+
+# Consumers stall a couple of seconds behind the sensor or transform they read, so
+# detections starting within this window are treated as one incident.
+_CLUSTER_WINDOW_SEC = 5.0
 
 
 def _pending_run_from_dataset(ds: Mapping[str, Any], model: str) -> AnalysisRun:
@@ -166,6 +176,7 @@ def _anomaly_summaries(run_id: str, detections: list[dict[str, Any]]) -> list[di
             "interval_sec",
             "active_span_sec",
             "max_gap_sec",
+            "gap_sec",
             "jitter_sec",
             "drift_sec",
             "expected_hz",
@@ -174,6 +185,14 @@ def _anomaly_summaries(run_id: str, detections: list[dict[str, Any]]) -> list[di
             "max_latency_ms",
             "threshold_ms",
             "threshold_sec",
+            "occurrence_count",
+            "child_frame",
+            "max_nan_ratio",
+            "max_out_of_range_ratio",
+            "max_jump_m",
+            "drift_rate_ms_per_sec",
+            "direction",
+            "pattern",
         ):
             if key in evidence:
                 metric_parts.append(f"{key.replace('_', ' ')} {evidence[key]}")
@@ -189,76 +208,96 @@ def _anomaly_summaries(run_id: str, detections: list[dict[str, Any]]) -> list[di
                 "topics": [topic],
                 "confidence": float(detection.get("confidence", 0.5)),
                 "metric": "; ".join(metric_parts) or f"detected on {topic}",
+                "evidence": evidence,
             }
         )
     return summaries
 
 
+def _canned_explanation(detection: dict[str, Any]) -> dict[str, Any]:
+    """Build a deterministic explanation for one detection, used when the LLM is unavailable."""
+    kind = detection.get("kind", "unknown")
+    topic = detection.get("topic", "/unknown")
+    canned = {
+        "frequency_gap": (
+            f"Frequent publish gap detected on {topic}.",
+            "Producer thread starvation or transport buffering paused publishing.",
+        ),
+        "message_drop_burst": (
+            f"Burst of dropped messages detected on {topic}.",
+            "A single long inter-message interval indicates dropped or coalesced messages.",
+        ),
+        "timestamp_jitter": (
+            f"Timestamp jitter detected on {topic}.",
+            "Publish cadence deviates more than expected from the nominal rate.",
+        ),
+        "silent_node": (
+            f"Node silence detected for topic {topic}.",
+            "The node stopped publishing for the full observation window.",
+        ),
+        "clock_drift": (
+            f"Clock drift detected on {topic}.",
+            "Message header stamps drift from the bag recording timestamps.",
+        ),
+        "unknown": (
+            f"Anomaly pattern detected on {topic}.",
+            "Raw signal deviates from the expected cadence.",
+        ),
+    }
+    issue, root_cause = canned.get(kind, canned["unknown"])
+    return {
+        "root_cause": root_cause,
+        "recommended_actions": [
+            "Check the producing node for publish stalls or thread starvation.",
+            "Validate the network / recorder path for bursty or dropped message windows.",
+        ],
+        "explanation": f"{issue} {root_cause}",
+    }
+
+
 def _canned_ai_results(run_id: str, detections: list[dict[str, Any]]) -> list[AIResultSummary]:
-    """Build deterministic AI results from real detections until live inference is wired up.
+    """Build deterministic AI results from real detections when inference is unavailable.
 
     Canned explanations are routed through :func:`_ai_result_from_explanation` so the
     fallback output shares the exact same shape as the real LLM path.
     """
-    results = []
-    for index, detection in enumerate(detections, start=1):
-        kind = detection.get("kind", "unknown")
-        topic = detection.get("topic", "/unknown")
-        canned = {
-            "frequency_gap": (
-                f"Frequent publish gap detected on {topic}.",
-                "Producer thread starvation or transport buffering paused publishing.",
-                f"Message flow on {topic} stalled for the detected window.",
-            ),
-            "message_drop_burst": (
-                f"Burst of dropped messages detected on {topic}.",
-                "A single long inter-message interval indicates dropped or coalesced messages.",
-                f"Messages on {topic} were missing for the detected interval.",
-            ),
-            "timestamp_jitter": (
-                f"Timestamp jitter detected on {topic}.",
-                "Publish cadence deviates more than expected from the nominal rate.",
-                f"Inter-message intervals on {topic} show higher variance than the threshold.",
-            ),
-            "silent_node": (
-                f"Node silence detected for topic {topic}.",
-                "The node stopped publishing for the full observation window.",
-                f"No messages were observed on {topic} during the span.",
-            ),
-            "clock_drift": (
-                f"Clock drift detected on {topic}.",
-                "Message header stamps drift from the bag recording timestamps.",
-                f"Header-vs-bag timestamp offset on {topic} exceeded the tolerance.",
-            ),
-            "unknown": (
-                f"Anomaly pattern detected on {topic}.",
-                "Raw signal deviates from the expected cadence.",
-                f"Diagnostics flagged {topic} with the reported evidence.",
-            ),
-        }
-        issue, root_cause, _ = canned.get(kind, canned["unknown"])
-        explanation: dict[str, str | list[str]] = {
-            "root_cause": root_cause,
-            "recommended_actions": [
-                "Check the producing node for publish stalls or thread starvation.",
-                "Validate the network / recorder path for bursty or dropped message windows.",
-            ],
-            "explanation": f"{issue} {root_cause}",
-        }
-        results.append(_ai_result_from_explanation(run_id, index, detection, explanation, model="canned-fallback"))
-    return results
+    return [
+        _ai_result_from_explanation(
+            run_id, index, detection, _canned_explanation(detection), model="canned-fallback"
+        )
+        for index, detection in enumerate(detections, start=1)
+    ]
+
+
+def _finding_detail(explanation: dict[str, Any], finding: dict[str, str] | None) -> str:
+    detail = str(explanation.get("explanation", ""))
+    if finding and finding.get("detail"):
+        detail = f"{finding['role']}: {finding['detail']}"
+    return detail
+
+
+def _evidence_item(
+    detection: dict[str, Any], explanation: dict[str, Any], finding: dict[str, str] | None
+) -> EvidenceItem:
+    return EvidenceItem(
+        topic=detection.get("topic", "/unknown"),
+        tSec=float(detection.get("tSec", 0.0)),
+        detail=_finding_detail(explanation, finding),
+    )
 
 
 def _ai_result_from_explanation(
     run_id: str,
     index: int,
     detection: dict[str, Any],
-    explanation: dict[str, str | list[str]],
+    explanation: dict[str, Any],
     model: str = "llm-explain",
+    finding: dict[str, str] | None = None,
+    evidence: list[EvidenceItem] | None = None,
+    latency_ms: int = 0,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
 ) -> AIResultSummary:
-    topic = detection.get("topic", "/unknown")
-    t_sec = float(detection.get("tSec", 0.0))
-    detail = str(explanation.get("explanation", ""))
     return AIResultSummary(
         id=f"ai_{index:03d}",
         runId=run_id,
@@ -268,40 +307,52 @@ def _ai_result_from_explanation(
         confidence=float(detection.get("confidence", 0.5)),
         explanation=str(explanation.get("explanation", "")),
         suggestedFix=[str(a) for a in explanation.get("recommended_actions", [])],
-        evidence=[EvidenceItem(topic=topic, tSec=t_sec, detail=detail)],
+        evidence=evidence if evidence is not None else [_evidence_item(detection, explanation, finding)],
         reviewStatus="pending",
         model=model,
-        latencyMs=0,
-        promptTokens=0,
-        completionTokens=0,
+        latencyMs=latency_ms,
+        promptTokens=prompt_tokens,
+        completionTokens=completion_tokens,
         vllmRequestId=f"vllm_req_{index:03d}",
     )
 
 
-def _build_ai_results(run_id: str, detections: list[dict[str, Any]]) -> list[AIResultSummary]:
-    """Produce AI results per detection, using the LLM when a vLLM backend is configured.
+def _cluster_detections(detections: list[dict[str, Any]]) -> list[list[int]]:
+    """Group detections into incidents by how close their onsets are.
 
-    Falls back to deterministic canned results when the LLM is unavailable or
-    a per-detection call fails, so an analysis run never fails on inference.
+    Returns lists of positions into ``detections``, ordered by onset within each
+    group so the earliest anomaly is presented first — the model leans on that
+    ordering to tell the originating fault from what stalled behind it.
     """
-    settings = get_settings()
-    use_llm = settings.llm_provider == "vllm" and is_llm_configured()
-    if not use_llm or not detections:
+    by_onset = sorted(range(len(detections)), key=lambda p: float(detections[p].get("tSec", 0.0)))
+    clusters: list[list[int]] = []
+    previous_onset: float | None = None
+    for position in by_onset:
+        onset = float(detections[position].get("tSec", 0.0))
+        if previous_onset is None or onset - previous_onset > _CLUSTER_WINDOW_SEC:
+            clusters.append([])
+        clusters[-1].append(position)
+        previous_onset = onset
+    return clusters
+
+
+def _build_ai_results(run_id: str, detections: list[dict[str, Any]]) -> list[AIResultSummary]:
+    """Produce AI results per detection, explaining co-occurring ones together.
+
+    Detections that start within the same window are sent to the LLM as one
+    incident, so it can name the fault that began it and mark the rest as
+    consequences; explained alone, every stalled consumer reads as its own
+    independent failure and the remediation points at the victim. Falls back to
+    deterministic canned results when the LLM is unavailable or a call fails, so
+    an analysis run never fails on inference.
+    """
+    if not is_llm_configured() or not detections:
         return _canned_ai_results(run_id, detections)
 
-    results: list[AIResultSummary] = []
-    for index, detection in enumerate(detections, start=1):
+    results: dict[int, AIResultSummary] = {}
+    for cluster in _cluster_detections(detections):
         try:
-            explanation = explain_diagnostics(
-                {
-                    "summary": {
-                        "total_detections": 1,
-                        "severity": detection.get("severity", "low"),
-                    },
-                    "detections": [detection],
-                }
-            )
-            results.append(_ai_result_from_explanation(run_id, index, detection, explanation))
+            explanation = explain_detection_cluster([detections[p] for p in cluster])
         except Exception:
             logger.warning(
                 "analysis.ai_fallback",
@@ -309,12 +360,47 @@ def _build_ai_results(run_id: str, detections: list[dict[str, Any]]) -> list[AIR
                     "diagnostics": {
                         "event": "analysis.ai_fallback",
                         "level": "warning",
-                        "details": {"run_id": run_id},
+                        "details": {"run_id": run_id, "cluster_size": len(cluster)},
                     }
                 },
             )
-            results.append(_canned_ai_results(run_id, [detection])[0])
-    return results
+            for position in cluster:
+                results[position] = _ai_result_from_explanation(
+                    run_id,
+                    position + 1,
+                    detections[position],
+                    _canned_explanation(detections[position]),
+                    model="canned-fallback",
+                )
+            continue
+        findings = explanation.get("findings", {})
+        usage = explanation.get("usage") or {}
+        # A reviewer opening any one result in a cluster should see the whole
+        # incident's evidence chain, not just its own detection — build every
+        # finding's EvidenceItem once, then reorder per row so each row's own
+        # item stays first (preserves the existing evidence[0] contract).
+        cluster_evidence = [
+            _evidence_item(detections[position], explanation, findings.get(offset))
+            for offset, position in enumerate(cluster, start=1)
+        ]
+        for offset, position in enumerate(cluster, start=1):
+            own = offset - 1
+            ordered_evidence = [cluster_evidence[own], *cluster_evidence[:own], *cluster_evidence[own + 1 :]]
+            results[position] = _ai_result_from_explanation(
+                run_id,
+                position + 1,
+                detections[position],
+                explanation,
+                finding=findings.get(offset),
+                evidence=ordered_evidence,
+                # One chat_completion call explains the whole cluster; attribute
+                # its usage to the first result only so summing promptTokens
+                # across all AI results of a run doesn't overcount by cluster size.
+                latency_ms=int(usage.get("latency_ms", 0)) if offset == 1 else 0,
+                prompt_tokens=int(usage.get("prompt_tokens", 0)) if offset == 1 else 0,
+                completion_tokens=int(usage.get("completion_tokens", 0)) if offset == 1 else 0,
+            )
+    return [results[position] for position in sorted(results)]
 
 
 def _persist_review_items(run: AnalysisRun, ai_results: list[AIResultSummary]) -> None:
@@ -330,6 +416,30 @@ def _persist_review_items(run: AnalysisRun, ai_results: list[AIResultSummary]) -
             }
             for index, result in enumerate(ai_results, start=1)
         ]
+    )
+
+
+def _finalize_run_llm_usage(
+    run: AnalysisRun, ai_results: list[AIResultSummary], started: float
+) -> AnalysisRun:
+    """Roll per-result token/latency usage up into the run and price it.
+
+    Runs the LLM explain step, so must run after `_build_ai_results` — the
+    dashboard's "mean diagnosis time" is meant to cover parse through AI
+    conclusion, which this also corrects (the prior timestamp was taken
+    before that step ran, so it never included it).
+    """
+    prompt_tokens = sum(result.promptTokens for result in ai_results)
+    completion_tokens = sum(result.completionTokens for result in ai_results)
+    settings = get_settings()
+    resolved_model = settings.model_name if settings.llm_provider == "openai" else settings.vllm_model_name
+    return run.model_copy(
+        update={
+            "totalLatencyMs": int((time.perf_counter() - started) * 1000),
+            "promptTokens": prompt_tokens,
+            "completionTokens": completion_tokens,
+            "costUsd": _compute_cost_usd(resolved_model, prompt_tokens, completion_tokens),
+        }
     )
 
 
@@ -390,6 +500,7 @@ def run_analysis(dataset_id: str, model: str | None = None) -> dict[str, Any]:
 
     with perf.timed_phase("analysis.ai", {"id": run.id, "detections": len(detections)}):
         ai_results = _build_ai_results(run.id, detections)
+        run = _finalize_run_llm_usage(run, ai_results, started)
     with perf.timed_phase("analysis.persist", {"id": run.id}):
         report_health = compute_health_summary(detections, total_messages=total_messages)
         run_store.save_run(run.model_dump())

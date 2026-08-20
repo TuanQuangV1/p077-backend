@@ -421,7 +421,10 @@ def test_chat_unconfigured(capsys: pytest.CaptureFixture, monkeypatch: pytest.Mo
 
 def test_chat_configured(capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("src.cli.is_llm_configured", lambda: True)
-    monkeypatch.setattr("src.cli.chat_completion", lambda messages, tools=None: {"content": "chào bạn"})
+    monkeypatch.setattr(
+        "src.cli.chat_completion",
+        lambda messages, tools=None: {"message": {"content": "chào bạn"}, "prompt_tokens": 0, "completion_tokens": 0, "latency_ms": 0},
+    )
     code, out, _ = _run(capsys, "chat", "hello")
     assert code == 0
     assert json.loads(out)["response"] == "chào bạn"

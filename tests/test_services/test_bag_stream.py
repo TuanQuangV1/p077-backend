@@ -160,6 +160,110 @@ def test_real_reader_is_used_when_available(rosbag2_bag_dir: Any) -> None:
     assert rows[0]["node"] == "imu"
 
 
+def test_iter_rosbag2_decoded_reads_every_tf_edge_and_scan_nan_ratio(tmp_path: Path) -> None:
+    """A batched /tf publish and a corrupted LaserScan must decode fully.
+
+    Real /tf messages batch several independent edges in one publish (map->odom,
+    odom->base_footprint, wheel joints, ...); the decoded row must expose every
+    edge (not just the first) so per-edge gap detection can see all of them.
+    LaserScan.ranges is never retained, only the fraction that decoded as NaN.
+    """
+    typestore = get_typestore(Stores.ROS2_HUMBLE)
+    tf_msg_cls = typestore.get_msgdef("tf2_msgs/msg/TFMessage").cls
+    transform_stamped_cls = typestore.get_msgdef("geometry_msgs/msg/TransformStamped").cls
+    transform_cls = typestore.get_msgdef("geometry_msgs/msg/Transform").cls
+    vector_cls = typestore.get_msgdef("geometry_msgs/msg/Vector3").cls
+    quat_cls = typestore.get_msgdef("geometry_msgs/msg/Quaternion").cls
+    header_cls = typestore.get_msgdef("std_msgs/msg/Header").cls
+    time_cls = typestore.get_msgdef("builtin_interfaces/msg/Time").cls
+    scan_cls = typestore.get_msgdef("sensor_msgs/msg/LaserScan").cls
+
+    def _transform(frame_id: str, child_frame_id: str) -> Any:
+        return transform_stamped_cls(
+            header=header_cls(stamp=time_cls(sec=0, nanosec=0), frame_id=frame_id),
+            child_frame_id=child_frame_id,
+            transform=transform_cls(
+                translation=vector_cls(0.0, 0.0, 0.0),
+                rotation=quat_cls(0.0, 0.0, 0.0, 1.0),
+            ),
+        )
+
+    bag_dir = tmp_path / "bag"
+    with Writer(bag_dir, version=9) as writer:
+        tf_conn = writer.add_connection("/tf", "tf2_msgs/msg/TFMessage", typestore=typestore)
+        tf_msg = tf_msg_cls(
+            transforms=[
+                _transform("map", "odom"),
+                _transform("odom", "base_footprint"),
+            ]
+        )
+        writer.write(tf_conn, 0, typestore.serialize_cdr(tf_msg, tf_conn.msgtype))
+
+        scan_conn = writer.add_connection("/scan", "sensor_msgs/msg/LaserScan", typestore=typestore)
+        ranges = np.array([1.0, float("nan"), float("nan"), 2.0], dtype=np.float32)
+        scan = scan_cls(
+            header=header_cls(stamp=time_cls(sec=0, nanosec=0), frame_id="laser"),
+            angle_min=0.0,
+            angle_max=0.0,
+            angle_increment=0.0,
+            time_increment=0.0,
+            scan_time=0.0,
+            range_min=0.0,
+            range_max=10.0,
+            ranges=ranges,
+            intensities=np.zeros(4, dtype=np.float32),
+        )
+        writer.write(scan_conn, 0, typestore.serialize_cdr(scan, scan_conn.msgtype))
+
+    rows = {row["topic"]: row for row in iter_rosbag2_decoded(bag_dir)}
+
+    tf_row = rows["/tf"]
+    assert tf_row["transforms"] == [
+        {"frame_id": "map", "child_frame_id": "odom", "translation": (0.0, 0.0, 0.0)},
+        {"frame_id": "odom", "child_frame_id": "base_footprint", "translation": (0.0, 0.0, 0.0)},
+    ]
+    assert tf_row["nan_ratio"] is None
+    assert tf_row["out_of_range_ratio"] is None
+
+    scan_row = rows["/scan"]
+    assert scan_row["nan_ratio"] == pytest.approx(0.5)
+    assert scan_row["out_of_range_ratio"] == pytest.approx(0.0)
+    assert scan_row["transforms"] == []
+
+
+def test_iter_rosbag2_decoded_reads_imu_nan_and_out_of_range_ratios(tmp_path: Path) -> None:
+    """An Imu message has no `ranges`; NaN/out-of-range are read from its 6 motion fields."""
+    typestore = get_typestore(Stores.ROS2_HUMBLE)
+    imu_cls = typestore.get_msgdef("sensor_msgs/msg/Imu").cls
+    header_cls = typestore.get_msgdef("std_msgs/msg/Header").cls
+    time_cls = typestore.get_msgdef("builtin_interfaces/msg/Time").cls
+    vector_cls = typestore.get_msgdef("geometry_msgs/msg/Vector3").cls
+    quat_cls = typestore.get_msgdef("geometry_msgs/msg/Quaternion").cls
+
+    def _imu(av: tuple[float, float, float], la: tuple[float, float, float]) -> Any:
+        return imu_cls(
+            header=header_cls(stamp=time_cls(sec=0, nanosec=0), frame_id="imu_link"),
+            orientation=quat_cls(0.0, 0.0, 0.0, 1.0),
+            orientation_covariance=np.zeros(9),
+            angular_velocity=vector_cls(*av),
+            angular_velocity_covariance=np.zeros(9),
+            linear_acceleration=vector_cls(*la),
+            linear_acceleration_covariance=np.zeros(9),
+        )
+
+    bag_dir = tmp_path / "bag"
+    with Writer(bag_dir, version=9) as writer:
+        conn = writer.add_connection("/imu", "sensor_msgs/msg/Imu", typestore=typestore)
+        # One NaN component (1/6) and one implausibly-large component (1/6).
+        imu = _imu(av=(float("nan"), 0.0, 0.0), la=(500.0, 0.0, 9.8))
+        writer.write(conn, 0, typestore.serialize_cdr(imu, conn.msgtype))
+
+    rows = list(iter_rosbag2_decoded(bag_dir))
+    assert len(rows) == 1
+    assert rows[0]["nan_ratio"] == pytest.approx(1 / 6)
+    assert rows[0]["out_of_range_ratio"] == pytest.approx(1 / 6)
+
+
 def test_infer_node_heuristic_and_override() -> None:
     assert _infer_node("/imu/data", None) == "imu"
     assert _infer_node("scan", None) == "scan"
