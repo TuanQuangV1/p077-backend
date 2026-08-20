@@ -178,9 +178,9 @@ def _gap_stats(timestamps: list[float]) -> tuple[float, float, int]:
             int(np.argmax(all_intervals)),
         )
     diffs = [b - a for a, b in pairwise(timestamps)]
-    positive = [interval for interval in diffs if interval > 0]
+    positive_diffs = [interval for interval in diffs if interval > 0]
     max_interval = max(diffs)
-    median_interval = float(statistics.median(positive)) if positive else 0.0
+    median_interval = float(statistics.median(positive_diffs)) if positive_diffs else 0.0
     return median_interval, max_interval, diffs.index(max_interval)
 
 
@@ -228,8 +228,8 @@ def _timestamp_jitter(timestamps: list[float]) -> float:
     if len(timestamps) >= _MIN_NUMPY_MESSAGES:
         intervals = np.diff(np.asarray(timestamps, dtype=float))
         return float(np.std(intervals))
-    intervals = [b - a for a, b in pairwise(timestamps)]
-    return float(statistics.pstdev(intervals)) if len(intervals) >= 2 else 0.0
+    interval_list = [b - a for a, b in pairwise(timestamps)]
+    return float(statistics.pstdev(interval_list)) if len(interval_list) >= 2 else 0.0
 
 
 def _evaluate_topic_rules(
@@ -731,9 +731,8 @@ def _evaluate_hz_drop_rules(
     if len(timestamps_arr) < int(thresholds["hz_drop_min_messages"]):
         return detections, logs
 
-    has_explicit_expected = expected_hz is not None and topic in expected_hz
     resolved_expected: float | None = None
-    if has_explicit_expected:
+    if expected_hz is not None and topic in expected_hz:
         resolved_expected = float(expected_hz[topic])
 
     windows = _window_hz(timestamps_arr)
