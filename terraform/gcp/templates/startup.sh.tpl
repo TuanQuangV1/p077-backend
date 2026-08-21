@@ -28,9 +28,19 @@ log "preparing /opt/app mount..."
 mkdir -p /opt/app/data /opt/app/certs
 
 if [ -e "$${DATA_DEVICE}" ]; then
-  FS_TYPE=$(blkid -o value -s TYPE "$${DATA_DEVICE}" 2>/dev/null || true)
-  if [ -z "$${FS_TYPE}" ]; then
-    log "formatting empty data disk..."
+  FS_TYPE=""
+  if ! FS_TYPE=$(blkid -o value -s TYPE "$${DATA_DEVICE}" 2>/dev/null); then
+    rc=$?
+    if [ "$rc" -eq 2 ]; then
+      log "formatting empty data disk..."
+      mkfs.ext4 -F "$${DATA_DEVICE}"
+      FS_TYPE="ext4"
+    else
+      log "blkid failed (rc=$rc); skipping format to avoid data loss"
+      FS_TYPE="unknown"
+    fi
+  elif [ -z "$${FS_TYPE}" ]; then
+    log "blkid returned empty; formatting empty data disk..."
     mkfs.ext4 -F "$${DATA_DEVICE}"
     FS_TYPE="ext4"
   fi

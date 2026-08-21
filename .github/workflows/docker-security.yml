@@ -9,7 +9,7 @@ on:
 
 jobs:
   docker-scan:
-    runs-on: self-hosted
+    runs-on: self-hosted # requires registered self-hosted runner (ubuntu-latest minutes exhausted)
 
     env:
       DOCKER_BUILDKIT: 1

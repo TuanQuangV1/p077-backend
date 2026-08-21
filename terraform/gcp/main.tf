@@ -26,6 +26,11 @@ resource "google_project_service" "iam" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "iap" {
+  service            = "iap.googleapis.com"
+  disable_on_destroy = false
+}
+
 # 2. Artifact Registry repositories (backend + frontend)
 resource "google_artifact_registry_repository" "backend" {
   depends_on    = [google_project_service.artifact_registry]
@@ -70,6 +75,13 @@ resource "google_project_iam_member" "github_ssh" {
   project = var.project_id
   role    = "roles/compute.osLogin"
   member  = local.github_sa_member
+}
+
+resource "google_project_iam_member" "iap_tunnel" {
+  for_each = toset(var.iap_users)
+  project  = var.project_id
+  role     = "roles/iap.tunnelResourceAccessor"
+  member   = "user:${each.value}"
 }
 
 # 5. Firewall rules (default VPC)

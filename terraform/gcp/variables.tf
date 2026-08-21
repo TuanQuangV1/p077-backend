@@ -86,9 +86,15 @@ variable "cors_origins" {
 }
 
 variable "ssh_source_ranges" {
-  description = "CIDR ranges allowed to SSH into the VM (MVP: open to world, debian security patches still apply)"
+  description = "CIDR ranges allowed to SSH into the VM. Default is GCP IAP range (35.235.240.0/20)."
   type        = list(string)
-  default     = ["0.0.0.0/0"]
+  default     = ["35.235.240.0/20"]
+}
+
+variable "iap_users" {
+  description = "Email addresses granted IAP tunnel access for SSH (roles/iap.tunnelResourceAccessor)."
+  type        = list(string)
+  default     = []
 }
 
 variable "github_service_account" {
