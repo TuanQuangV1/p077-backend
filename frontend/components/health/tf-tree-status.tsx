@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { Anomaly, Severity } from "@/lib/types"
+import { relativeSpan } from "@/lib/anomaly-groups"
 
 interface TFTreeStatusProps {
   tfAnomalies: Anomaly[]
@@ -97,7 +98,7 @@ function TFNodeComponent({
             {node.details}
           </p>
           <p className="mt-0.5 font-mono text-[9px] text-muted-foreground">
-            t={anomaly.tSec.toFixed(1)}s
+            t={relativeSpan(anomaly).start.toFixed(1)}s
           </p>
         </div>
       )}
@@ -151,8 +152,13 @@ export function TFTreeStatus({
   const [showHelp, setShowHelp] = useState(false)
 
   // Determine TF chain status
-  const hasGap = tfAnomalies.some((a) => a.kind === "tf_timeout" || a.kind === "localization_jump")
-  const hasJump = tfAnomalies.some((a) => a.kind === "localization_jump")
+  const hasGap = tfAnomalies.some((a) => a.kind === "tf_missing_gap" || a.kind === "tf_timeout")
+  const hasJump = tfAnomalies.some(
+    (a) =>
+      a.kind === "tf_drift_jump" ||
+      a.kind === "tf_conflict" ||
+      a.kind === "localization_jump",
+  )
 
   // Build TF nodes
   const nodes: TFNode[] = [

@@ -35,7 +35,10 @@ data/
 *.sqlite3
 
 # Logs
-logs/
+# Anchored to the repo root: an unanchored `logs/` also swallowed the
+# `app/api/runs/[runId]/logs/` route, and git cannot re-include a file whose
+# parent directory is excluded. Build-cache logs live under .next/, ignored separately.
+/logs/
 *.log
 
 # Test coverage

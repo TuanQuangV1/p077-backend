@@ -61,9 +61,16 @@ from src.models.schemas import (
     ReviewListResponse,
     ReviewStatsResponse,
     ReviewStatsRun,
+    RunRootCause,
 )
 from src.services import run_store
-from src.services.analysis import _KIND_LABELS, _anomaly_summaries, _build_ai_results, run_analysis
+from src.services.analysis import (
+    _KIND_LABELS,
+    _anomaly_summaries,
+    _build_ai_results,
+    run_analysis,
+    select_run_root_cause,
+)
 from src.services.bag_stream import iter_bag_messages
 from src.services.diagnostics import detect_anomalies, parse_mcap_file
 from src.services.diagnostics_config import get_diagnostics_thresholds, save_diagnostics_thresholds
@@ -527,14 +534,19 @@ async def get_analysis(run_id: str) -> AnalysisDetailResponse:
     if persisted_ai:
         ai_results = [AIResultSummary(**result) for result in persisted_ai]
     else:
+        # Recording bounds are not persisted with the run, so this rebuild path
+        # sends absolute timestamps where the original analysis sent relative
+        # ones. It only fires for runs whose AI results are missing.
         ai_results = _build_ai_results(run_id, detections)
     health = compute_health_summary(detections, total_messages=rosbag.messageCount if rosbag else 0)
+    root_cause = select_run_root_cause(detections, ai_results)
     return AnalysisDetailResponse(
         run=run,
         rosbag=rosbag,
         anomalies=_anomaly_summaries(run_id, detections),
         aiResults=ai_results,
         health=health,
+        runRootCause=RunRootCause(**root_cause) if root_cause else None,
     )
 
 
@@ -824,7 +836,7 @@ async def get_hilt_summary(
         raise HTTPException(status_code=404, detail="run not found")
 
     anomalies = await anyio.to_thread.run_sync(run_store.get_run_anomalies, run_id)
-    anomaly = next((a for a in anomalies if a.get("id") == anomaly_id.replace("anomaly_", "")), None)
+    anomaly = next((a for a in anomalies if a.get("id") == anomaly_id), None)
     if anomaly is None:
         raise HTTPException(status_code=404, detail="anomaly not found")
 
@@ -865,7 +877,7 @@ async def hilt_iterate(
         raise HTTPException(status_code=404, detail="run not found")
 
     anomalies = await anyio.to_thread.run_sync(run_store.get_run_anomalies, run_id)
-    anomaly = next((a for a in anomalies if a.get("id") == anomaly_id.replace("anomaly_", "")), None)
+    anomaly = next((a for a in anomalies if a.get("id") == anomaly_id), None)
     if anomaly is None:
         raise HTTPException(status_code=404, detail="anomaly not found")
 
@@ -947,7 +959,7 @@ async def hilt_fix(
         raise HTTPException(status_code=404, detail="run not found")
 
     anomalies = await anyio.to_thread.run_sync(run_store.get_run_anomalies, run_id)
-    anomaly = next((a for a in anomalies if a.get("id") == anomaly_id.replace("anomaly_", "")), None)
+    anomaly = next((a for a in anomalies if a.get("id") == anomaly_id), None)
     if anomaly is None:
         raise HTTPException(status_code=404, detail="anomaly not found")
 

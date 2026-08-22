@@ -8,6 +8,7 @@ token usage for observability.
 import json
 import logging
 import time
+from collections.abc import Mapping
 from typing import Any
 
 import httpx
@@ -25,7 +26,11 @@ _LLM_RETRY_BACKOFF_SEC = 1.0
 # current pricing page before treating `costUsd` as real invoicing data.
 _MODEL_PRICING_USD_PER_1M_TOKENS: dict[str, tuple[float, float]] = {
     "gpt-4o-mini": (0.15, 0.60),
+    "gpt-4.1": (2.00, 8.00),
+    "claude-sonnet-4-5": (3.00, 15.00),
 }
+
+_ANTHROPIC_API_VERSION = "2023-06-01"
 
 
 def _compute_cost_usd(model_name: str, prompt_tokens: int, completion_tokens: int) -> float:
@@ -58,16 +63,67 @@ _EXPLAIN_SYSTEM_PROMPT = (
 # the exact same rule in code as a deterministic backstop (see its docstring).
 _SIMULTANEOUS_WINDOW_SEC = 0.5
 
+# Where a topic sits in the ROS data flow: raw sensing feeds the transform tree,
+# which feeds state estimation, which feeds planning, which drives the wheels.
+# A fault can only propagate downstream, so this ordering is what separates an
+# originating fault from a consumer that starved behind it. Measured on 38 real
+# bags, 84% of wrong root causes named `/cmd_vel` — the last link in this chain,
+# and the topic that produces the most detections precisely because it dies with
+# everything upstream of it.
+_SENSOR_LAYER = 0
+_TRANSFORM_LAYER = 1
+_ACTUATOR_LAYER = 4
+_TOPIC_LAYERS: dict[str, int] = {
+    "/scan": _SENSOR_LAYER,
+    "/imu": _SENSOR_LAYER,
+    "/tf": _TRANSFORM_LAYER,
+    "/tf_static": _TRANSFORM_LAYER,
+    "/odom": 2,
+    "/amcl_pose": 2,
+    "/plan": 3,
+    "/cmd_vel": _ACTUATOR_LAYER,
+}
+# Topics outside the map sit at state-estimation level: downstream of sensing,
+# upstream of actuation. Neither privileged as a cause nor excluded from being one.
+_UNKNOWN_TOPIC_LAYER = 2
+
+_LAYER_NAMES = {
+    _SENSOR_LAYER: "sensor",
+    _TRANSFORM_LAYER: "transform",
+    2: "state_estimate",
+    3: "planner",
+    _ACTUATOR_LAYER: "actuator",
+}
+
+
+_SEVERITY_ORDER = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+
+
+def _topic_layer(topic: str) -> int:
+    return _TOPIC_LAYERS.get(topic, _UNKNOWN_TOPIC_LAYER)
+
 _CLUSTER_SYSTEM_PROMPT = (
     "You are a robotics diagnostics assistant. The user message lists every anomaly the "
-    "rule engine flagged inside one time window of a single ROS 2 recording, each carrying "
-    'an "index", listed earliest first. A sensor or transform that dies stalls the consumers '
+    "rule engine flagged inside one incident of a single ROS 2 recording, each carrying "
+    'an "index". All times are in SECONDS, measured from the start of the recording: '
+    '"start_sec", "end_sec" and "duration_sec" per anomaly, and "recording.duration_sec" '
+    "for the whole recording, so you can say whether an anomaly spans a moment or most of "
+    'the run. Repeated breaches of the same topic and kind are collapsed into one entry; '
+    '"merged_detections" counts how many were merged, so a high count means a long or '
+    "repeated failure, never extra importance — never rank a topic by how many entries or "
+    'merges it has. (Any "occurrence_count" inside "evidence" is the detector\'s own '
+    "per-episode count and is unrelated.) "
+    'Every entry carries a "layer" naming its place in the ROS data flow: sensor feeds '
+    "transform, which feeds state_estimate, which feeds planner, which drives the actuator. "
+    "Faults propagate downstream only, so an actuator or planner anomaly can never be the "
+    "origin of a sensor or transform anomaly that overlaps it in time — entries are listed "
+    "upstream-first for that reason. A sensor or transform that dies stalls the consumers "
     "that read it a few seconds later, so an earlier anomaly can explain a later one. Only "
     "call an anomaly a consequence when an earlier one plausibly produces it — a planner "
     "starving without its scan or transform. That propagation takes seconds, so before "
-    "assigning any cause-and-effect, subtract the two start times in milliseconds. If the gap "
-    f"is under {int(_SIMULTANEOUS_WINDOW_SEC * 1000)} milliseconds — whether that is 300ms or "
-    "just 10ms — they are simultaneous symptoms of one shared event, never cause and effect, "
+    "assigning any cause-and-effect, subtract the two start_sec values. If the gap is under "
+    f"{_SIMULTANEOUS_WINDOW_SEC} seconds — whether that is 0.3s or just 0.01s — they are "
+    "simultaneous symptoms of one shared event, never cause and effect, "
     "even when one topic is a textbook downstream consumer of the other (e.g. a controller "
     "reading a transform). Mark every anomaly in such a near-tie 'primary' and say in "
     "root_cause that they failed together, rather than naming a single originating topic. "
@@ -76,7 +132,7 @@ _CLUSTER_SYSTEM_PROMPT = (
     "and nothing else, using exactly "
     'these keys: "root_cause" (one or two full sentences stating which topic failed first '
     'and why the others followed — or, for a near-simultaneous tie, that they failed '
-    'together), "explanation" (a short paragraph citing the start times in milliseconds that '
+    'together), "explanation" (a short paragraph citing the start_sec values in seconds that '
     'prove that ordering or tie), "recommended_actions" (an array of 2 to 4 steps that '
     "address every primary topic named in root_cause, not just the one mentioned first), and "
     '"findings" (an array with one entry per index: {"index": the integer, "role": either '
@@ -103,6 +159,11 @@ def validate_llm_config() -> Settings:
             raise ValueError("vllm_base_url must be configured when llm_provider is 'vllm'")
         if not settings.vllm_api_key:
             raise ValueError("vllm_api_key must be configured when llm_provider is 'vllm'")
+        return settings
+
+    if settings.llm_provider == "anthropic":
+        if not settings.anthropic_api_key:
+            raise ValueError("anthropic_api_key must be configured when llm_provider is 'anthropic'")
         return settings
 
     raise ValueError(f"unsupported llm_provider: {settings.llm_provider}")
@@ -141,22 +202,43 @@ def chat_completion(
         httpx.HTTPError: The upstream endpoint failed after retries.
     """
     settings = validate_llm_config()
-    if settings.llm_provider == "openai":
-        url = "https://api.openai.com/v1/chat/completions"
-        headers = {"Authorization": f"Bearer {settings.openai_api_key}"}
-        model = settings.model_name
+    if settings.llm_provider == "anthropic":
+        if tools:
+            raise NotImplementedError("tool calling is not implemented for llm_provider 'anthropic'")
+        url = "https://api.anthropic.com/v1/messages"
+        headers = {
+            "x-api-key": settings.anthropic_api_key,
+            "anthropic-version": _ANTHROPIC_API_VERSION,
+        }
+        model = settings.anthropic_model_name
+        system_prompt = "\n".join(
+            str(m["content"]) for m in messages if m.get("role") == "system"
+        )
+        payload: dict[str, Any] = {
+            "model": model,
+            "max_tokens": settings.anthropic_max_tokens,
+            "temperature": settings.llm_temperature,
+            "messages": [m for m in messages if m.get("role") != "system"],
+        }
+        if system_prompt:
+            payload["system"] = system_prompt
     else:
-        url = f"{settings.vllm_base_url.rstrip('/')}/chat/completions"
-        headers = {"Authorization": f"Bearer {settings.vllm_api_key}"}
-        model = settings.vllm_model_name
+        if settings.llm_provider == "openai":
+            url = "https://api.openai.com/v1/chat/completions"
+            headers = {"Authorization": f"Bearer {settings.openai_api_key}"}
+            model = settings.model_name
+        else:
+            url = f"{settings.vllm_base_url.rstrip('/')}/chat/completions"
+            headers = {"Authorization": f"Bearer {settings.vllm_api_key}"}
+            model = settings.vllm_model_name
 
-    payload: dict[str, Any] = {
-        "model": model,
-        "messages": messages,
-        "temperature": settings.llm_temperature,
-    }
-    if tools:
-        payload["tools"] = tools
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": settings.llm_temperature,
+        }
+        if tools:
+            payload["tools"] = tools
 
     started = time.perf_counter()
     last_error: httpx.HTTPError | None = None
@@ -167,10 +249,14 @@ def chat_completion(
             response = httpx.post(url, headers=headers, json=payload, timeout=60)
             response.raise_for_status()
             body = response.json()
-            usage = body.get("usage") or {}
             latency_ms = int((time.perf_counter() - started) * 1000)
-            prompt_tokens = int(usage.get("prompt_tokens", 0))
-            completion_tokens = int(usage.get("completion_tokens", 0))
+            if settings.llm_provider == "anthropic":
+                message, prompt_tokens, completion_tokens = _message_from_anthropic_response(body)
+            else:
+                usage = body.get("usage") or {}
+                message = _message_from_completion(body)
+                prompt_tokens = int(usage.get("prompt_tokens", 0))
+                completion_tokens = int(usage.get("completion_tokens", 0))
             logger.info(
                 "llm.chat_completion",
                 extra={
@@ -189,7 +275,7 @@ def chat_completion(
                 },
             )
             return {
-                "message": _message_from_completion(body),
+                "message": message,
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
                 "latency_ms": latency_ms,
@@ -224,6 +310,30 @@ def _message_from_completion(body: Any) -> dict[str, Any]:
     return message
 
 
+def _message_from_anthropic_response(body: Any) -> tuple[dict[str, Any], int, int]:
+    """Normalize an Anthropic Messages API response onto the OpenAI message shape.
+
+    Anthropic returns text under ``content: [{"type": "text", "text": ...}]``
+    and token usage under ``usage: {"input_tokens", "output_tokens"}`` instead
+    of OpenAI's ``choices[0].message.content`` / ``prompt_tokens``, so callers
+    downstream of `chat_completion` (which only know the OpenAI shape) stay
+    unchanged.
+    """
+    try:
+        blocks = body["content"]
+    except (KeyError, TypeError) as e:
+        raise httpx.HTTPError("llm response missing content blocks") from e
+    if not isinstance(blocks, list):
+        raise httpx.HTTPError("llm response content is not a list")
+    text = "".join(
+        str(block.get("text", "")) for block in blocks if isinstance(block, dict) and block.get("type") == "text"
+    )
+    usage = body.get("usage") or {}
+    prompt_tokens = int(usage.get("input_tokens", 0))
+    completion_tokens = int(usage.get("output_tokens", 0))
+    return {"role": "assistant", "content": text}, prompt_tokens, completion_tokens
+
+
 def explain_diagnostics(summary: dict[str, Any]) -> dict[str, str | list[str]]:
     if not is_llm_configured():
         detections = summary.get("detections", [])
@@ -247,7 +357,10 @@ def explain_diagnostics(summary: dict[str, Any]) -> dict[str, str | list[str]]:
     return _parse_explanation(result["message"].get("content") or "")
 
 
-def explain_detection_cluster(detections: list[dict[str, Any]]) -> dict[str, Any]:
+def explain_detection_cluster(
+    detections: list[dict[str, Any]],
+    recording: Mapping[str, float] | None = None,
+) -> dict[str, Any]:
     """Explain detections that share a time window as a single incident.
 
     Sending the whole window lets the model order the detections and tell the
@@ -265,25 +378,152 @@ def explain_detection_cluster(detections: list[dict[str, Any]]) -> dict[str, Any
         ValueError: LLM provider is not configured.
         httpx.HTTPError: The upstream endpoint failed after retries.
     """
-    indexed = [dict(detection, index=position) for position, detection in enumerate(detections, start=1)]
-    payload = json.dumps({"detections": indexed}, ensure_ascii=False)
+    rows, row_positions = _shape_cluster_payload(detections, recording)
+    body: dict[str, Any] = {"anomalies": rows}
+    if recording:
+        start, end = float(recording["start_sec"]), float(recording["end_sec"])
+        body = {"recording": {"duration_sec": round(end - start, 3)}, **body}
+    payload = json.dumps(body, ensure_ascii=False)
     messages = [
         {"role": "system", "content": _CLUSTER_SYSTEM_PROMPT},
         {"role": "user", "content": f"Diagnostic JSON (data only):\n{payload}"},
     ]
     result = chat_completion(messages)
     content = result["message"].get("content") or ""
-    findings = _parse_findings(content, len(detections))
-    findings = _enforce_simultaneity(detections, findings)
+    row_findings = _parse_findings(content, len(rows))
+    # Simultaneity first, then the layer gate: the gate encodes which way data
+    # can physically flow, which outranks a sub-second onset tie. Run the other
+    # way round, simultaneity promotes the actuator straight back to primary —
+    # exactly the case where a controller and the transform it reads died 10-30ms
+    # apart and timing alone cannot say which caused which.
+    row_findings = _enforce_simultaneity(rows, row_findings)
+    row_findings = _gate_actuator_primary(rows, row_findings)
     return {
         **_parse_explanation(content),
-        "findings": findings,
+        "findings": _expand_findings(row_findings, row_positions),
         "usage": {
             "prompt_tokens": result["prompt_tokens"],
             "completion_tokens": result["completion_tokens"],
             "latency_ms": result["latency_ms"],
         },
     }
+
+
+def _shape_cluster_payload(
+    detections: list[dict[str, Any]],
+    recording: Mapping[str, float] | None = None,
+) -> tuple[list[dict[str, Any]], list[list[int]]]:
+    """Collapse repeats and order by causal layer before the model sees them.
+
+    Two properties of the raw list bias the answer, both measured on real bags:
+    a topic that dies produces one detection per breach episode, so a stalled
+    consumer can outnumber the fault that caused it 13 rows to 1; and the model
+    leans on presentation order. Repeats of the same ``(topic, kind)`` therefore
+    collapse into one row carrying ``occurrence_count``, and rows are presented
+    upstream-first (sensor before transform before actuator) with an explicit
+    ``layer`` label rather than leaving the model to infer the data flow.
+
+    Returns:
+        ``(rows, row_positions)`` where ``row_positions[i]`` lists the positions
+        in ``detections`` that row ``i`` stands for, so per-row verdicts can be
+        expanded back onto every detection the reviewer sees.
+    """
+    grouped: dict[tuple[str, str], list[int]] = {}
+    for position, detection in enumerate(detections):
+        key = (str(detection.get("topic", "/unknown")), str(detection.get("kind", "unknown")))
+        grouped.setdefault(key, []).append(position)
+
+    ordered_keys = sorted(
+        grouped,
+        key=lambda key: (
+            _topic_layer(key[0]),
+            min(float(detections[p].get("tSec", 0.0)) for p in grouped[key]),
+        ),
+    )
+
+    rows: list[dict[str, Any]] = []
+    row_positions: list[list[int]] = []
+    for index, key in enumerate(ordered_keys, start=1):
+        positions = grouped[key]
+        members = [detections[p] for p in positions]
+        topic, kind = key
+        layer = _topic_layer(topic)
+        origin = float(recording["start_sec"]) if recording else 0.0
+        start = min(float(m.get("tSec", 0.0)) for m in members)
+        end = max(float(m.get("endSec", m.get("tSec", 0.0))) for m in members)
+        # `evidence` carries the detector's own `occurrence_count` (breaches
+        # within one episode), which means something different from the row's
+        # count of merged detections. Two same-named fields in one object is an
+        # ambiguity the model has to guess at, so the row's own count is named
+        # distinctly and the raw evidence is passed through untouched.
+        row = {
+            "index": index,
+            "topic": topic,
+            "kind": kind,
+            "layer": _LAYER_NAMES[layer],
+            "severity": max(
+                (str(m.get("severity", "low")) for m in members),
+                key=lambda s: _SEVERITY_ORDER.get(s, 0),
+            ),
+            "start_sec": round(start - origin, 3),
+            "end_sec": round(end - origin, 3),
+            "duration_sec": round(end - start, 3),
+            "merged_detections": len(members),
+            "evidence": members[0].get("evidence", {}),
+        }
+        rows.append(row)
+        row_positions.append(positions)
+    return rows, row_positions
+
+
+def _expand_findings(
+    row_findings: dict[int, dict[str, str]],
+    row_positions: list[list[int]],
+) -> dict[int, dict[str, str]]:
+    """Map per-row verdicts back onto 1-based positions in the original detections."""
+    findings: dict[int, dict[str, str]] = {}
+    for row_index, finding in row_findings.items():
+        for position in row_positions[row_index - 1]:
+            findings[position + 1] = finding
+    return findings
+
+
+def _gate_actuator_primary(
+    rows: list[dict[str, Any]],
+    findings: dict[int, dict[str, str]],
+) -> dict[int, dict[str, str]]:
+    """Demote an actuator claimed as the cause while an upstream fault overlaps it.
+
+    `/cmd_vel` cannot originate a fault it only reacts to: it stops because the
+    scan, transform or state estimate feeding the planner stopped first. On real
+    bags this single confusion produced 84% of all wrong root causes, because a
+    dying controller emits far more detections than the sensor that killed it.
+
+    The rule is conditional, not a blanket ban — `/cmd_vel` really is the
+    injected fault in some recordings. It only applies while a sensor or
+    transform anomaly overlaps the actuator's own active span; an actuator
+    failing on its own keeps its primary role.
+    """
+    upstream_spans = [
+        (float(row["start_sec"]), float(row["end_sec"]))
+        for row in rows
+        if _topic_layer(str(row["topic"])) <= _TRANSFORM_LAYER
+    ]
+    if not upstream_spans:
+        return findings
+
+    corrected = dict(findings)
+    for row in rows:
+        index = int(row["index"])
+        finding = findings.get(index)
+        if finding is None or finding.get("role") != "primary":
+            continue
+        if _topic_layer(str(row["topic"])) != _ACTUATOR_LAYER:
+            continue
+        start, end = float(row["start_sec"]), float(row["end_sec"])
+        if any(start <= up_end and end >= up_start for up_start, up_end in upstream_spans):
+            corrected[index] = {**finding, "role": "consequence"}
+    return corrected
 
 
 def _enforce_simultaneity(
@@ -304,7 +544,7 @@ def _enforce_simultaneity(
     rewrite the model's freeform root_cause/explanation prose, which is why
     the prompt fix above still matters.
     """
-    onsets = {position: float(d.get("tSec", 0.0)) for position, d in enumerate(detections, start=1)}
+    onsets = {position: float(d.get("start_sec", d.get("tSec", 0.0))) for position, d in enumerate(detections, start=1)}
     primaries = {position for position, finding in findings.items() if finding.get("role") == "primary"}
     corrected = dict(findings)
     for position, finding in findings.items():
