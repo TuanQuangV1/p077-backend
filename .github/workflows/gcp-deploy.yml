@@ -24,7 +24,7 @@ env:
 jobs:
   verification:
     name: Run GCP Verification Tests
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -70,7 +70,7 @@ jobs:
   deploy-gcp:
     name: Build & Deploy to GCP (${{ matrix.environment }})
     needs: verification
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     if: ${{ matrix.branch == github.ref_name }}
     strategy:
       matrix:

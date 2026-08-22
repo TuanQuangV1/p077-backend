@@ -9,7 +9,7 @@ on:
 
 jobs:
   gitleaks:
-    runs-on: self-hosted # requires registered self-hosted runner (ubuntu-latest minutes exhausted)
+    runs-on: [self-hosted, linux, x64] # requires registered self-hosted runner (ubuntu-latest minutes exhausted)
 
     steps:
       - name: Checkout

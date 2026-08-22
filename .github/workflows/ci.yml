@@ -12,7 +12,7 @@ env:
 
 jobs:
   backend-test:
-    runs-on: self-hosted # requires registered self-hosted runner (ubuntu-latest minutes exhausted)
+    runs-on: [self-hosted, linux, x64] # requires registered self-hosted runner (ubuntu-latest minutes exhausted)
 
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -45,7 +45,7 @@ jobs:
           if-no-files-found: warn
 
   frontend-test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     defaults:
       run:
         working-directory: frontend
@@ -75,7 +75,7 @@ jobs:
         run: pnpm test
 
   e2e-test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     needs: [backend-test, frontend-test]
 
     steps:
