@@ -5,7 +5,21 @@ on:
     branches:
       - main
       - develop
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'presentation/**'
+      - '.ai-log/**'
   pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'presentation/**'
+      - '.ai-log/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   gitleaks:
@@ -13,13 +27,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
       - name: Run Gitleaks
         if: env.ACT != 'true'
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
