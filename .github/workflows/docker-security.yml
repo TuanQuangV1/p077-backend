@@ -1,29 +1,22 @@
 name: Docker Security
 
 on:
-  push:
-    branches:
-      - main
-      - develop
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - 'presentation/**'
-      - '.ai-log/**'
-  pull_request:
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - 'presentation/**'
-      - '.ai-log/**'
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main, develop]
+  workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: docker-security-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   docker-scan:
     runs-on: [self-hosted, linux, x64]
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
 
     env:
       DOCKER_BUILDKIT: 1

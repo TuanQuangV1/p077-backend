@@ -1,23 +1,14 @@
 name: CI
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Gitleaks", "Trivy Security Scan", "CodeQL"]
+    types: [completed]
     branches: [main, develop]
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - 'presentation/**'
-      - '.ai-log/**'
-  pull_request:
-    branches: [main]
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - 'presentation/**'
-      - '.ai-log/**'
+  workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -27,6 +18,9 @@ env:
 jobs:
   backend-test:
     runs-on: [self-hosted, linux, x64] # requires registered self-hosted runner (ubuntu-latest minutes exhausted)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
 
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
