@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { clock } from "@/lib/api"
 import type { Anomaly, Severity } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { relativeSpan } from "@/lib/anomaly-groups"
 
 export interface Lane {
   topic: string
@@ -129,8 +130,9 @@ export function TimelineCanvas({
 
     /* anomaly bands behind the lanes */
     for (const a of anomalies) {
-      const x0 = xOf(a.tSec)
-      const x1 = Math.max(xOf(a.endSec), x0 + 2)
+      const { start, end } = relativeSpan(a)
+      const x0 = xOf(start)
+      const x1 = Math.max(xOf(end), x0 + 2)
       if (x1 < 0 || x0 > width) continue
       ctx.globalAlpha = a.id === selectedAnomalyId ? 0.3 : 0.14
       ctx.fillStyle = c.sev[a.severity]
@@ -239,7 +241,10 @@ export function TimelineCanvas({
     dragRef.current = "scrub"
     onScrub(t)
     // clicking a band also selects it, so the inspector follows the timeline
-    const hit = anomalies.find((a) => t >= a.tSec && t <= a.endSec)
+    const hit = anomalies.find((a) => {
+      const { start, end } = relativeSpan(a)
+      return t >= start && t <= end
+    })
     if (hit) onSelectAnomaly(hit.id)
   }
 

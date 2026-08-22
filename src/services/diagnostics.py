@@ -1606,11 +1606,34 @@ def detect_anomalies(
             if float(d.get("tSec", 0.0)) >= topic_start.get(str(d.get("topic", "")), float("-inf")) + pre_roll_grace
         ]
 
+    # Identity is assigned here, at the point detections are created, so it
+    # survives into the anomaly store and every consumer downstream refers to
+    # the same anomaly by the same name. Without it the HILT routes matched on
+    # an `id` key that raw detections never carried and always 404'd.
+    # Detection timestamps are absolute simulation time, which on its own says
+    # nothing about where in the recording an event sits — a fault at t=1815 in
+    # a 182-second bag reads as implausible until you know the bag starts at
+    # 1761, and anything plotting it against recording duration draws it off the
+    # end of the timeline. Publish the observed bounds, and carry the relative
+    # time on each detection so consumers never have to guess the origin.
+    all_times = [t for times in topic_times.values() for t in times]
+    stream_start = min(all_times) if all_times else 0.0
+
+    detections.sort(key=lambda d: (float(d.get("tSec", 0.0)), str(d.get("topic", "")), str(d.get("kind", ""))))
+    for index, detection in enumerate(detections, start=1):
+        detection["id"] = f"anomaly_{index:03d}"
+        detection["tRelSec"] = round(float(detection.get("tSec", 0.0)) - stream_start, 3)
+        detection["endRelSec"] = round(
+            float(detection.get("endSec", detection.get("tSec", 0.0))) - stream_start, 3
+        )
+
     result = {
         "summary": {
             "total_messages": total_messages,
             "total_detections": len(detections),
             "severity": "medium" if detections else "low",
+            "stream_start_sec": stream_start,
+            "stream_end_sec": max(all_times) if all_times else 0.0,
         },
         "detections": detections,
         "thresholds": resolved_thresholds,

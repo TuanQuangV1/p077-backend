@@ -114,13 +114,9 @@ export function LogSeverityPanel({ logs, anomalies }: LogSeverityPanelProps) {
     .filter((l) => l.level === "warn")
     .sort((a, b) => b.tSec - a.tSec)
 
-  // Get log-related anomalies
-  const logAnomalies = anomalies.filter(
-    (a) =>
-      a.kind === "tf_timeout" ||
-      a.kind === "cpu_spike" ||
-      a.kind === "nav_recovery",
-  )
+  // `anomalies` is already the log group (see lib/anomaly-groups.ts); filtering
+  // it again by demo-only kinds discarded every real backend log detection.
+  const logAnomalies = anomalies
 
   const latestError = errorLogs[0]
   const latestWarn = warnLogs[0]

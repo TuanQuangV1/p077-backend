@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import type { Anomaly, Severity } from "@/lib/types"
+import { relativeSpan } from "@/lib/anomaly-groups"
 
 interface TimelineDensityHeatmapProps {
   anomalies: Anomaly[]
@@ -42,7 +43,7 @@ function buildBuckets(anomalies: Anomaly[], durationSec: number): HeatmapBucket[
 
     // Find anomalies in this bucket
     const bucketAnomalies = anomalies.filter(
-      (a) => a.tSec >= start && a.tSec < end,
+      (a) => relativeSpan(a).start >= start && relativeSpan(a).start < end,
     )
 
     // Determine severity level
@@ -204,7 +205,7 @@ export function TimelineDensityHeatmap({
                     style={{ backgroundColor: SEVERITY_COLORS[anomaly.severity] }}
                   />
                   <span className="font-mono text-[10px] text-muted-foreground">
-                    t={anomaly.tSec.toFixed(1)}s
+                    t={relativeSpan(anomaly).start.toFixed(1)}s
                   </span>
                   <span className="flex-1 truncate text-xs">
                     {anomaly.title}

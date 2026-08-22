@@ -162,9 +162,7 @@ export function DataBandwidthPanel({
   const totalMessages = topics.reduce((a, b) => a + b.messageCount, 0)
 
   const topicBandwidth: TopicBandwidth[] = topics.map((topic) => {
-    const hasZeroPayload = payloadAnomalies.some(
-      (a) => a.kind === "message_drop" && a.topics.includes(topic.name),
-    )
+    const hasZeroPayload = payloadAnomalies.some((a) => a.topics.includes(topic.name))
 
     const percentage = totalMessages > 0
       ? (topic.messageCount / totalMessages) * 100

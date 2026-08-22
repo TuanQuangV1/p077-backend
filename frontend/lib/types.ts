@@ -143,8 +143,13 @@ export interface Anomaly {
   kind: AnomalyKind
   title: string
   severity: Severity
+  /** Absolute simulation time from the bag. Not comparable to recording duration. */
   tSec: number
   endSec: number
+  /** Seconds from the start of the recording — use these for anything plotted
+   *  against duration. Optional so demo/mock data without them still type-checks. */
+  tRelSec?: number
+  endRelSec?: number
   topics: string[]
   confidence: number
   metric: string

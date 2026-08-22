@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
 import { ChevronDownIcon } from "lucide-react"
 import { fetcher } from "@/lib/api"
+import { filterByGroup, ungrouped } from "@/lib/anomaly-groups"
 import type { Anomaly, HealthSummary, LogEvent, Rosbag, TopicStat } from "@/lib/types"
 
 interface AnalysisHealthPanelProps {
@@ -62,30 +63,14 @@ export function AnalysisHealthPanel({
   }, [activeRunId])
 
   // Group anomalies by type
-  const tfAnomalies = anomalies.filter(
-    (a) =>
-      a.kind === "tf_timeout" ||
-      a.kind === "localization_jump",
-  )
-  const logAnomalies = anomalies.filter(
-    (a) =>
-      a.kind === "tf_timeout" ||
-      a.kind === "cpu_spike" ||
-      a.kind === "nav_recovery",
-  )
-  const latencyAnomalies = anomalies.filter(
-    (a) =>
-      a.kind === "header_latency" ||
-      a.kind === "timestamp_jitter",
-  )
-  const payloadAnomalies = anomalies.filter(
-    (a) => a.kind === "message_drop",
-  )
-  const frequencyAnomalies = anomalies.filter(
-    (a) =>
-      a.kind === "topic_hz_drop" ||
-      a.kind === "lidar_dropout",
-  )
+  const tfAnomalies = filterByGroup("transform", anomalies)
+  const logAnomalies = filterByGroup("logs", anomalies)
+  const latencyAnomalies = filterByGroup("timing", anomalies)
+  const payloadAnomalies = filterByGroup("payload", anomalies)
+  // Throughput detections are shown per topic in TopicHealthTable, so they need
+  // no group of their own here; anything matching no group at all is surfaced
+  // below rather than disappearing from the dashboard.
+  const otherAnomalies = ungrouped(anomalies)
 
   // Find worst drop topic
   const topics: TopicStat[] = topicsProp?.length ? topicsProp : (rosbag?.topics ?? [])
@@ -150,6 +135,11 @@ export function AnalysisHealthPanel({
                 )}
               </div>
               <div className="flex items-center gap-2">
+                {otherAnomalies.length > 0 && (
+                  <Badge variant="outline" className="text-[10px]">
+                    {otherAnomalies.length} unmapped
+                  </Badge>
+                )}
                 <span className="text-[10px] text-muted-foreground">
                   {anomalies.length} detections
                 </span>
