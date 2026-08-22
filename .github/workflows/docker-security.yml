@@ -24,7 +24,7 @@ jobs:
 
       - name: Scan backend image
         if: env.ACT != 'true'
-        uses: aquasecurity/trivy-action@ed142fd
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           image-ref: app-backend:${{ github.sha }}
           format: table
@@ -46,7 +46,7 @@ jobs:
 
       - name: Scan frontend image
         if: env.ACT != 'true'
-        uses: aquasecurity/trivy-action@ed142fd
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           image-ref: app-frontend:${{ github.sha }}
           format: table
