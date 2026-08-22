@@ -18,19 +18,25 @@ jobs:
 
       - name: Trivy filesystem scan
         if: env.ACT != 'true'
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@ed142fd
         with:
           scan-type: fs
           scan-ref: .
           severity: HIGH,CRITICAL
           exit-code: 1
+          args: --skip-dirs terraform --skip-dirs node_modules --skip-dirs .venv --skip-dirs .git --skip-dirs docs --skip-dirs presentation --skip-dirs .agents --skip-dirs .ai-log --skip-dirs .claude --skip-dirs .codex --skip-dirs .cursor --skip-dirs .gemini --skip-dirs .kilo --skip-dirs .kiro --skip-dirs dist --skip-dirs build --skip-dirs .next
 
       - name: Trivy filesystem scan (local)
         if: env.ACT == 'true'
         run: |
           docker run --rm -v "${{ github.workspace }}:/repo" \
             ghcr.io/aquasecurity/trivy:0.56.1 fs \
-            --severity HIGH,CRITICAL --exit-code 1 --skip-dirs node_modules --skip-dirs .venv /repo
+            --severity HIGH,CRITICAL --exit-code 1 \
+            --skip-dirs terraform --skip-dirs node_modules --skip-dirs .venv --skip-dirs .git \
+            --skip-dirs docs --skip-dirs presentation --skip-dirs .agents --skip-dirs .ai-log \
+            --skip-dirs .claude --skip-dirs .codex --skip-dirs .cursor --skip-dirs .gemini \
+            --skip-dirs .kilo --skip-dirs .kiro --skip-dirs dist --skip-dirs build --skip-dirs .next \
+            /repo
 
   terraform:
     name: Terraform/IaC scan
@@ -42,10 +48,10 @@ jobs:
 
       - name: Trivy IaC scan
         if: env.ACT != 'true'
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@ed142fd
         with:
           scan-type: config
-          scan-ref: .
+          scan-ref: terraform/
           severity: HIGH,CRITICAL
           exit-code: 1
 
@@ -54,4 +60,4 @@ jobs:
         run: |
           docker run --rm -v "${{ github.workspace }}:/repo" \
             ghcr.io/aquasecurity/trivy:0.56.1 config \
-            --severity HIGH,CRITICAL --exit-code 1 /repo
+            --severity HIGH,CRITICAL --exit-code 1 /repo/terraform

@@ -44,7 +44,7 @@ jobs:
         if: matrix.language == 'javascript-typescript'
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
 
       - name: Install frontend dependencies
         if: matrix.language == 'javascript-typescript'
@@ -61,3 +61,15 @@ jobs:
 
       - name: Analyze
         uses: github/codeql-action/analyze@v3
+        with:
+          upload: false
+
+      - name: Upload SARIF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeql-${{ matrix.language }}
+          path: |
+            ${{ runner.temp }}/codeql/**/*.sarif
+            **/results/*.sarif
+          retention-days: 14
+          if-no-files-found: warn

@@ -9,7 +9,7 @@ on:
 
 jobs:
   docker-scan:
-    runs-on: [self-hosted, linux, x64] # requires registered self-hosted runner (ubuntu-latest minutes exhausted)
+    runs-on: [self-hosted, linux, x64] 
 
     env:
       DOCKER_BUILDKIT: 1
@@ -24,7 +24,7 @@ jobs:
 
       - name: Scan backend image
         if: env.ACT != 'true'
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@ed142fd
         with:
           image-ref: app-backend:${{ github.sha }}
           format: table
@@ -46,7 +46,7 @@ jobs:
 
       - name: Scan frontend image
         if: env.ACT != 'true'
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@ed142fd
         with:
           image-ref: app-frontend:${{ github.sha }}
           format: table

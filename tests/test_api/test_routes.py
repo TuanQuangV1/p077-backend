@@ -255,14 +255,14 @@ async def test_rate_limit_returns_429_over_threshold(client, monkeypatch):
 async def test_rate_limit_resets_after_window(client, monkeypatch):
     """A short window lets the same client retry after it expires."""
     monkeypatch.setattr("src.api.routes._RATE_LIMIT_MAX_REQUESTS", 1)
-    monkeypatch.setattr("src.api.routes._rate_limiter", SlidingWindowRateLimiter(1, 0.05))
+    monkeypatch.setattr("src.api.routes._rate_limiter", SlidingWindowRateLimiter(1, 0.5))
     monkeypatch.setattr("src.api.routes.is_llm_configured", lambda: False)
 
     first = await client.post("/api/v1/chat", json={"message": "hi"})
     assert first.status_code == 200
     blocked = await client.post("/api/v1/chat", json={"message": "hi"})
     assert blocked.status_code == 429
-    await asyncio.sleep(0.1)
+    await asyncio.sleep(0.6)
     retried = await client.post("/api/v1/chat", json={"message": "hi"})
     assert retried.status_code == 200
 
