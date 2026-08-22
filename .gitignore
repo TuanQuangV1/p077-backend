@@ -78,3 +78,5 @@ crash.log
 *.hcl
 .terraform.lock.hcl
 terraform/gcp/.terraform/
+
+nginx/certs/
