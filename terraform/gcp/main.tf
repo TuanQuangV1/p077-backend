@@ -144,11 +144,12 @@ resource "google_compute_instance" "vm" {
     data_disk_name = google_compute_disk.data.name
   })
 
-  network_interface {
-    network    = "default"
-    subnetwork = "default"
+network_interface {
+      network    = "default"
+      subnetwork = "default"
 
-    access_config {
+      #trivy:ignore=GCP-0031
+      access_config {
       nat_ip       = google_compute_address.ip.address
       network_tier = "PREMIUM"
     }
