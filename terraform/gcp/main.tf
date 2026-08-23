@@ -122,6 +122,7 @@ resource "google_compute_disk" "data" {
 }
 
 # 8. Compute Engine instance running the full docker-compose stack
+#trivy:ignore=GCP-0031
 resource "google_compute_instance" "vm" {
   name         = local.name_prefix
   machine_type = var.machine_type

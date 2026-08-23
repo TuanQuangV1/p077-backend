@@ -13,7 +13,8 @@ terraform {
   # `terraform init`.
   backend "gcs" {
     bucket = "tfstate-ai20k-p077-gcp"
-    prefix = "terraform-gcp"
+    # prefix is injected via -backend-config in the CI workflow
+    # so staging / production each get an isolated tfstate.
   }
 }
 

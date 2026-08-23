@@ -58,7 +58,7 @@ jobs:
 
       - name: Checkout Code
         if: steps.gate.outputs.deploy == 'true'
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Authenticate to Google Cloud (Workload Identity Federation)
         if: steps.gate.outputs.deploy == 'true'
@@ -132,7 +132,7 @@ jobs:
         if: steps.gate.outputs.deploy == 'true'
         working-directory: terraform/gcp
         run: |
-          terraform init
+          terraform init -backend-config="prefix=terraform-gcp-${{ matrix.environment }}"
           terraform plan \
             -var-file=environments/${{ matrix.environment }}.tfvars \
             -var="backend_image=${{ env.BACKEND_IMAGE }}" \
