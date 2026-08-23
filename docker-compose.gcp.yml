@@ -27,6 +27,7 @@ services:
     restart: always
     environment:
       NODE_ENV: production
+      API_PROXY_TARGET: http://backend:8000
     depends_on:
       backend:
         condition: service_healthy

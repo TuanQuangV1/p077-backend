@@ -26,6 +26,7 @@ services:
       dockerfile: Dockerfile
       target: frontend
       args:
+        API_PROXY_TARGET: http://backend:8000
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-https://api.yourdomain.com}
     restart: always
     environment:

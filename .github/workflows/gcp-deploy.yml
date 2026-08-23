@@ -1,10 +1,10 @@
 name: CD - GCP Deployment
 
 on:
-  push:
-    branches:
-      - main
-      - develop
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main, develop]
   workflow_dispatch:
 
 permissions:
@@ -17,60 +17,16 @@ concurrency:
 
 env:
   GCP_PROJECT_ID: ai20k-p077
-  GCP_REGION: asia-southeast1
+  GCP_REGION: ${{ secrets.GCP_REGION }}
   GCP_TFSTATE_BUCKET: tfstate-ai20k-p077-gcp
   GCP_DOTENV: ${{ secrets.GCP_DOTENV }}
 
 jobs:
-  verification:
-    name: Run GCP Verification Tests
-    runs-on: [self-hosted, linux, x64]
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-
-      - name: Install Backend Dependencies
-        run: pip install -e .[dev]
-
-      - name: Run Ruff Lint
-        run: ruff check src/ tests/
-
-      - name: Run Pytest
-        run: pytest tests/ --cov=src --cov-fail-under=75
-        env:
-          APP_ENV: test
-          OPENAI_API_KEY: test-key-gcp
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
-
-      - name: Install Frontend Dependencies
-        working-directory: frontend
-        run: pnpm install
-
-      - name: Frontend Typecheck
-        working-directory: frontend
-        run: pnpm lint
-
   deploy-gcp:
     name: Build & Deploy to GCP (${{ matrix.environment }})
-    needs: verification
+    needs: []
     runs-on: [self-hosted, linux, x64]
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     strategy:
       matrix:
         include:
@@ -173,6 +129,7 @@ jobs:
             -backend-config="prefix=terraform-gcp/${{ matrix.environment }}"
           terraform plan \
             -var-file=environments/${{ matrix.environment }}.tfvars \
+            -var="region=${{ github.workflow.env.GCP_REGION }}" \
             -var="github_service_account=${{ secrets.GCP_SERVICE_ACCOUNT }}" \
             -var="machine_type=${{ matrix.machine_type }}" \
             -out=tfplan
