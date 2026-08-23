@@ -15,12 +15,12 @@ output "health_url" {
 
 output "backend_image_uri" {
   description = "Artifact Registry image URI for backend"
-  value       = google_artifact_registry_repository.backend.id
+  value       = local.backend_image
 }
 
 output "frontend_image_uri" {
   description = "Artifact Registry image URI for frontend"
-  value       = google_artifact_registry_repository.frontend.id
+  value       = local.frontend_image
 }
 
 output "vm_name" {

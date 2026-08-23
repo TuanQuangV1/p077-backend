@@ -56,15 +56,15 @@ variable "data_disk_size" {
 }
 
 variable "backend_image" {
-  description = "Artifact Registry image URI for backend (e.g. asia-docker.pkg.dev/PROJECT/backend:TAG)"
+  description = "Artifact Registry image URI for backend (leave empty to auto-compute from region/project)"
   type        = string
-  default     = "asia-docker.pkg.dev/ai20k-p077/backend:latest"
+  default     = ""
 }
 
 variable "frontend_image" {
-  description = "Artifact Registry image URI for frontend (e.g. asia-docker.pkg.dev/PROJECT/frontend:TAG)"
+  description = "Artifact Registry image URI for frontend (leave empty to auto-compute from region/project)"
   type        = string
-  default     = "asia-docker.pkg.dev/ai20k-p077/frontend:latest"
+  default     = ""
 }
 
 variable "backend_port" {

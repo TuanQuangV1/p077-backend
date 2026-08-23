@@ -86,8 +86,8 @@ jobs:
     env:
       VM_NAME: ai20k-p077-${{ matrix.environment }}
       ZONE: ${{ matrix.zone }}
-      BACKEND_IMAGE: asia-docker.pkg.dev/ai20k-p077/backend:${{ github.sha }}
-      FRONTEND_IMAGE: asia-docker.pkg.dev/ai20k-p077/frontend:${{ github.sha }}
+      BACKEND_IMAGE: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/backend:${{ github.sha }}
+      FRONTEND_IMAGE: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/frontend:${{ github.sha }}
       DOCKER_CONFIG: /tmp/docker-config-${{ matrix.environment }}-${{ github.run_id }}
 
     steps:
@@ -138,16 +138,16 @@ jobs:
         if: steps.gate.outputs.deploy == 'true'
         run: |
           mkdir -p "$DOCKER_CONFIG"
-          gcloud auth configure-docker asia-docker.pkg.dev --quiet
+          gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
 
       - name: Build & Push Backend Image
         if: steps.gate.outputs.deploy == 'true'
         run: |
           docker build --target backend \
             -t ${{ env.BACKEND_IMAGE }} \
-            -t asia-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/backend:latest .
+            -t ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/backend:latest .
           docker push ${{ env.BACKEND_IMAGE }}
-          docker push asia-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/backend:latest
+          docker push ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/backend:latest
 
       - name: Build & Push Frontend Image
         if: steps.gate.outputs.deploy == 'true'
@@ -155,9 +155,9 @@ jobs:
           docker build --target frontend \
             --build-arg API_PROXY_TARGET=http://backend:8000 \
             -t ${{ env.FRONTEND_IMAGE }} \
-            -t asia-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/frontend:latest .
+            -t ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/frontend:latest .
           docker push ${{ env.FRONTEND_IMAGE }}
-          docker push asia-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/frontend:latest
+          docker push ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/frontend:latest
 
       - name: Setup Terraform
         if: steps.gate.outputs.deploy == 'true'
@@ -173,8 +173,6 @@ jobs:
             -backend-config="prefix=terraform-gcp/${{ matrix.environment }}"
           terraform plan \
             -var-file=environments/${{ matrix.environment }}.tfvars \
-            -var="backend_image=${{ env.BACKEND_IMAGE }}" \
-            -var="frontend_image=${{ env.FRONTEND_IMAGE }}" \
             -var="github_service_account=${{ secrets.GCP_SERVICE_ACCOUNT }}" \
             -var="machine_type=${{ matrix.machine_type }}" \
             -out=tfplan

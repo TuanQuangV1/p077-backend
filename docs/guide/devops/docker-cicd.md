@@ -210,7 +210,7 @@ verification ──► deploy-gcp (matrix: staging | production)
 |------|-------------|
 | GCP Auth | Workload Identity Federation (no service account key) |
 | Bootstrap | Create GCS tfstate bucket + enable APIs (idempotent) |
-| Build & Push | Push to Artifact Registry (`asia-docker.pkg.dev`) |
+| Build & Push | Push to Artifact Registry (`asia-southeast1-docker.pkg.dev`) |
 | Terraform | `terraform/gcp/environments/{env}.tfvars` |
 | Deploy to VM | SCP files → SSH → `deploy.sh` |
 | Health Check | `curl` against VM public IP `/health` |

@@ -1,8 +1,8 @@
 locals {
-  name_prefix = "${var.app_name}-${var.environment}"
-  # GitHub Actions SA (from secrets.GCP_SERVICE_ACCOUNT). Requires pre-existing
-  # compute.admin / storage.admin / serviceusage.admin to run terraform at all.
+  name_prefix    = "${var.app_name}-${var.environment}"
   github_sa_member = var.github_service_account != "" ? "serviceAccount:${var.github_service_account}" : null
+  backend_image  = var.backend_image != "" ? var.backend_image : "${var.region}-docker.pkg.dev/${var.project_id}/backend:latest"
+  frontend_image = var.frontend_image != "" ? var.frontend_image : "${var.region}-docker.pkg.dev/${var.project_id}/frontend:latest"
 }
 
 # 1. Enable required GCP APIs
