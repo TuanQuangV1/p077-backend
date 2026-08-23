@@ -86,8 +86,8 @@ jobs:
     env:
       VM_NAME: ai20k-p077-${{ matrix.environment }}
       ZONE: ${{ matrix.zone }}
-      BACKEND_IMAGE: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/backend:${{ github.sha }}
-      FRONTEND_IMAGE: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/frontend:${{ github.sha }}
+      BACKEND_IMAGE: ${{ github.workflow.env.GCP_REGION }}-docker.pkg.dev/${{ github.workflow.env.GCP_PROJECT_ID }}/backend:${{ github.sha }}
+      FRONTEND_IMAGE: ${{ github.workflow.env.GCP_REGION }}-docker.pkg.dev/${{ github.workflow.env.GCP_PROJECT_ID }}/frontend:${{ github.sha }}
       DOCKER_CONFIG: /tmp/docker-config-${{ matrix.environment }}-${{ github.run_id }}
 
     steps:
@@ -116,19 +116,19 @@ jobs:
         if: steps.gate.outputs.deploy == 'true'
         uses: google-github-actions/setup-gcloud@v2
         with:
-          project_id: ${{ env.GCP_PROJECT_ID }}
+          project_id: ${{ github.workflow.env.GCP_PROJECT_ID }}
 
       - name: Bootstrap GCS tfstate bucket & APIs (idempotent)
         if: steps.gate.outputs.deploy == 'true'
         run: |
-          gcloud storage buckets create gs://${{ env.GCP_TFSTATE_BUCKET }} \
-            --location=${{ env.GCP_REGION }} --project=${{ env.GCP_PROJECT_ID }} || true
+          gcloud storage buckets create gs://${{ github.workflow.env.GCP_TFSTATE_BUCKET }} \
+            --location=${{ github.workflow.env.GCP_REGION }} --project=${{ github.workflow.env.GCP_PROJECT_ID }} || true
           gcloud services enable \
             compute.googleapis.com \
             artifactregistry.googleapis.com \
             storage.googleapis.com \
             iam.googleapis.com \
-            --project=${{ env.GCP_PROJECT_ID }} || true
+            --project=${{ github.workflow.env.GCP_PROJECT_ID }} || true
 
       - name: Set up Docker Buildx
         if: steps.gate.outputs.deploy == 'true'
@@ -138,16 +138,16 @@ jobs:
         if: steps.gate.outputs.deploy == 'true'
         run: |
           mkdir -p "$DOCKER_CONFIG"
-          gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+          gcloud auth configure-docker ${{ github.workflow.env.GCP_REGION }}-docker.pkg.dev --quiet
 
       - name: Build & Push Backend Image
         if: steps.gate.outputs.deploy == 'true'
         run: |
           docker build --target backend \
             -t ${{ env.BACKEND_IMAGE }} \
-            -t ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/backend:latest .
+            -t ${{ github.workflow.env.GCP_REGION }}-docker.pkg.dev/${{ github.workflow.env.GCP_PROJECT_ID }}/backend:latest .
           docker push ${{ env.BACKEND_IMAGE }}
-          docker push ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/backend:latest
+          docker push ${{ github.workflow.env.GCP_REGION }}-docker.pkg.dev/${{ github.workflow.env.GCP_PROJECT_ID }}/backend:latest
 
       - name: Build & Push Frontend Image
         if: steps.gate.outputs.deploy == 'true'
@@ -155,9 +155,9 @@ jobs:
           docker build --target frontend \
             --build-arg API_PROXY_TARGET=http://backend:8000 \
             -t ${{ env.FRONTEND_IMAGE }} \
-            -t ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/frontend:latest .
+            -t ${{ github.workflow.env.GCP_REGION }}-docker.pkg.dev/${{ github.workflow.env.GCP_PROJECT_ID }}/frontend:latest .
           docker push ${{ env.FRONTEND_IMAGE }}
-          docker push ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/frontend:latest
+          docker push ${{ github.workflow.env.GCP_REGION }}-docker.pkg.dev/${{ github.workflow.env.GCP_PROJECT_ID }}/frontend:latest
 
       - name: Setup Terraform
         if: steps.gate.outputs.deploy == 'true'
@@ -183,7 +183,7 @@ jobs:
         id: ip
         run: |
           IP=$(gcloud compute addresses describe ${{ env.VM_NAME }}-ip \
-            --region=${{ env.GCP_REGION }} --project=${{ env.GCP_PROJECT_ID }} \
+            --region=${{ github.workflow.env.GCP_REGION }} --project=${{ github.workflow.env.GCP_PROJECT_ID }} \
             --format="value(address)")
           echo "ip=${IP}" >> "$GITHUB_OUTPUT"
           echo "Deploying to http://${IP}"
@@ -208,7 +208,7 @@ jobs:
           gcloud compute ssh --quiet --zone=${{ env.ZONE }} \
             --tunnel-through-iap \
             --command="mkdir -p /tmp/gcp-deploy" \
-            ${{ env.VM_NAME }} --project=${{ env.GCP_PROJECT_ID }}
+            ${{ github.workflow.env.VM_NAME }} --project=${{ github.workflow.env.GCP_PROJECT_ID }}
           gcloud compute scp --quiet --zone=${{ env.ZONE }} \
             --tunnel-through-iap \
             /tmp/gcp-deploy/.env \
@@ -216,7 +216,7 @@ jobs:
             /tmp/gcp-deploy/nginx.conf \
             /tmp/gcp-deploy/deploy.sh \
             ${{ env.VM_NAME }}:/tmp/gcp-deploy/ \
-            --project=${{ env.GCP_PROJECT_ID }}
+            --project=${{ github.workflow.env.GCP_PROJECT_ID }}
 
       - name: Deploy Stack on VM
         if: steps.gate.outputs.deploy == 'true'
@@ -229,7 +229,7 @@ jobs:
               sudo mv -f /tmp/gcp-deploy/nginx.conf /opt/app/nginx.conf && \
               sudo mv -f /tmp/gcp-deploy/deploy.sh /opt/app/deploy.sh && \
               sudo bash /opt/app/deploy.sh ${{ env.BACKEND_IMAGE }} ${{ env.FRONTEND_IMAGE }}" \
-            ${{ env.VM_NAME }} --project=${{ env.GCP_PROJECT_ID }}
+            ${{ github.workflow.env.VM_NAME }} --project=${{ github.workflow.env.GCP_PROJECT_ID }}
 
       - name: GCP Automated Health Check Gate
         if: steps.gate.outputs.deploy == 'true'
