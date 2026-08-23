@@ -88,6 +88,7 @@ jobs:
       ZONE: ${{ matrix.zone }}
       BACKEND_IMAGE: asia-docker.pkg.dev/ai20k-p077/backend:${{ github.sha }}
       FRONTEND_IMAGE: asia-docker.pkg.dev/ai20k-p077/frontend:${{ github.sha }}
+      DOCKER_CONFIG: /tmp/docker-config-${{ matrix.environment }}-${{ github.run_id }}
 
     steps:
       - name: Branch gate
@@ -136,6 +137,7 @@ jobs:
       - name: Configure Docker for Artifact Registry
         if: steps.gate.outputs.deploy == 'true'
         run: |
+          mkdir -p "$DOCKER_CONFIG"
           gcloud auth configure-docker asia-docker.pkg.dev --quiet
 
       - name: Build & Push Backend Image
@@ -239,3 +241,7 @@ jobs:
             http://${{ steps.ip.outputs.ip }}/health
           echo ""
           echo "GCP ${{ matrix.environment }} frontend: http://${{ steps.ip.outputs.ip }}"
+
+      - name: Clean up isolated Docker config
+        if: always()
+        run: rm -rf "$DOCKER_CONFIG"

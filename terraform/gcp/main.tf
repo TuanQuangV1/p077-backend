@@ -156,7 +156,7 @@ resource "google_compute_instance" "vm" {
 
     # VM must be reachable over HTTP/HTTPS for end users;
     # SSH access is separately restricted to IAP range (see google_compute_firewall.ssh).
-    #trivy:ignore=GCP-0031
+    #trivy:ignore:AVD-GCP-0031
     access_config {
       nat_ip       = google_compute_address.ip.address
       network_tier = "PREMIUM"
