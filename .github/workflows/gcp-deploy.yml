@@ -1,10 +1,10 @@
 name: CD - GCP Deployment
 
 on:
-  workflow_run:
-    workflows: ["Docker Security"]
-    types: [completed]
-    branches: [main, develop]
+  push:
+    branches:
+      - main
+      - develop
   workflow_dispatch:
 
 permissions:
@@ -22,11 +22,54 @@ env:
   GCP_DOTENV: ${{ secrets.GCP_DOTENV }}
 
 jobs:
+  verification:
+    name: Run GCP Verification Tests
+    runs-on: [self-hosted, linux, x64]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Backend Dependencies
+        run: pip install -e .[dev]
+
+      - name: Run Ruff Lint
+        run: ruff check src/ tests/
+
+      - name: Run Pytest
+        run: pytest tests/ --cov=src --cov-fail-under=75
+        env:
+          APP_ENV: test
+          OPENAI_API_KEY: test-key-gcp
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: pnpm install
+
+      - name: Frontend Typecheck
+        working-directory: frontend
+        run: pnpm lint
+
   deploy-gcp:
     name: Build & Deploy to GCP (${{ matrix.environment }})
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    needs: verification
     runs-on: [self-hosted, linux, x64]
     strategy:
       matrix:
@@ -58,19 +101,19 @@ jobs:
 
       - name: Checkout Code
         if: steps.gate.outputs.deploy == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v4
 
       - name: Authenticate to Google Cloud (Workload Identity Federation)
         if: steps.gate.outputs.deploy == 'true'
         id: auth
-        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
+        uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - name: Set up gcloud
         if: steps.gate.outputs.deploy == 'true'
-        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
+        uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
@@ -88,7 +131,7 @@ jobs:
 
       - name: Set up Docker Buildx
         if: steps.gate.outputs.deploy == 'true'
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        uses: docker/setup-buildx-action@v3
 
       - name: Configure Docker for Artifact Registry
         if: steps.gate.outputs.deploy == 'true'
@@ -97,34 +140,26 @@ jobs:
 
       - name: Build & Push Backend Image
         if: steps.gate.outputs.deploy == 'true'
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
-        with:
-          context: .
-          target: backend
-          push: true
-          tags: |
-            ${{ env.BACKEND_IMAGE }}
-            asia-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/backend:latest
-          cache-from: type=gha,scope=backend-gcp
-          cache-to: type=gha,mode=max,scope=backend-gcp
+        run: |
+          docker build --target backend \
+            -t ${{ env.BACKEND_IMAGE }} \
+            -t asia-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/backend:latest .
+          docker push ${{ env.BACKEND_IMAGE }}
+          docker push asia-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/backend:latest
 
       - name: Build & Push Frontend Image
         if: steps.gate.outputs.deploy == 'true'
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
-        with:
-          context: .
-          target: frontend
-          push: true
-          build-args: API_PROXY_TARGET=http://backend:8000
-          tags: |
-            ${{ env.FRONTEND_IMAGE }}
-            asia-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/frontend:latest
-          cache-from: type=gha,scope=frontend-gcp
-          cache-to: type=gha,mode=max,scope=frontend-gcp
+        run: |
+          docker build --target frontend \
+            --build-arg API_PROXY_TARGET=http://backend:8000 \
+            -t ${{ env.FRONTEND_IMAGE }} \
+            -t asia-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/frontend:latest .
+          docker push ${{ env.FRONTEND_IMAGE }}
+          docker push asia-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/frontend:latest
 
       - name: Setup Terraform
         if: steps.gate.outputs.deploy == 'true'
-        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.5.7"
 
@@ -132,7 +167,8 @@ jobs:
         if: steps.gate.outputs.deploy == 'true'
         working-directory: terraform/gcp
         run: |
-          terraform init -backend-config="prefix=terraform-gcp-${{ matrix.environment }}"
+          terraform init \
+            -backend-config="prefix=terraform-gcp/${{ matrix.environment }}"
           terraform plan \
             -var-file=environments/${{ matrix.environment }}.tfvars \
             -var="backend_image=${{ env.BACKEND_IMAGE }}" \
@@ -170,9 +206,11 @@ jobs:
         if: steps.gate.outputs.deploy == 'true'
         run: |
           gcloud compute ssh --quiet --zone=${{ env.ZONE }} \
+            --tunnel-through-iap \
             --command="mkdir -p /tmp/gcp-deploy" \
             ${{ env.VM_NAME }} --project=${{ env.GCP_PROJECT_ID }}
           gcloud compute scp --quiet --zone=${{ env.ZONE }} \
+            --tunnel-through-iap \
             /tmp/gcp-deploy/.env \
             /tmp/gcp-deploy/docker-compose.gcp.yml \
             /tmp/gcp-deploy/nginx.conf \
@@ -184,6 +222,7 @@ jobs:
         if: steps.gate.outputs.deploy == 'true'
         run: |
           gcloud compute ssh --quiet --zone=${{ env.ZONE }} \
+            --tunnel-through-iap \
             --command="sudo mkdir -p /opt/app && \
               sudo mv -f /tmp/gcp-deploy/.env /opt/app/.env && \
               sudo mv -f /tmp/gcp-deploy/docker-compose.gcp.yml /opt/app/docker-compose.gcp.yml && \

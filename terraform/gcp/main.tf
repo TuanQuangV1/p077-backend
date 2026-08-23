@@ -77,6 +77,13 @@ resource "google_project_iam_member" "github_ssh" {
   member  = local.github_sa_member
 }
 
+resource "google_project_iam_member" "github_iap_tunnel" {
+  count   = local.github_sa_member != null ? 1 : 0
+  project = var.project_id
+  role    = "roles/iap.tunnelResourceAccessor"
+  member  = local.github_sa_member
+}
+
 resource "google_project_iam_member" "iap_tunnel" {
   for_each = toset(var.iap_users)
   project  = var.project_id
@@ -122,7 +129,6 @@ resource "google_compute_disk" "data" {
 }
 
 # 8. Compute Engine instance running the full docker-compose stack
-#trivy:ignore=GCP-0031
 resource "google_compute_instance" "vm" {
   name         = local.name_prefix
   machine_type = var.machine_type
@@ -144,12 +150,14 @@ resource "google_compute_instance" "vm" {
     data_disk_name = google_compute_disk.data.name
   })
 
-network_interface {
-      network    = "default"
-      subnetwork = "default"
+  network_interface {
+    network    = "default"
+    subnetwork = "default"
 
-#trivy:ignore=AVD-GCP-0031
-      access_config {
+    # VM must be reachable over HTTP/HTTPS for end users;
+    # SSH access is separately restricted to IAP range (see google_compute_firewall.ssh).
+    #trivy:ignore=GCP-0031
+    access_config {
       nat_ip       = google_compute_address.ip.address
       network_tier = "PREMIUM"
     }
@@ -163,6 +171,7 @@ network_interface {
   }
 
   metadata = {
-    APP_ENV = var.environment
+    APP_ENV        = var.environment
+    enable-oslogin = "TRUE"
   }
 }
