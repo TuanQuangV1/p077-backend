@@ -83,3 +83,4 @@ crash.log
 terraform/gcp/.terraform/
 
 nginx/certs/
+*.exe

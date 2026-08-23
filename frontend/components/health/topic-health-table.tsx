@@ -27,20 +27,27 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 function getTopicStatus(topic: TopicStat): { status: "critical" | "warning" | "healthy" | "silent"; label: string } {
-  const dropPct = topic.dropRate * 100
-  const actualHz = topic.hz
-  const expectedHz = topic.expectedHz
+  const dropPct = (topic.dropRate ?? 0) * 100
+  const actualHz = topic.hz ?? 0
+  const expectedHz = topic.expectedHz ?? 0
 
-  if (actualHz === 0 || dropPct >= 50) {
-    return { status: "critical", label: "CRITICAL" }
+  // Static / latched topics (expectedHz === 0, e.g. /tf_static) are normal in ROS2
+  if (topic.name.includes("static") || (expectedHz === 0 && actualHz === 0)) {
+    return { status: "healthy", label: "ỔN ĐỊNH" }
   }
-  if (dropPct >= 30 || actualHz < expectedHz * 0.7) {
-    return { status: "warning", label: "WARNING" }
-  }
+
+  // Active topic that died / silent node
   if (actualHz === 0 && expectedHz > 0) {
-    return { status: "silent", label: "SILENT" }
+    return { status: "silent", label: "MẤT TÍN HIỆU" }
   }
-  return { status: "healthy", label: "OK" }
+
+  if (dropPct >= 50) {
+    return { status: "critical", label: "NGHIÊM TRỌNG" }
+  }
+  if (dropPct >= 30 || (expectedHz > 0 && actualHz < expectedHz * 0.7)) {
+    return { status: "warning", label: "CẢNH BÁO" }
+  }
+  return { status: "healthy", label: "ỔN ĐỊNH" }
 }
 
 function getTopicDetections(topicName: string, anomalies: Anomaly[]): Anomaly[] {
@@ -202,7 +209,7 @@ export function TopicHealthTable({
                           <div className="space-y-2">
                             <div className="flex items-center justify-between text-[10px]">
                               <span className="text-muted-foreground">
-                                {topic.messageCount.toLocaleString()} messages
+                                {topic.messageCount.toLocaleString()} tin nhắn (messages)
                               </span>
                               <span className="font-mono text-muted-foreground">
                                 {topic.messageType}
@@ -211,7 +218,7 @@ export function TopicHealthTable({
                             {topicDetections.length > 0 ? (
                               <div className="space-y-1">
                                 <span className="text-[10px] font-semibold uppercase text-muted-foreground">
-                                  Detections
+                                  Sự cố phát hiện ({topicDetections.length})
                                 </span>
                                 {topicDetections.map((det) => (
                                   <button
@@ -244,7 +251,7 @@ export function TopicHealthTable({
                               </div>
                             ) : (
                               <p className="text-[10px] text-muted-foreground">
-                                No detections for this topic
+                                Không phát hiện sự cố nào trên topic này
                               </p>
                             )}
                           </div>
@@ -258,30 +265,30 @@ export function TopicHealthTable({
           </table>
           {filteredTopics.length === 0 && (
             <p className="p-4 text-center text-sm text-muted-foreground">
-              No topics match the selected filter
+              Không có topic nào phù hợp với bộ lọc đã chọn
             </p>
           )}
         </div>
         <div className="border-t border-border px-3 py-2 text-[10px] text-muted-foreground">
-          Summary: {filteredTopics.length} topics
+          Tổng cộng: {filteredTopics.length} topics
           {counts.critical > 0 && (
-            <span className="ml-2" style={{ color: STATUS_COLORS.critical }}>
-              | {counts.critical} Critical
+            <span className="ml-2 font-semibold" style={{ color: STATUS_COLORS.critical }}>
+              | {counts.critical} Nghiêm trọng
             </span>
           )}
           {counts.warning > 0 && (
-            <span className="ml-2" style={{ color: STATUS_COLORS.medium }}>
-              | {counts.warning} Warning
+            <span className="ml-2 font-semibold" style={{ color: STATUS_COLORS.medium }}>
+              | {counts.warning} Cảnh báo
             </span>
           )}
           {counts.healthy > 0 && (
-            <span className="ml-2" style={{ color: STATUS_COLORS.healthy }}>
-              | {counts.healthy} Healthy
+            <span className="ml-2 font-semibold" style={{ color: STATUS_COLORS.healthy }}>
+              | {counts.healthy} Đạt chuẩn
             </span>
           )}
           {counts.silent > 0 && (
-            <span className="ml-2" style={{ color: STATUS_COLORS.silent }}>
-              | {counts.silent} Silent
+            <span className="ml-2 font-semibold" style={{ color: STATUS_COLORS.silent }}>
+              | {counts.silent} Mất tín hiệu
             </span>
           )}
         </div>
