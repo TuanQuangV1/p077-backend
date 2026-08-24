@@ -85,6 +85,15 @@ resource "google_project_iam_member" "github_iap_tunnel" {
   member  = "serviceAccount:${data.google_service_account.github_actions.email}"
 }
 
+# State bucket is provisioned out-of-band (see the workflow bootstrap step);
+# only its IAM binding is managed here. Do NOT move google_storage_bucket
+# into this config — the state lives inside the bucket itself.
+resource "google_storage_bucket_iam_member" "github_tfstate" {
+  bucket = "tfstate-ai20k-p077-gcp"
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${data.google_service_account.github_actions.email}"
+}
+
 resource "google_project_iam_member" "iap_tunnel" {
   for_each = toset(var.iap_users)
   project  = var.project_id
