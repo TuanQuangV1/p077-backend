@@ -31,6 +31,13 @@ resource "google_project_service" "iap" {
   disable_on_destroy = false
 }
 
+# Required for reading/writing the project IAM policy (google_project_iam_member).
+# Without it every project-level IAM resource fails with SERVICE_DISABLED.
+resource "google_project_service" "cloud_resource_manager" {
+  service            = "cloudresourcemanager.googleapis.com"
+  disable_on_destroy = false
+}
+
 # 2. Artifact Registry repositories (backend + frontend)
 resource "google_artifact_registry_repository" "backend" {
   depends_on    = [google_project_service.artifact_registry]
@@ -60,6 +67,8 @@ resource "google_project_iam_member" "vm_artifact_reader" {
   project = var.project_id
   role    = "roles/artifactregistry.reader"
   member  = "serviceAccount:${google_service_account.vm.email}"
+
+  depends_on = [google_project_service.cloud_resource_manager]
 }
 
 # 4. GitHub Actions SA IAM grants.
@@ -71,23 +80,32 @@ resource "google_project_iam_member" "github_artifact_writer" {
   project = var.project_id
   role    = "roles/artifactregistry.writer"
   member  = "serviceAccount:${local.github_sa_email}"
+
+  depends_on = [google_project_service.cloud_resource_manager]
 }
 
 resource "google_project_iam_member" "github_ssh" {
   project = var.project_id
   role    = "roles/compute.osLogin"
   member  = "serviceAccount:${local.github_sa_email}"
+
+  depends_on = [google_project_service.cloud_resource_manager]
 }
 
 resource "google_project_iam_member" "github_iap_tunnel" {
   project = var.project_id
   role    = "roles/iap.tunnelResourceAccessor"
   member  = "serviceAccount:${local.github_sa_email}"
+
+  depends_on = [google_project_service.cloud_resource_manager]
 }
 
 # State bucket is provisioned out-of-band (see the workflow bootstrap step);
 # only its IAM binding is managed here. Do NOT move google_storage_bucket
 # into this config — the state lives inside the bucket itself.
+# objectAdmin scoped to this single bucket is the minimum the GCS backend
+# needs; grant targets the CI-only WIF service account.
+#trivy:ignore:AVD-GCP-0007
 resource "google_storage_bucket_iam_member" "github_tfstate" {
   bucket = "tfstate-ai20k-p077-gcp"
   role   = "roles/storage.objectAdmin"
@@ -99,6 +117,8 @@ resource "google_project_iam_member" "iap_tunnel" {
   project  = var.project_id
   role     = "roles/iap.tunnelResourceAccessor"
   member   = "user:${each.value}"
+
+  depends_on = [google_project_service.cloud_resource_manager]
 }
 
 # 5. Firewall rules (default VPC)
