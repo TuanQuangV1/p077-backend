@@ -11,8 +11,9 @@ from httpx import ASGITransport, AsyncClient
 os.environ.setdefault("APP_ENV", "test")
 
 from src.api import routes
+from src.config import get_settings
 from src.main import app
-from src.services import experiments
+from src.services import diagnostics_config, experiments
 from src.services.rate_limit import SlidingWindowRateLimiter
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "diagnostics"
@@ -21,14 +22,27 @@ DIAGNOSTICS_DATA_DIR = Path.cwd() / "data" / "diagnostics"
 
 @pytest.fixture(autouse=True)
 def _isolate_state(tmp_path, monkeypatch):
-    """Isolate per-test persistence and module-level caches."""
+    """Isolate per-test persistence, module-level caches and LLM configuration."""
     monkeypatch.setenv("RUN_DB_PATH", str(tmp_path / "runs.db"))
+    # A developer .env holding real credentials would otherwise send analysis
+    # runs to the live provider; tests that exercise the LLM stub it explicitly.
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    monkeypatch.setenv("VLLM_BASE_URL", "")
+    get_settings.cache_clear()
+    # Real bags warrant a multi-second warm-up grace period (see
+    # diagnostics.py), but it would silently swallow the tiny synthetic
+    # streams (usually starting at t=0 with the fault injected immediately)
+    # nearly every diagnostics test builds. Tests that specifically exercise
+    # pre-roll filtering opt back in via an explicit `thresholds` override.
+    monkeypatch.setitem(diagnostics_config.DEFAULT_DIAGNOSTICS_THRESHOLDS, "pre_roll_grace_sec", 0.0)
     monkeypatch.setattr(experiments, "_cached_state", None)
     monkeypatch.setattr(
         routes,
         "_rate_limiter",
         SlidingWindowRateLimiter(routes._RATE_LIMIT_MAX_REQUESTS, routes._RATE_LIMIT_WINDOW_SEC),
     )
+    yield
+    get_settings.cache_clear()
 
 
 @pytest_asyncio.fixture

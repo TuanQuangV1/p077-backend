@@ -7,6 +7,7 @@ in-memory rate limiting protect the public endpoints.
 """
 
 import functools
+import hmac
 import logging
 import os
 import json
@@ -20,6 +21,7 @@ import anyio
 import httpx
 from fastapi import (
     APIRouter,
+    Body,
     Depends,
     File,
     Header,
@@ -59,9 +61,16 @@ from src.models.schemas import (
     ReviewListResponse,
     ReviewStatsResponse,
     ReviewStatsRun,
+    RunRootCause,
 )
 from src.services import run_store
-from src.services.analysis import _KIND_LABELS, _anomaly_summaries, _build_ai_results, run_analysis
+from src.services.analysis import (
+    _KIND_LABELS,
+    _anomaly_summaries,
+    _build_ai_results,
+    run_analysis,
+    select_run_root_cause,
+)
 from src.services.bag_stream import iter_bag_messages
 from src.services.diagnostics import detect_anomalies, parse_mcap_file
 from src.services.diagnostics_config import get_diagnostics_thresholds, save_diagnostics_thresholds
@@ -100,7 +109,7 @@ def _require_auth(authorization: str | None = Header(default=None)) -> None:
     token = get_settings().api_auth_token
     if not token:
         return
-    if authorization != f"Bearer {token}":
+    if authorization is None or not hmac.compare_digest(authorization, f"Bearer {token}"):
         raise HTTPException(status_code=401, detail="invalid or missing API token")
 
 
@@ -211,14 +220,14 @@ async def chat(
             analysis="",
         )
     try:
-        message = await anyio.to_thread.run_sync(
+        result = await anyio.to_thread.run_sync(
             chat_completion,
             [
                 {"role": "system", "content": CHAT_SYSTEM_PROMPT},
                 {"role": "user", "content": request.message},
             ],
         )
-        return ChatResponse(response=message.get("content", ""), analysis="")
+        return ChatResponse(response=result["message"].get("content", ""), analysis="")
     except Exception as e:
         logger.warning(
             "chat.upstream_failed",
@@ -390,7 +399,7 @@ async def dashboard_overview() -> DashboardOverviewResponse:
             "anomalies": len(all_anomalies),
             "criticalOpen": open_critical,
             "meanTimeToDiagnoseSec": (int(sum(latency_ms) / len(latency_ms) / 1000) if latency_ms else 0),
-            "inferenceCostUsd": round(sum(r["costUsd"] for r in runs), 2),
+            "inferenceCostUsd": round(sum(r["costUsd"] for r in runs), 4),
             "tokens": sum(r["promptTokens"] + r["completionTokens"] for r in runs),
             "reviewPending": sum(1 for r in review_items if r["reviewStatus"] == "pending"),
         },
@@ -412,7 +421,7 @@ async def dashboard_overview() -> DashboardOverviewResponse:
                 "bags": len(entry["bags"]),
                 "anomalies": entry["anomalies"],
                 "p95Ms": _p95(entry["latencies"]),
-                "costUsd": round(entry["cost"], 2),
+                "costUsd": round(entry["cost"], 4),
             }
             for date, entry in sorted(trend_by_date.items())
         ],
@@ -525,14 +534,19 @@ async def get_analysis(run_id: str) -> AnalysisDetailResponse:
     if persisted_ai:
         ai_results = [AIResultSummary(**result) for result in persisted_ai]
     else:
+        # Recording bounds are not persisted with the run, so this rebuild path
+        # sends absolute timestamps where the original analysis sent relative
+        # ones. It only fires for runs whose AI results are missing.
         ai_results = _build_ai_results(run_id, detections)
     health = compute_health_summary(detections, total_messages=rosbag.messageCount if rosbag else 0)
+    root_cause = select_run_root_cause(detections, ai_results)
     return AnalysisDetailResponse(
         run=run,
         rosbag=rosbag,
         anomalies=_anomaly_summaries(run_id, detections),
         aiResults=ai_results,
         health=health,
+        runRootCause=RunRootCause(**root_cause) if root_cause else None,
     )
 
 
@@ -761,7 +775,10 @@ async def diagnose(request: DiagnosticsRequest) -> DiagnosticsSummaryResponse:
 
 
 @router.post("/analysis/explain", response_model=DiagnosticsExplanationResponse)
-async def explain(request: DiagnosticsExplanationRequest) -> DiagnosticsExplanationResponse:
+async def explain(
+    request: DiagnosticsExplanationRequest,
+    _rate_limited: None = Depends(_check_rate_limit),
+) -> DiagnosticsExplanationResponse:
     """Explain diagnostics results with the LLM.
 
     Sends the analysis summary to the LLM to generate a root cause and
@@ -819,7 +836,7 @@ async def get_hilt_summary(
         raise HTTPException(status_code=404, detail="run not found")
 
     anomalies = await anyio.to_thread.run_sync(run_store.get_run_anomalies, run_id)
-    anomaly = next((a for a in anomalies if a.get("id") == anomaly_id.replace("anomaly_", "")), None)
+    anomaly = next((a for a in anomalies if a.get("id") == anomaly_id), None)
     if anomaly is None:
         raise HTTPException(status_code=404, detail="anomaly not found")
 
@@ -836,6 +853,7 @@ async def hilt_iterate(
     anomaly_id: str = Query(..., description="Anomaly ID"),
     test_pass: bool = Query(..., description="Whether engineer test passed"),
     test_comment: str = Query(default="", description="Engineer test comment"),
+    _rate_limited: None = Depends(_check_rate_limit),
 ) -> AIResultSummary:
     """Run one iteration of the iterative debug loop.
 
@@ -859,7 +877,7 @@ async def hilt_iterate(
         raise HTTPException(status_code=404, detail="run not found")
 
     anomalies = await anyio.to_thread.run_sync(run_store.get_run_anomalies, run_id)
-    anomaly = next((a for a in anomalies if a.get("id") == anomaly_id.replace("anomaly_", "")), None)
+    anomaly = next((a for a in anomalies if a.get("id") == anomaly_id), None)
     if anomaly is None:
         raise HTTPException(status_code=404, detail="anomaly not found")
 
@@ -918,7 +936,7 @@ async def hilt_iterate(
 async def hilt_fix(
     run_id: str,
     anomaly_id: str = Query(..., description="Anomaly ID"),
-    payload: HiltFixRequest = ...,
+    payload: HiltFixRequest = Body(...),
 ) -> HiltFixResponse:
     """Record expert fix for an escalated anomaly.
 
@@ -941,7 +959,7 @@ async def hilt_fix(
         raise HTTPException(status_code=404, detail="run not found")
 
     anomalies = await anyio.to_thread.run_sync(run_store.get_run_anomalies, run_id)
-    anomaly = next((a for a in anomalies if a.get("id") == anomaly_id.replace("anomaly_", "")), None)
+    anomaly = next((a for a in anomalies if a.get("id") == anomaly_id), None)
     if anomaly is None:
         raise HTTPException(status_code=404, detail="anomaly not found")
 

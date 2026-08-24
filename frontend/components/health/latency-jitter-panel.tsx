@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import type { Anomaly } from "@/lib/types"
+import { isKindIn, relativeSpan } from "@/lib/anomaly-groups"
 
 interface LatencyJitterPanelProps {
   latencyAnomalies: Anomaly[]
@@ -81,10 +82,9 @@ function generateMockData(
     base += Math.random() * 10 - 5
 
     // Check if there's an anomaly in this time range
-    const affectedAnomaly = anomalies.find(
-      (a) => a.kind === "header_latency" || a.kind === "timestamp_jitter",
-    )
-    if (affectedAnomaly && tSec >= affectedAnomaly.tSec && tSec <= affectedAnomaly.endSec) {
+    const affectedAnomaly = anomalies.find((a) => isKindIn("timing", a.kind))
+    const span = affectedAnomaly ? relativeSpan(affectedAnomaly) : null
+    if (span && tSec >= span.start && tSec <= span.end) {
       base += 80 + Math.random() * 40
     }
 
@@ -185,7 +185,7 @@ export function LatencyJitterPanel({
                 Phát hiện {latencyAnomalies.length} bất thường độ trễ
               </p>
               <p className="text-[10px] text-muted-foreground">
-                Trễ duy trì tại t={latencyAnomalies[0]?.tSec.toFixed(0)}s
+                Trễ duy trì tại t={latencyAnomalies[0] ? relativeSpan(latencyAnomalies[0]).start.toFixed(0) : "?"}s
               </p>
             </div>
             <Badge

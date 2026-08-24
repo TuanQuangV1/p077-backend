@@ -1,30 +1,46 @@
 name: Docker Security
 
 on:
-  push:
-    branches:
-      - main
-      - develop
-  pull_request:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: docker-security-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   docker-scan:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
 
     env:
       DOCKER_BUILDKIT: 1
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Build backend image
-        run: |
-          docker build --target backend -t app-backend:${{ github.sha }} .
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          target: backend
+          load: true
+          tags: app-backend:${{ github.sha }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
 
       - name: Scan backend image
         if: env.ACT != 'true'
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           image-ref: app-backend:${{ github.sha }}
           format: table
@@ -41,12 +57,18 @@ jobs:
             -c "printf '%s\n' '$IGNORE' | tr ' ' '\n' > /.trivyignore && trivy image --ignorefile /.trivyignore --format table --severity HIGH,CRITICAL --exit-code 1 app-backend:${{ github.sha }}"
 
       - name: Build frontend image
-        run: |
-          docker build --target frontend -t app-frontend:${{ github.sha }} .
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          target: frontend
+          load: true
+          tags: app-frontend:${{ github.sha }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
 
       - name: Scan frontend image
         if: env.ACT != 'true'
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           image-ref: app-frontend:${{ github.sha }}
           format: table

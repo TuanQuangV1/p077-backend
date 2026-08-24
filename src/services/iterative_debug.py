@@ -10,8 +10,10 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
+
 from src.config import get_settings
-from src.models.schemas import AIResultSummary
+from src.models.schemas import AIResultSummary, EvidenceItem
 from src.services import run_store
 from src.services.hilt_triggers import HiltTriggerEvaluator
 from src.services.llm import explain_diagnostics
@@ -50,7 +52,11 @@ class IterativeDebugger:
         try:
             explanation = explain_diagnostics(summary)
             return self._build_ai_result(explanation)
-        except Exception as exc:
+        # Only upstream/config failures are a legitimate reason to fall back. A
+        # bare `except Exception` here silently swallowed an AttributeError in
+        # result-building, so every call returned a canned answer while the LLM
+        # was answering correctly and the feature looked merely "unreliable".
+        except (httpx.HTTPError, ValueError) as exc:
             logger.warning(
                 "iterative_debug.llm_failed",
                 extra={
@@ -208,7 +214,7 @@ class IterativeDebugger:
             confidence=float(self.anomaly.get("confidence", 0.5)),
             explanation=detail,
             suggestedFix=[str(a) for a in explanation.get("recommended_actions", [])],
-            evidence=[AIResultSummary.model_fields["evidence"].type_(topic=topic, tSec=t_sec, detail=detail)],  # type: ignore
+            evidence=[EvidenceItem(topic=topic, tSec=t_sec, detail=detail)],
             reviewStatus="pending",
             model=self.model,
             latencyMs=0,

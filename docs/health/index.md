@@ -82,17 +82,20 @@ HS = Σ (w_i × S_i)  với i ∈ { log, frequency, latency, tf, payload }
 | LOG-01 | `log_fatal` | critical | −50 |
 | LOG-02 | `log_error_burst` | high | −30 |
 | LOG-03 | `log_warn_storm` | low | −5 |
-| FREQ-01 | `frequency_gap` | medium | −15 |
+| FREQ-01 | `frequency_gap` | medium/high | −15/−30 |
 | FREQ-02 | `message_drop_burst` | medium | −15 |
 | FREQ-03 | `hz_drop` (>30%) | medium | −15 |
 | FREQ-04 | `hz_drop_critical` (>50%) | high | −30 |
-| FREQ-05 | `silent_node` | low | −5 |
+| FREQ-05 | `silent_node` (theo thời lượng) | medium/critical | −15/−50 |
 | LAT-01 | `timestamp_jitter` | low | −5 |
-| LAT-02 | `clock_drift` | medium | −15 |
+| LAT-02 | `clock_drift` (`step`/`ramp`) | high/critical | −30/−50 |
 | LAT-03 | `header_latency` (>100ms) | medium | −15 |
-| TF-01 | `tf_missing_gap` | high | −30 |
+| TF-01 | `tf_missing_gap` (per edge, theo thời lượng) | high/critical | −30/−50 |
 | TF-02 | `tf_drift_jump` | critical | −50 |
+| TF-03 | `tf_conflict` | high | −30 |
 | PLD-01 | `payload_zero_byte` | high | −30 |
+| PLD-02 | `payload_nan` | critical | −50 |
+| PLD-03 | `payload_out_of_range` | high | −30 |
 
 ---
 

@@ -59,9 +59,14 @@ class AnomalySummary(BaseModel):
     severity: str
     tSec: float
     endSec: float
+    # Seconds from the start of the recording. `tSec`/`endSec` are absolute
+    # simulation time; anything plotting against recording duration wants these.
+    tRelSec: float = 0.0
+    endRelSec: float = 0.0
     topics: list[str]
     confidence: float
     metric: str
+    evidence: dict[str, object] = Field(default_factory=dict)
 
 
 class EvidenceItem(BaseModel):
@@ -91,12 +96,29 @@ class AIResultSummary(BaseModel):
     reviewedAt: str | None = None
 
 
+class RunRootCause(BaseModel):
+    """The single conclusion that represents a whole run.
+
+    A recording with several incidents yields one conclusion each; this is the
+    one ranked worst-severity-then-earliest, so the UI has a defined headline
+    instead of leaving the operator to guess which incident matters.
+    """
+
+    rootCause: str
+    explanation: str
+    suggestedFix: list[str] = Field(default_factory=list)
+    severity: str
+    tSec: float
+    anomalyIds: list[str] = Field(default_factory=list)
+
+
 class AnalysisDetailResponse(BaseModel):
     run: AnalysisRun
     rosbag: DatasetItem | None = None
     anomalies: list[AnomalySummary]
     aiResults: list[AIResultSummary]
     health: dict[str, object] = Field(default_factory=dict)
+    runRootCause: RunRootCause | None = None
 
 
 class HealthSummaryResponse(BaseModel):

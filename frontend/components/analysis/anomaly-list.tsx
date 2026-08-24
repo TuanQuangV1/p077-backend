@@ -7,6 +7,7 @@ import { SeverityBadge } from "@/components/telemetry"
 import { clock, SEVERITY_ORDER, severityColor } from "@/lib/api"
 import type { Anomaly, Severity } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { relativeSpan } from "@/lib/anomaly-groups"
 
 export function AnomalyList({
   anomalies,
@@ -64,7 +65,7 @@ export function AnomalyList({
                 <div className="flex items-center gap-1.5">
                   <SeverityBadge severity={a.severity} />
                   <span className="ml-auto font-mono text-[10px] tabular-nums text-muted-foreground">
-                    {clock(a.tSec, false)}
+                    {clock(relativeSpan(a).start, false)}
                   </span>
                 </div>
                 <span className="text-xs leading-snug font-medium text-pretty">{a.title}</span>

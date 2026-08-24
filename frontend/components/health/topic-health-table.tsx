@@ -44,12 +44,11 @@ function getTopicStatus(topic: TopicStat): { status: "critical" | "warning" | "h
 }
 
 function getTopicDetections(topicName: string, anomalies: Anomaly[]): Anomaly[] {
-  return anomalies.filter(
-    (a) =>
-      a.topics.includes(topicName) ||
-      a.kind === "topic_hz_drop" ||
-      a.kind === "message_drop",
-  )
+  // A topic's detections are the ones recorded against it. The kind checks that
+  // used to sit here were OR'd with the topic test, so a single rate drop was
+  // attributed to every topic in the table at once — and they named demo-only
+  // kinds, so real backend detections matched neither branch.
+  return anomalies.filter((a) => a.topics.includes(topicName))
 }
 
 export function TopicHealthTable({

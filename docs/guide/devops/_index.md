@@ -1,11 +1,11 @@
 ---
 title: "DevOps Guide"
-description: "Docker, CI/CD, deployment"
+description: "Docker, CI/CD, security scanning, and deployment"
 weight: 6
 ---
 
-Phần này hướng dẫn cách đóng gói và triển khai dự án AI Agent chuyên nghiệp. Bạn sẽ tìm hiểu multi-stage Dockerfile để tối ưu image size, các lệnh Docker thường dùng, và thiết lập GitHub Actions CI để tự động test mỗi lần push. Ngoài ra còn có hướng dẫn quản lý biến môi trường và Git workflow chuẩn. Đây là phần bắt buộc để deliver sản phẩm hoàn chỉnh cho BTC.
+This section covers packaging, testing, securing, and deploying the AI Agent project. You will learn about multi-stage Docker builds, the full GitHub Actions CI/CD pipeline (8 workflows), security scanning with Trivy/CodeQL/Gitleaks, and deployment to Azure Container Apps and GCP Compute Engine.
 
-## Trang trong mục này
+## Pages in this section
 
-- [Docker & CI/CD](docker-cicd.md) — Multi-stage Dockerfile, Docker commands, GitHub Actions CI, env vars và git workflow
+- [Docker & CI/CD](docker-cicd.md) — Docker builds, CI pipeline, security scanning (Trivy, CodeQL, Gitleaks), CD to Azure and GCP, trigger matrix, required secrets

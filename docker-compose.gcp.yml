@@ -1,18 +1,20 @@
+# GCP deployment override for docker-compose.
+# Copied to /opt/app on the VM by the CI/CD workflow. Images are pulled from
+# Artifact Registry (no local builds), data + config persist on the data disk.
+
 services:
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: backend
+    image: ${BACKEND_IMAGE}
     restart: always
     env_file:
-      - ${ENV_FILE:-env/production.env.example}
+      - /opt/app/.env
     environment:
       APP_ENV: ${APP_ENV:-production}
       APP_HOST: 0.0.0.0
       APP_PORT: 8000
+      RUN_DB_PATH: data/runs.db
     volumes:
-      - app_data:/app/data
+      - /opt/app/data:/app/data
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" ]
       interval: 15s
@@ -21,15 +23,11 @@ services:
       start_period: 10s
 
   frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: frontend
-      args:
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-https://api.yourdomain.com}
+    image: ${FRONTEND_IMAGE}
     restart: always
     environment:
       NODE_ENV: production
+      API_PROXY_TARGET: http://backend:8000
     depends_on:
       backend:
         condition: service_healthy
@@ -45,13 +43,8 @@ services:
     restart: always
     ports:
       - "80:80"
-      - "443:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/certs:/etc/nginx/certs:ro
+      - /opt/app/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - backend
       - frontend
-
-volumes:
-  app_data:

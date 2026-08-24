@@ -5,23 +5,38 @@ on:
     branches:
       - main
       - develop
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'presentation/**'
+      - '.ai-log/**'
   pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'presentation/**'
+      - '.ai-log/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   gitleaks:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64] # requires registered self-hosted runner (ubuntu-latest minutes exhausted)
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Run Gitleaks
         if: env.ACT != 'true'
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
       - name: Run Gitleaks (local)
         if: env.ACT == 'true'

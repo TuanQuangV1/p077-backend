@@ -1,44 +1,40 @@
-import { data } from "@/lib/server/store"
-import { fail, ok, readJson } from "@/lib/server/http"
+import { backendFailure, backendGet, backendPost } from "@/lib/server/backend"
+import { fail, ok } from "@/lib/server/http"
 import type { AnalysisRun } from "@/lib/types"
 
-/** GET /api/runs?rosbagId=&status= */
+/** GET /api/runs?rosbagId=&status= — analysis runs, newest first. */
 export async function GET(req: Request) {
   const url = new URL(req.url)
   const rosbagId = url.searchParams.get("rosbagId")
   const status = url.searchParams.get("status")
-  const items = data().runs.filter(
-    (r) => (!rosbagId || r.rosbagId === rosbagId) && (!status || r.status === status),
-  )
-  return ok({ items, total: items.length })
+  try {
+    const overview = await backendGet<{ recentRuns: AnalysisRun[] }>("/dashboard/overview")
+    const items = (overview.recentRuns ?? []).filter(
+      (run) => (!rosbagId || run.rosbagId === rosbagId) && (!status || run.status === status),
+    )
+    return ok({ items, total: items.length })
+  } catch (error) {
+    const { message, status: code } = backendFailure(error)
+    return fail(message, code)
+  }
 }
 
 /** POST /api/runs — start an analysis run for a parsed rosbag. */
 export async function POST(req: Request) {
-  const body = await readJson<{ rosbagId: string; model?: string }>(req)
-  const d = data()
-  const bag = d.rosbags.find((b) => b.id === body.rosbagId)
-  if (!bag) return fail("rosbag not found", 404)
+  // The console posts `rosbag_id`; the previous handler read `rosbagId` and so
+  // never found the bag. Accept either and forward the backend's own field name.
+  const body = (await req.json().catch(() => ({}))) as { rosbag_id?: string; rosbagId?: string; model?: string }
+  const rosbagId = body.rosbag_id ?? body.rosbagId
+  if (!rosbagId) return fail("rosbag_id is required", 400)
 
-  const run: AnalysisRun = {
-    id: `run_${Math.random().toString(16).slice(2, 6)}`,
-    rosbagId: bag.id,
-    rosbagName: bag.name,
-    robotType: bag.robotType,
-    status: "running",
-    progress: 4,
-    stage: "parse",
-    startedAt: new Date().toISOString(),
-    finishedAt: null,
-    anomalyCount: 0,
-    worstSeverity: null,
-    model: body.model ?? "vllm/qwen2.5-coder-32b",
-    totalLatencyMs: 0,
-    promptTokens: 0,
-    completionTokens: 0,
-    costUsd: 0,
+  try {
+    const result = await backendPost<{ run: AnalysisRun; channel: string }>("/analysis", {
+      rosbag_id: rosbagId,
+      model: body.model ?? null,
+    })
+    return ok(result, { status: 202 })
+  } catch (error) {
+    const { message, status } = backendFailure(error)
+    return fail(message, status)
   }
-  d.runs.unshift(run)
-  bag.status = "analyzing"
-  return ok({ run, channel: `/ws/runs/${run.id}` }, { status: 202 })
 }

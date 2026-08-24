@@ -1,0 +1,18 @@
+# Copy to terraform/gcp/terraform.tfvars and adjust as needed.
+# In CI/CD these values are overridden by -var / -var-file flags.
+
+project_id         = "ai20k-p077"
+region             = "asia-southeast1"
+zone               = "asia-southeast1-a"
+environment        = "staging"
+app_name           = "ai20k-p077"
+machine_type       = "e2-small"
+boot_disk_size     = 30
+data_disk_size     = 50
+backend_image      = ""  # Leave empty to auto-compute from region/project
+frontend_image     = ""  # Leave empty to auto-compute from region/project
+cors_origins       = "http://localhost:3000"
+ssh_source_ranges  = ["35.235.240.0/20"]
+iap_users          = ["kisuit4.0@gmail.com"]
+# GitHub Actions SA is looked up automatically by account_id "github-actions"
+# (data.google_service_account) — no github_service_account variable needed.

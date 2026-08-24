@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     # App
     app_name: str = "AI20K Agent"
-    app_env: Literal["development", "production", "test"] = "development"
+    app_env: Literal["development", "staging", "production", "test"] = "development"
     app_port: int = Field(default=8000, ge=1, le=65535)
     app_host: str = "0.0.0.0"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
@@ -27,10 +27,13 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     model_name: str = "gpt-4o-mini"
     llm_temperature: float = Field(default=0.2, ge=0.0, le=2.0)
-    llm_provider: Literal["openai", "vllm"] = "openai"
+    llm_provider: Literal["openai", "vllm", "anthropic"] = "openai"
     vllm_base_url: str = ""
     vllm_api_key: str = "EMPTY"
     vllm_model_name: str = "qwen2.5-coder-32b"
+    anthropic_api_key: str = ""
+    anthropic_model_name: str = "claude-sonnet-4-5"
+    anthropic_max_tokens: int = Field(default=1024, ge=1, le=8192)
 
     # HILT (human-in-the-loop) iterative debug triggers
     hilt_max_iterations: int = 5

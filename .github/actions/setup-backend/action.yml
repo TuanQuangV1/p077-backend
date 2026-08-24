@@ -1,0 +1,37 @@
+name: Setup Backend (Python)
+description: Install Python 3.11, cache and restore .venv, install backend dependencies
+
+inputs:
+  python-version:
+    description: Python version to install
+    default: "3.11"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: pip
+
+    - name: Cache backend venv
+      id: venv-cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-py${{ inputs.python-version }}-${{ hashFiles('pyproject.toml') }}
+        restore-keys: |
+          venv-${{ runner.os }}-py${{ inputs.python-version }}-
+
+    - name: Create venv and install backend dependencies
+      if: steps.venv-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        python -m venv .venv
+        source .venv/bin/activate
+        pip install -e .[dev]
+
+    - name: Activate cached venv
+      if: steps.venv-cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: echo "$PWD/.venv/bin" >> "$GITHUB_PATH"

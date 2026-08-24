@@ -9,4 +9,10 @@ paths = [
   '''terraform/main\.tf''',
   '''docs/guide/chapter-09\.md''',
   '''\.env\.example''',
+  '''uv\.lock''',
+  '''pnpm-lock\.yaml''',
+  '''package-lock\.json''',
+  '''coverage\.xml''',
+  '''\.coverage''',
+  '''htmlcov/''',
 ]

@@ -13,7 +13,8 @@ export type Severity = "critical" | "high" | "medium" | "low"
 
 export type LogLevel = "debug" | "info" | "warn" | "error" | "fatal"
 
-export type AnomalyKind =
+/** Anomaly kinds the real rule-based diagnostics backend (src/services/diagnostics.py) can produce. */
+export type BackendAnomalyKind =
   | "frequency_gap"
   | "message_drop_burst"
   | "timestamp_jitter"
@@ -26,8 +27,24 @@ export type AnomalyKind =
   | "log_error_burst"
   | "log_warn_storm"
   | "payload_zero_byte"
+  | "payload_nan"
+  | "payload_out_of_range"
   | "tf_missing_gap"
   | "tf_drift_jump"
+  | "tf_conflict"
+
+/** Anomaly kinds used only by the local mock/demo data generator (lib/server/store.ts); the real backend never produces these. */
+export type DemoAnomalyKind =
+  | "tf_timeout"
+  | "lidar_dropout"
+  | "localization_jump"
+  | "costmap_stale"
+  | "cpu_spike"
+  | "nav_recovery"
+  | "topic_hz_drop"
+  | "message_drop"
+
+export type AnomalyKind = BackendAnomalyKind | DemoAnomalyKind
 
 export type ReviewStatus = "pending" | "approved" | "rejected" | "edited"
 
@@ -126,8 +143,13 @@ export interface Anomaly {
   kind: AnomalyKind
   title: string
   severity: Severity
+  /** Absolute simulation time from the bag. Not comparable to recording duration. */
   tSec: number
   endSec: number
+  /** Seconds from the start of the recording — use these for anything plotted
+   *  against duration. Optional so demo/mock data without them still type-checks. */
+  tRelSec?: number
+  endRelSec?: number
   topics: string[]
   confidence: number
   metric: string
