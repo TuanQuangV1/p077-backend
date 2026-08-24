@@ -1,7 +1,8 @@
 locals {
-  name_prefix    = "${var.app_name}-${var.environment}"
-  backend_image  = var.backend_image != "" ? var.backend_image : "${var.region}-docker.pkg.dev/${var.project_id}/backend:latest"
-  frontend_image = var.frontend_image != "" ? var.frontend_image : "${var.region}-docker.pkg.dev/${var.project_id}/frontend:latest"
+  name_prefix     = "${var.app_name}-${var.environment}"
+  github_sa_email = "github-actions@${var.project_id}.iam.gserviceaccount.com"
+  backend_image   = var.backend_image != "" ? var.backend_image : "${var.region}-docker.pkg.dev/${var.project_id}/backend:latest"
+  frontend_image  = var.frontend_image != "" ? var.frontend_image : "${var.region}-docker.pkg.dev/${var.project_id}/frontend:latest"
 }
 
 # 1. Enable required GCP APIs
@@ -61,28 +62,27 @@ resource "google_project_iam_member" "vm_artifact_reader" {
   member  = "serviceAccount:${google_service_account.vm.email}"
 }
 
-# 4. GitHub Actions SA (provisioned out-of-band with Workload Identity Federation;
-# looked up here so we can grant it Artifact Registry write + SSH access)
-data "google_service_account" "github_actions" {
-  account_id = "github-actions"
-}
-
+# 4. GitHub Actions SA IAM grants.
+# The SA is provisioned out-of-band with Workload Identity Federation; its
+# email is constructed here so no iam.serviceAccounts.get permission is
+# needed at plan time. Existence verified once via:
+#   gcloud iam service-accounts list --project=ai20k-p077
 resource "google_project_iam_member" "github_artifact_writer" {
   project = var.project_id
   role    = "roles/artifactregistry.writer"
-  member  = "serviceAccount:${data.google_service_account.github_actions.email}"
+  member  = "serviceAccount:${local.github_sa_email}"
 }
 
 resource "google_project_iam_member" "github_ssh" {
   project = var.project_id
   role    = "roles/compute.osLogin"
-  member  = "serviceAccount:${data.google_service_account.github_actions.email}"
+  member  = "serviceAccount:${local.github_sa_email}"
 }
 
 resource "google_project_iam_member" "github_iap_tunnel" {
   project = var.project_id
   role    = "roles/iap.tunnelResourceAccessor"
-  member  = "serviceAccount:${data.google_service_account.github_actions.email}"
+  member  = "serviceAccount:${local.github_sa_email}"
 }
 
 # State bucket is provisioned out-of-band (see the workflow bootstrap step);
@@ -91,7 +91,7 @@ resource "google_project_iam_member" "github_iap_tunnel" {
 resource "google_storage_bucket_iam_member" "github_tfstate" {
   bucket = "tfstate-ai20k-p077-gcp"
   role   = "roles/storage.objectAdmin"
-  member = "serviceAccount:${data.google_service_account.github_actions.email}"
+  member = "serviceAccount:${local.github_sa_email}"
 }
 
 resource "google_project_iam_member" "iap_tunnel" {
