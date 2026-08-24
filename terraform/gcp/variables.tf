@@ -96,9 +96,3 @@ variable "iap_users" {
   type        = list(string)
   default     = []
 }
-
-variable "github_service_account" {
-  description = "Email of the GitHub Actions workload identity service account (from secrets.GCP_SERVICE_ACCOUNT). Grants Artifact Registry write + SSH access."
-  type        = string
-  default     = ""
-}

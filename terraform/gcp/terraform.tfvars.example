@@ -14,4 +14,5 @@ frontend_image     = ""  # Leave empty to auto-compute from region/project
 cors_origins       = "http://localhost:3000"
 ssh_source_ranges  = ["35.235.240.0/20"]
 iap_users          = ["kisuit4.0@gmail.com"]
-# github_service_account = "github-actions@ai20k-p077.iam.gserviceaccount.com"
+# GitHub Actions SA is looked up automatically by account_id "github-actions"
+# (data.google_service_account) — no github_service_account variable needed.

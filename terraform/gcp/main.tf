@@ -1,6 +1,5 @@
 locals {
   name_prefix    = "${var.app_name}-${var.environment}"
-  github_sa_member = var.github_service_account != "" ? "serviceAccount:${var.github_service_account}" : null
   backend_image  = var.backend_image != "" ? var.backend_image : "${var.region}-docker.pkg.dev/${var.project_id}/backend:latest"
   frontend_image = var.frontend_image != "" ? var.frontend_image : "${var.region}-docker.pkg.dev/${var.project_id}/frontend:latest"
 }
@@ -62,26 +61,28 @@ resource "google_project_iam_member" "vm_artifact_reader" {
   member  = "serviceAccount:${google_service_account.vm.email}"
 }
 
-# 4. GitHub Actions SA grants (idempotent when the email is passed in)
+# 4. GitHub Actions SA (provisioned out-of-band with Workload Identity Federation;
+# looked up here so we can grant it Artifact Registry write + SSH access)
+data "google_service_account" "github_actions" {
+  account_id = "github-actions"
+}
+
 resource "google_project_iam_member" "github_artifact_writer" {
-  count   = local.github_sa_member != null ? 1 : 0
   project = var.project_id
   role    = "roles/artifactregistry.writer"
-  member  = local.github_sa_member
+  member  = "serviceAccount:${data.google_service_account.github_actions.email}"
 }
 
 resource "google_project_iam_member" "github_ssh" {
-  count   = local.github_sa_member != null ? 1 : 0
   project = var.project_id
   role    = "roles/compute.osLogin"
-  member  = local.github_sa_member
+  member  = "serviceAccount:${data.google_service_account.github_actions.email}"
 }
 
 resource "google_project_iam_member" "github_iap_tunnel" {
-  count   = local.github_sa_member != null ? 1 : 0
   project = var.project_id
   role    = "roles/iap.tunnelResourceAccessor"
-  member  = local.github_sa_member
+  member  = "serviceAccount:${data.google_service_account.github_actions.email}"
 }
 
 resource "google_project_iam_member" "iap_tunnel" {

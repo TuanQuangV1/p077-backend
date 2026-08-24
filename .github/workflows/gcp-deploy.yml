@@ -28,6 +28,7 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     strategy:
+      max-parallel: 1
       matrix:
         include:
           - environment: staging
@@ -86,6 +87,29 @@ jobs:
             iam.googleapis.com \
             --project=${{ env.GCP_PROJECT_ID }} || true
 
+      - name: Setup Terraform
+        if: steps.gate.outputs.deploy == 'true'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.7"
+
+      # Terraform must run BEFORE docker build/push: it creates the Artifact
+      # Registry repositories and grants roles/artifactregistry.writer to the
+      # GitHub Actions service account. Without this ordering, the first push
+      # fails with uploadArtifacts permission denied (repo may not exist yet).
+      - name: Terraform Init & Apply (GCP ${{ matrix.environment }})
+        if: steps.gate.outputs.deploy == 'true'
+        working-directory: terraform/gcp
+        run: |
+          terraform init \
+            -backend-config="prefix=terraform-gcp/${{ matrix.environment }}"
+          terraform plan \
+            -var-file=environments/${{ matrix.environment }}.tfvars \
+            -var="region=${{ env.GCP_REGION }}" \
+            -var="machine_type=${{ matrix.machine_type }}" \
+            -out=tfplan
+          terraform apply -auto-approve tfplan
+
       - name: Set up Docker Buildx
         if: steps.gate.outputs.deploy == 'true'
         uses: docker/setup-buildx-action@v3
@@ -114,26 +138,6 @@ jobs:
             -t ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/frontend:latest .
           docker push ${{ env.FRONTEND_IMAGE }}
           docker push ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/frontend:latest
-
-      - name: Setup Terraform
-        if: steps.gate.outputs.deploy == 'true'
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.5.7"
-
-      - name: Terraform Init & Apply (GCP ${{ matrix.environment }})
-        if: steps.gate.outputs.deploy == 'true'
-        working-directory: terraform/gcp
-        run: |
-          terraform init \
-            -backend-config="prefix=terraform-gcp/${{ matrix.environment }}"
-          terraform plan \
-            -var-file=environments/${{ matrix.environment }}.tfvars \
-            -var="region=${{ env.GCP_REGION }}" \
-            -var="github_service_account=${{ secrets.GCP_SERVICE_ACCOUNT }}" \
-            -var="machine_type=${{ matrix.machine_type }}" \
-            -out=tfplan
-          terraform apply -auto-approve tfplan
 
       - name: Retrieve Public IP
         if: steps.gate.outputs.deploy == 'true'
