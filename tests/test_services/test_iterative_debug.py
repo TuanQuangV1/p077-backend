@@ -220,6 +220,5 @@ class TestRunIterativeDebugLoop:
         }
 
         result = run_iterative_debug_loop("run_1", "anomaly_001", anomaly, max_iterations=2)
-
         assert result["status"] in ("completed", "escalated", "max_iterations")
         assert result["iterations"] <= 2

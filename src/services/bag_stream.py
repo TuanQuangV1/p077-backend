@@ -122,7 +122,9 @@ def _child_frame_id(message: object) -> str:
     transforms = getattr(message, "transforms", None)
     if transforms:
         first = transforms[0]
-        child = getattr(getattr(first, "child_frame_id", ""), "frame_id", "") or getattr(first, "child_frame_id", "")
+        child = getattr(getattr(first, "child_frame_id", ""), "frame_id", "") or getattr(
+            first, "child_frame_id", ""
+        )
         return str(child)
     return ""
 
@@ -283,7 +285,10 @@ def _cdr_read_string(data: bytes, pos: int) -> tuple[str, int]:
     length = int.from_bytes(data[pos : pos + 4], "little", signed=True)
     if length <= 1:
         return "", pos + 4 + length
-    return data[pos + 4 : pos + 4 + length - 1].decode("utf-8", errors="replace"), pos + 4 + length
+    return (
+        bytes(data[pos + 4 : pos + 4 + length - 1]).decode("utf-8", errors="replace"),
+        pos + 4 + length,
+    )
 
 
 # Field plan per message type: (name, desc, pre_align, post_align, static_size).
@@ -367,7 +372,9 @@ def _cdr_field_static_size(store: Any, desc: Any) -> int | None:
     return None  # SEQUENCE is always dynamic
 
 
-def _cdr_walk(data: bytes, pos: int, msgtype: str, store: Any, extract: dict[str, Any] | None) -> int:
+def _cdr_walk(
+    data: bytes, pos: int, msgtype: str, store: Any, extract: dict[str, Any] | None
+) -> int:
     """Parse (or skip) every field of a message, recording ``extract`` keys."""
     aligned = 8
     for fname, desc, pre_align, post_align, static in _cdr_plan(store, msgtype):
@@ -432,7 +439,7 @@ def _cdr_read_field(  # noqa: PLR0911
     subdesc = desc[1][0]
     count = int.from_bytes(data[pos : pos + 4], "little", signed=True)
     pos += 4
-    if count <= 0:
+    if count <= 0 or count > max(0, len(data) - pos + 1):
         return pos
     elem_align = _cdr_align(subdesc, store)
     if subdesc[0] == _NT_BASE:
@@ -445,7 +452,11 @@ def _cdr_read_field(  # noqa: PLR0911
             pos += count * _CDR_SIZEMAP[subdesc[1][0]]
         return pos
     pos = (pos + elem_align - 1) & -elem_align
-    if extract is not None and fname == "transforms" and subdesc[1] == "geometry_msgs/msg/TransformStamped":
+    if (
+        extract is not None
+        and fname == "transforms"
+        and subdesc[1] == "geometry_msgs/msg/TransformStamped"
+    ):
         pos = _cdr_walk(data, pos, subdesc[1], store, {"child_frame_id": None})
         for _ in range(count - 1):
             pos = (pos + elem_align - 1) & -elem_align

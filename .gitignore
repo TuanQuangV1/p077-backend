@@ -74,6 +74,7 @@ frontend/.npmrc
 .ruff_cache/
 
 # Terraform local working directories
+# Terraform & Infrastructure
 .terraform/
 *.tfstate
 *.tfstate.*
@@ -84,3 +85,24 @@ terraform/gcp/.terraform/
 
 nginx/certs/
 .opencode/plans/
+crash.*.log
+*.tfvars
+!*.tfvars.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+terraform.exe
+
+# Playwright & E2E Test Reports
+playwright-report/
+test-results/
+blob-report/
+
+# AI IDE & Local Assistant Folders
+.claude/
+.cursor/
+.codex/
+.opencode/
+.gemini/
+
