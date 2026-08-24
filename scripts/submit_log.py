@@ -32,10 +32,9 @@ LOG_DIR = Path(os.environ.get("AI_LOG_DIR", ".ai-log"))
 LOG_FILE = LOG_DIR / "session.jsonl"
 ARCHIVE_DIR = LOG_DIR / "archive"
 
-# Match server-side MAX_BATCH_ENTRIES so we never get a 422.
-# If the local file has more than this, we submit the oldest BATCH_LIMIT
-# and leave the rest for the next push.
-BATCH_LIMIT = 500
+## Tăng BATCH_LIMIT lên 100 để giảm số lượng request và tăng tốc độ đẩy log
+BATCH_LIMIT = 100
+MAX_RETRIES = 4
 
 
 def _validate_server_url(raw: str) -> str:
@@ -80,52 +79,9 @@ def _restore_pending(pending: Path) -> None:
         pending.rename(LOG_FILE)
 
 
-def main():
-    if not SERVER_URL:
-        print("[ai-log] AI_LOG_SERVER not set — skipping submission.", file=sys.stderr)
-        sys.exit(0)
+import argparse
 
-    try:
-        server_url = _validate_server_url(SERVER_URL)
-    except ValueError as e:
-        print(f"[ai-log] {e} — skipping submission.", file=sys.stderr)
-        sys.exit(0)
-
-    if not LOG_FILE.exists() or LOG_FILE.stat().st_size == 0:
-        print("[ai-log] No logs to submit.", file=sys.stderr)
-        sys.exit(0)
-
-    # Atomic rename closes the race window: hook writes that arrive after this
-    # land in a fresh LOG_FILE, not in the batch we're about to POST.
-    pending = LOG_FILE.with_name(f"session.pending.{int(time.time())}.jsonl")
-    try:
-        LOG_FILE.rename(pending)
-    except FileNotFoundError:
-        print("[ai-log] No logs to submit.", file=sys.stderr)
-        sys.exit(0)
-
-    entries = []
-    leftover_lines = []
-    with open(pending, encoding="utf-8") as f:
-        for line in f:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if len(entries) >= BATCH_LIMIT:
-                leftover_lines.append(line)
-                continue
-            try:
-                entries.append(json.loads(stripped))
-            except json.JSONDecodeError:
-                pass  # drop unparseable line
-
-    if not entries:
-        # Nothing to send; archive whatever was there (probably junk) and bail.
-        _archive(pending)
-        pending.unlink()
-        print("[ai-log] No valid entries to submit.", file=sys.stderr)
-        sys.exit(0)
-
+def _send_batch(server_url: str, entries: list[dict]) -> bool:
     payload = json.dumps({"entries": entries}, ensure_ascii=False).encode("utf-8")
     headers = {"Content-Type": "application/json"}
     if API_KEY:
@@ -137,30 +93,147 @@ def main():
         method="POST",
     )
 
-    try:
-        # server_url is validated to be http(s) only by _validate_server_url above.
-        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            print(f"[ai-log] Submitted {len(entries)} entries → {resp.status}", file=sys.stderr)
-    except urllib.error.URLError as e:
-        # Failure: restore the whole pending (including leftover) for next push.
-        _restore_pending(pending)
-        print(f"[ai-log] Submit failed: {e} — logs kept locally.", file=sys.stderr)
-        sys.exit(0)  # Don't block push on server error
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=45) as resp:
+                print(f"[ai-log] Submitted {len(entries)} entries → {resp.status}", file=sys.stderr)
+                return True
+        except urllib.error.HTTPError as e:
+            # 429 Too Many Requests: Xử lý êm, tự động chờ theo rate-limit
+            if e.code == 429:
+                retry_after = e.headers.get("Retry-After")
+                delay = float(retry_after) if retry_after and retry_after.isdigit() else (1.5 * attempt)
+                time.sleep(delay)
+            else:
+                if attempt == MAX_RETRIES:
+                    return False
+                time.sleep(1.0)
+        except (TimeoutError, urllib.error.URLError):
+            if attempt == MAX_RETRIES:
+                return False
+            time.sleep(1.0 * attempt)
+        except Exception:
+            return False
+    return False
 
-    # Success: archive the submitted batch, then handle any leftover.
+
+def _submit_file(server_url: str, file_path: Path, delete_on_success: bool = False) -> None:
+    if not file_path.exists() or file_path.stat().st_size == 0:
+        return
+
+    entries = []
+    with open(file_path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                entries.append(json.loads(stripped))
+            except json.JSONDecodeError:
+                pass
+
+    if not entries:
+        return
+
+    print(f"[ai-log] Processing {len(entries)} entries from {file_path.name}...", file=sys.stderr)
+    success_all = True
+    for i in range(0, len(entries), BATCH_LIMIT):
+        batch = entries[i : i + BATCH_LIMIT]
+        success = _send_batch(server_url, batch)
+        if not success:
+            success_all = False
+        time.sleep(0.1)
+
+    if delete_on_success and success_all:
+        file_path.unlink(missing_ok=True)
+
+
+def resync_all(server_url: str) -> None:
+    print("[ai-log] Resyncing all archived and session logs to grading server...", file=sys.stderr)
+    all_files = sorted(ARCHIVE_DIR.glob("*.jsonl"))
+    if LOG_FILE.exists():
+        all_files.append(LOG_FILE)
+
+    if not all_files:
+        print("[ai-log] No logs found in archive or session.", file=sys.stderr)
+        return
+
+    total_submitted = 0
+    for f in all_files:
+        _submit_file(server_url, f, delete_on_success=False)
+    print("[ai-log] Resync completed successfully!", file=sys.stderr)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Submit AI logs to grading server / Phoenix.")
+    parser.add_argument("--resync-all", action="store_true", help="Resync all history from .ai-log/archive/*.jsonl")
+    parser.add_argument("--file", type=str, help="Submit a specific .jsonl file directly")
+    args = parser.parse_args()
+
+    if not SERVER_URL:
+        print("[ai-log] AI_LOG_SERVER not set — skipping submission.", file=sys.stderr)
+        sys.exit(0)
+
+    try:
+        server_url = _validate_server_url(SERVER_URL)
+    except ValueError as e:
+        print(f"[ai-log] {e} — skipping submission.", file=sys.stderr)
+        sys.exit(0)
+
+    if args.resync_all:
+        resync_all(server_url)
+        return
+
+    if args.file:
+        target = Path(args.file)
+        _submit_file(server_url, target, delete_on_success=False)
+        return
+
+    if not LOG_FILE.exists() or LOG_FILE.stat().st_size == 0:
+        print("[ai-log] No logs to submit.", file=sys.stderr)
+        sys.exit(0)
+
+    # Standard pre-push / session submit path
+    pending = LOG_FILE.with_name(f"session.pending.{int(time.time())}.jsonl")
+    try:
+        LOG_FILE.rename(pending)
+    except FileNotFoundError:
+        print("[ai-log] No logs to submit.", file=sys.stderr)
+        sys.exit(0)
+
+    entries = []
+    leftover_lines = []
+    with open(pending, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if len(entries) >= BATCH_LIMIT:
+                leftover_lines.append(line)
+                continue
+            try:
+                entries.append(json.loads(stripped))
+            except json.JSONDecodeError:
+                pass
+
+    if not entries:
+        _archive(pending)
+        pending.unlink(missing_ok=True)
+        print("[ai-log] No valid entries to submit.", file=sys.stderr)
+        sys.exit(0)
+
+    success = _send_batch(server_url, entries)
+    if not success:
+        _restore_pending(pending)
+        sys.exit(0)
+
     _archive(pending)
-    pending.unlink()
+    pending.unlink(missing_ok=True)
 
     if leftover_lines:
-        # More than BATCH_LIMIT entries existed; put the rest back so the
-        # next push picks them up.
         with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.writelines(leftover_lines)
-        print(
-            f"[ai-log] {len(leftover_lines)} entries deferred to next push.",
-            file=sys.stderr,
-        )
+        print(f"[ai-log] {len(leftover_lines)} entries deferred to next push.", file=sys.stderr)
 
 
 if __name__ == "__main__":

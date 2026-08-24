@@ -124,7 +124,7 @@ def compute_health_summary(
             "yellow_min": YELLOW_THRESHOLD,
             "red_max": 0.0,
         },
-        "trigger_llm_deep_dive": score < DEEP_DIVE_TRIGGER_THRESHOLD,
+        "trigger_llm_deep_dive": score <= DEEP_DIVE_TRIGGER_THRESHOLD,
         "summary": {
             "total_messages": total_messages,
             "total_detections": len(detections),

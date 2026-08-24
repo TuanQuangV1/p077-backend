@@ -1,32 +1,44 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { BotIcon, BrainCircuitIcon, CheckCircleIcon, ChevronDownIcon, ChevronRightIcon, CopyIcon, DownloadIcon, HelpCircleIcon, LoaderIcon, RefreshCwIcon, XCircleIcon } from "lucide-react"
+import {
+  ActivityIcon,
+  AlertTriangleIcon,
+  ArrowRightIcon,
+  CheckCircle2Icon,
+  CheckCircleIcon,
+  ChevronRightIcon,
+  ClockIcon,
+  DownloadIcon,
+  HelpCircleIcon,
+  LoaderIcon,
+  RefreshCwIcon,
+  SlidersIcon,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import type { Anomaly, HealthSummary, LLMDeepDiveResult, Severity } from "@/lib/types"
+import { cn } from "@/lib/utils"
+import type { Anomaly, HealthSummary, LLMDeepDiveResult } from "@/lib/types"
 
 /**
  * Deterministic fallback used while the deep-dive endpoint isn't wired to a
- * live LLM: same heuristic the mock server used, computed client-side from
- * data already on hand (no network round trip, no response-shape to drift).
+ * live LLM: computed client-side from data already on hand.
  */
 function generateFallbackAnalysis(healthScore: number, anomalies: Anomaly[]): LLMDeepDiveResult {
   if (anomalies.length === 0) {
     return {
-      summary: "No anomalies detected. System appears healthy.",
+      summary: "Không có bất thường nào được ghi nhận. Hệ thống đạt chuẩn vận hành.",
       explanation: [
-        "All telemetry indicators are within normal operating ranges",
-        "Topic frequencies are stable and within expected bounds",
+        "Tất cả chỉ số viễn trắc nằm trong phạm vi định mức an toàn",
+        "Tần số xuất bản và độ trễ các kênh cảm biến duy trì ổn định",
       ],
       suggestions: [
-        "Continue monitoring during next operational session",
-        "Consider periodic health checks every 24 hours",
+        "Duy trì giám sát định kỳ trong các phiên hoạt động tiếp theo",
+        "Kiểm tra cảm biến định kỳ theo quy trình tiêu chuẩn",
       ],
       confidence: 0.95,
       priority: "low",
@@ -44,15 +56,15 @@ function generateFallbackAnalysis(healthScore: number, anomalies: Anomaly[]): LL
   const components: string[] = []
 
   if (severityCounts.critical > 0) {
-    explanations.push(`${severityCounts.critical} critical anomaly(ies) detected requiring immediate attention`)
-    suggestions.push("Isolate affected systems and perform emergency diagnostics")
-    suggestions.push("Review recent configuration changes or software updates")
+    explanations.push(`Phát hiện ${severityCounts.critical} sự cố nghiêm trọng cần xử lý khẩn cấp`)
+    suggestions.push("Kiểm tra trạng thái tiến trình (node status) và cô lập nguồn phát sinh lỗi")
+    suggestions.push("Kiểm tra tải CPU/RAM và độ trễ hàng đợi truyền nhận gói tin")
     components.push("system_critical")
   }
   if (severityCounts.high > 0) {
-    explanations.push(`${severityCounts.high} high-severity anomaly(ies) may impact system reliability`)
-    suggestions.push("Schedule maintenance window for investigation")
-    suggestions.push("Monitor closely for escalation to critical")
+    explanations.push(`Phát hiện ${severityCounts.high} bất thường mức độ cao làm giảm độ tin cậy`)
+    suggestions.push("Kiểm tra bộ đệm buffer truyền nhận và độ trễ xuất bản của node")
+    suggestions.push("Giám sát độ ổn định của đường truyền dữ liệu cảm biến")
     if (!components.includes("system_critical")) components.push("diagnostics")
   }
 
@@ -62,7 +74,7 @@ function generateFallbackAnalysis(healthScore: number, anomalies: Anomaly[]): LL
   }
   const topTopics = [...topicCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
   if (topTopics.length > 0) {
-    explanations.push(`Most affected topics: ${topTopics.map(([t]) => t).join(", ")}`)
+    explanations.push(`Kênh dữ liệu ảnh hưởng chính: ${topTopics.map(([t]) => t).join(", ")}`)
   }
 
   const priority = severityCounts.critical > 0 ? "critical"
@@ -91,64 +103,21 @@ interface LLMDeepDivePanelProps {
   onSelectAnomaly?: (id: string) => void
 }
 
-const PRIORITY_COLORS: Record<string, string> = {
-  critical: "#dc3545",
-  high: "#fd7e14",
-  medium: "#ffc107",
-  low: "#6c757d",
-}
-
-const SEVERITY_COLORS: Record<Severity, string> = {
-  critical: "#dc3545",
-  high: "#fd7e14",
-  medium: "#ffc107",
-  low: "#6c757d",
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-
-  const copy = async () => {
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text)
-      } else {
-        const el = document.createElement("textarea")
-        el.value = text
-        el.style.position = "fixed"
-        el.style.opacity = "0"
-        document.body.appendChild(el)
-        el.select()
-        document.execCommand("copy")
-        document.body.removeChild(el)
-      }
-      setCopied(true)
-      toast.success("Copied to clipboard")
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      toast.error("Failed to copy to clipboard")
-    }
-  }
-
-  return (
-    <Button variant="ghost" size="sm" onClick={copy}>
-      {copied ? <CheckCircleIcon className="size-3" /> : <CopyIcon className="size-3" />}
-    </Button>
-  )
+const SEVERITY_BADGES: Record<string, { label: string; className: string }> = {
+  critical: { label: "NGHIÊM TRỌNG (CRITICAL)", className: "border-red-500/40 bg-red-500/10 text-red-400 font-semibold" },
+  high: { label: "MỨC ĐỘ CAO (HIGH)", className: "border-orange-500/40 bg-orange-500/10 text-orange-400 font-semibold" },
+  medium: { label: "CẢNH BÁO (MEDIUM)", className: "border-yellow-500/40 bg-yellow-500/10 text-yellow-400 font-semibold" },
+  low: { label: "BÌNH THƯỜNG (LOW)", className: "border-emerald-500/40 bg-emerald-500/10 text-emerald-400 font-semibold" },
 }
 
 function LoadingSkeleton() {
   return (
-    <div className="space-y-4 p-4">
+    <div className="space-y-3 p-4">
       <div className="flex items-center gap-2">
         <LoaderIcon className="size-4 animate-spin text-primary" />
-        <span className="text-sm text-muted-foreground">Analyzing health data...</span>
+        <span className="text-xs text-muted-foreground">Đang tổng hợp dữ liệu chẩn đoán...</span>
       </div>
-      <div className="space-y-2">
-        <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
-        <div className="h-4 w-1/2 animate-pulse rounded bg-muted" />
-        <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
-      </div>
+      <div className="h-36 animate-pulse rounded-lg bg-muted/40" />
     </div>
   )
 }
@@ -156,13 +125,13 @@ function LoadingSkeleton() {
 function EmptyState({ score }: { score: number }) {
   return (
     <div className="flex flex-col items-center justify-center p-6 text-center">
-      <CheckCircleIcon className="size-12 text-green-500 mb-3" />
-      <h3 className="text-lg font-semibold">System Healthy</h3>
-      <p className="mt-1 text-sm text-muted-foreground">
+      <CheckCircleIcon className="size-10 text-emerald-500 mb-2" />
+      <h3 className="text-sm font-semibold text-foreground">System Healthy</h3>
+      <p className="mt-1 text-xs text-muted-foreground font-mono">
         Health Score {score}/100 - no critical issues detected.
       </p>
-      <p className="mt-2 text-xs text-muted-foreground">
-        Continue monitoring for proactive maintenance.
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        Tất cả các kênh cảm biến và thông số viễn trắc đều hoạt động đạt chuẩn kỹ thuật.
       </p>
     </div>
   )
@@ -179,10 +148,8 @@ export function LLMDeepDivePanel({
   const [isAutoTriggered, setIsAutoTriggered] = useState(false)
 
   const score = health?.health_score ?? 0
-  const status = health?.status ?? "green"
   const triggerLLM = health?.trigger_llm_deep_dive ?? false
 
-  // Auto-trigger deep-dive when health score drops below threshold
   useEffect(() => {
     if (triggerLLM && activeRunId && !deepDive && !isLoading) {
       setIsAutoTriggered(true)
@@ -213,20 +180,19 @@ export function LLMDeepDivePanel({
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `health-analysis-${runLabel}.json`
+    a.download = `chandoan-${runLabel}.json`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
     setTimeout(() => URL.revokeObjectURL(url), 0)
-    toast.success("Exported health analysis")
+    toast.success("Đã xuất dữ liệu chẩn đoán")
   }
 
   if (!health) {
     return (
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <BrainCircuitIcon className="size-4" />
+      <Card className="border border-border/80 bg-card/70">
+        <CardHeader className="py-2.5 px-4 border-b border-border/60">
+          <CardTitle className="text-xs font-semibold text-foreground">
             LLM Deep-Dive Analysis
           </CardTitle>
         </CardHeader>
@@ -239,13 +205,12 @@ export function LLMDeepDivePanel({
 
   if (score >= 80 && !deepDive) {
     return (
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <BrainCircuitIcon className="size-4" />
-            LLM Deep-Dive Analysis
-            <Badge variant="outline" className="ml-auto text-[10px]">
-              Auto
+      <Card className="border border-border/80 bg-card/70">
+        <CardHeader className="py-2.5 px-4 border-b border-border/60">
+          <CardTitle className="flex items-center justify-between text-xs font-semibold text-foreground">
+            <span>LLM Deep-Dive Analysis</span>
+            <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground font-normal">
+              Tự động giám sát
             </Badge>
           </CardTitle>
         </CardHeader>
@@ -256,203 +221,245 @@ export function LLMDeepDivePanel({
     )
   }
 
-  const priorityColor = deepDive ? PRIORITY_COLORS[deepDive.priority] : "#6c757d"
+  const priorityKey = deepDive?.priority ?? "low"
+  const pBadge = SEVERITY_BADGES[priorityKey] ?? SEVERITY_BADGES.low
 
   return (
-    <Card className="border-primary/20">
-      <CardHeader className="pb-2">
+    <Card className="border border-border/80 bg-card/70 shadow-xs overflow-hidden">
+      {/* Top Header */}
+      <CardHeader className="border-b border-border/70 bg-muted/20 py-2.5 px-4">
         <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <BrainCircuitIcon className="size-4" />
-            LLM Deep-Dive Analysis
+          <div className="flex items-center gap-2">
+            <SlidersIcon className="size-4 text-primary" />
+            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-foreground">
+              LLM Deep-Dive Analysis
+            </CardTitle>
             {isAutoTriggered && triggerLLM && (
-              <Badge variant="outline" className="text-[10px]">
-                Auto-triggered (HS &lt; 70)
+              <Badge variant="outline" className="text-[10px] font-mono border-amber-500/40 text-amber-400 bg-amber-500/10">
+                HS &lt; 70
               </Badge>
             )}
-          </CardTitle>
-          <div className="flex items-center gap-1">
+          </div>
+
+          <div className="flex items-center gap-1.5">
             <Tooltip>
-              <TooltipTrigger render={<Button variant="ghost" size="sm" className="size-8 p-0" />}>
-                <HelpCircleIcon className="size-4 text-muted-foreground" />
+              <TooltipTrigger render={<Button variant="ghost" size="sm" className="size-7 p-0" />}>
+                <HelpCircleIcon className="size-3.5 text-muted-foreground" />
               </TooltipTrigger>
-              <TooltipContent side="left" className="max-w-xs text-xs">
-                LLM analyzes health data to identify root causes and suggest fixes.
-                Auto-triggers when Health Score drops below 70.
+              <TooltipContent side="left" className="text-xs">
+                Tổng hợp tình trạng viễn trắc, phân tích nguyên nhân và đề xuất can thiệp.
               </TooltipContent>
             </Tooltip>
+
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              className="size-8 p-0"
+              className="h-7 gap-1.5 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
               onClick={exportJSON}
             >
-              <DownloadIcon className="size-4" />
+              <DownloadIcon className="size-3" />
+              <span>Xuất JSON</span>
             </Button>
+
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              className="size-8 p-0"
+              className="size-7 p-0"
               onClick={triggerDeepDive}
               disabled={isLoading}
             >
-              <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
+              <RefreshCwIcon className={cn("size-3", isLoading && "animate-spin")} />
             </Button>
           </div>
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-4">
+      <CardContent className="p-3.5 space-y-3.5">
         {isLoading && !deepDive ? (
           <LoadingSkeleton />
         ) : deepDive ? (
           <>
-            {/* Executive Summary */}
-            <div
-              className="rounded-lg border p-3"
-              style={{
-                borderColor: `${priorityColor}30`,
-                backgroundColor: `${priorityColor}05`,
-              }}
-            >
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  TÓM TẮT ĐIỀU HÀNH (EXECUTIVE SUMMARY)
-                </h4>
+            {/* 1. Thanh Chỉ số Kỹ thuật Nhanh (Executive KPI Strip) */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 rounded-lg border border-border/80 bg-background/70 p-2.5 text-xs font-mono">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] text-muted-foreground uppercase font-sans">Mức độ rủi ro</span>
+                <Badge variant="outline" className={cn("w-fit text-[10px] py-0 px-2 font-mono", pBadge.className)}>
+                  {pBadge.label.split(" ")[0]}
+                </Badge>
+              </div>
+
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] text-muted-foreground uppercase font-sans">Điểm sức khỏe (HS)</span>
+                <span className="font-bold text-foreground text-sm leading-tight">{score} / 100</span>
+              </div>
+
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] text-muted-foreground uppercase font-sans">Độ tin cậy AI</span>
                 <div className="flex items-center gap-2">
-                  <span
-                    className="text-xs font-medium"
-                    style={{ color: priorityColor }}
-                  >
-                    Độ tin cậy {Math.round(deepDive.confidence * 100)}%
+                  <span className="font-bold text-primary text-sm leading-tight">
+                    {Math.round(deepDive.confidence * 100)}%
                   </span>
-                  <span className="text-muted-foreground">|</span>
-                  <Badge
-                    variant="outline"
-                    className="text-[10px]"
-                    style={{
-                      borderColor: priorityColor,
-                      color: priorityColor,
-                    }}
-                  >
-                    {deepDive.priority.toUpperCase()}
-                  </Badge>
+                  <div className="h-1.5 w-14 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full bg-primary transition-all duration-300"
+                      style={{ width: `${Math.round(deepDive.confidence * 100)}%` }}
+                    />
+                  </div>
                 </div>
               </div>
-              <p className="mt-2 text-sm">{deepDive.summary}</p>
+
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] text-muted-foreground uppercase font-sans">Bất thường phát hiện</span>
+                <span className="font-bold text-foreground text-sm leading-tight">{anomalies.length} sự kiện</span>
+              </div>
             </div>
 
-            {/* Root Cause Analysis */}
-            {deepDive.explanation.length > 0 && (
-              <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  PHÂN TÍCH NGUYÊN NHÂN GỐC RỄ (ROOT CAUSE)
-                </h4>
-                <ul className="mt-2 space-y-1.5">
-                  {deepDive.explanation.map((exp, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm">
-                      <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />
-                      <span>{exp}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            {/* Diagnostic Summary Note */}
+            <div className="rounded border border-border/70 bg-muted/20 px-3 py-1.5 text-xs font-mono text-muted-foreground flex items-center justify-between">
+              <span>{deepDive.summary}</span>
+              <span className="text-[10px] font-sans text-muted-foreground">Tự động đối chiếu ngưỡng</span>
+            </div>
 
-            {/* Affected Components */}
-            {deepDive.affected_components.length > 0 && (
-              <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Affected Components
-                </h4>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {deepDive.affected_components.map((comp) => (
-                    <Badge
-                      key={comp}
-                      variant="secondary"
-                      className="font-mono text-[10px]"
-                    >
-                      {comp}
-                    </Badge>
-                  ))}
+            {/* 2. Bảng Phân tích Kỹ thuật & Sự cố Cụ thể (Engineering Incident Table) */}
+            <div className="grid gap-3.5 lg:grid-cols-12">
+              {/* Cột trái (7 cols): Danh sách Sự cố & Nguyên nhân kỹ thuật */}
+              <div className="lg:col-span-7 rounded-lg border border-border/80 bg-background/50 p-3 space-y-2.5">
+                <div className="flex items-center justify-between border-b border-border/60 pb-1.5">
+                  <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <ActivityIcon className="size-3.5 text-primary" />
+                    <span>Chi tiết Sự cố & Phân tích Nguyên nhân</span>
+                  </span>
+                  <span className="text-[10px] font-mono text-muted-foreground">Top {Math.min(anomalies.length, 4)}</span>
                 </div>
-              </div>
-            )}
 
-            {/* Recommended Fixes */}
-            {deepDive.suggestions.length > 0 && (
-              <div>
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    ĐỀ XUẤT HƯỚNG KHẮC PHỤC (RECOMMENDED FIXES)
-                  </h4>
-                </div>
-                <div className="mt-2 space-y-2">
-                  {deepDive.suggestions.map((suggestion, i) => (
-                    <Collapsible key={i}>
-                      <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-lg border border-border bg-card p-2.5 text-left transition-colors hover:bg-accent">
-                        <CheckCircleIcon className="size-4 shrink-0 text-green-500" />
-                        <span className="flex-1 text-sm">{suggestion}</span>
-                        <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground transition-transform ui-open:rotate-180" />
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="px-3 py-2">
-                        <p className="text-xs text-muted-foreground">
-                          Check the relevant configuration files and ROS2 parameters.
-                          Refer to Nav2 documentation for best practices.
-                        </p>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  ))}
-                </div>
-              </div>
-            )}
+                {anomalies.length > 0 ? (
+                  <div className="divide-y divide-border/40">
+                    {anomalies.slice(0, 4).map((a) => {
+                      const isHigh = a.severity === "critical" || a.severity === "high"
+                      return (
+                        <div
+                          key={a.id}
+                          onClick={() => onSelectAnomaly?.(a.id)}
+                          className="py-2 flex items-center justify-between gap-2 hover:bg-muted/30 px-1.5 rounded transition-colors cursor-pointer group"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span
+                              className={cn(
+                                "size-2 rounded-full shrink-0",
+                                a.severity === "critical" ? "bg-red-500"
+                                : a.severity === "high" ? "bg-orange-500"
+                                : a.severity === "medium" ? "bg-yellow-500"
+                                : "bg-emerald-500"
+                              )}
+                            />
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-xs font-semibold text-foreground truncate">
+                                  {a.title}
+                                </span>
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "font-mono text-[9px] px-1 py-0 uppercase",
+                                    isHigh ? "border-orange-500/40 text-orange-400" : "border-border text-muted-foreground"
+                                  )}
+                                >
+                                  {a.severity}
+                                </Badge>
+                              </div>
+                              <div className="text-[11px] text-muted-foreground font-mono truncate mt-0.5">
+                                Kênh: {a.topics.join(", ") || "Hệ thống"} · Conf: {Math.round((a.confidence ?? 0.8) * 100)}%
+                              </div>
+                            </div>
+                          </div>
 
-            {/* Related Detections */}
-            {anomalies.length > 0 && (
-              <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Related Detections
-                </h4>
-                <div className="mt-2 space-y-1">
-                  {anomalies.slice(0, 5).map((anomaly) => (
-                    <button
-                      key={anomaly.id}
-                      onClick={() => onSelectAnomaly?.(anomaly.id)}
-                      className="flex w-full items-center gap-2 rounded border border-border bg-card px-2.5 py-1.5 text-left transition-colors hover:bg-accent"
-                    >
-                      <span
-                        className="size-2 shrink-0 rounded-full"
-                        style={{ backgroundColor: SEVERITY_COLORS[anomaly.severity] }}
-                      />
-                      <span className="flex-1 truncate text-xs">{anomaly.title}</span>
-                      <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground" />
-                    </button>
-                  ))}
+                          <div className="flex items-center gap-1 text-[11px] text-primary group-hover:translate-x-0.5 transition-transform shrink-0 font-medium">
+                            <span>Chi tiết</span>
+                            <ChevronRightIcon className="size-3.5" />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="py-4 text-center text-xs text-muted-foreground font-mono">
+                    Không ghi nhận sự cố bất thường
+                  </div>
+                )}
+              </div>
+
+              {/* Cột phải (5 cols): Quy trình Can thiệp Kỹ thuật & Điều hướng */}
+              <div className="lg:col-span-5 rounded-lg border border-border/80 bg-background/50 p-3 flex flex-col justify-between space-y-2.5">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between border-b border-border/60 pb-1.5">
+                    <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <CheckCircle2Icon className="size-3.5 text-emerald-400" />
+                      <span>Quy trình Can thiệp Kỹ thuật</span>
+                    </span>
+                    <span className="text-[10px] font-mono text-muted-foreground">SOP</span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {deepDive.suggestions.map((suggestion, i) => (
+                      <div
+                        key={i}
+                        className="rounded border border-border/60 bg-muted/20 p-2 text-xs flex items-start gap-2"
+                      >
+                        <span className="font-mono font-bold text-muted-foreground text-[10px] rounded bg-background px-1 py-0.5 border border-border/50 shrink-0">
+                          {i + 1}
+                        </span>
+                        <span className="text-foreground text-[11px] leading-snug font-medium">
+                          {suggestion}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Direct Action Link */}
+                <div className="pt-2 border-t border-border/40">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (anomalies[0]?.id) {
+                        onSelectAnomaly?.(anomalies[0].id)
+                      }
+                      const el = document.getElementById("analysis-timeline-section")
+                      if (el) {
+                        el.scrollIntoView({ behavior: "smooth" })
+                      }
+                    }}
+                    className="w-full h-8 gap-2 text-xs font-medium text-foreground hover:bg-accent cursor-pointer shadow-xs"
+                  >
+                    <span>Mở Timeline & Duyệt lỗi bên dưới</span>
+                    <ArrowRightIcon className="size-3.5 text-primary" />
+                  </Button>
                 </div>
               </div>
-            )}
+            </div>
           </>
         ) : (
-          <div className="flex flex-col items-center justify-center p-6 text-center">
-            <BotIcon className="size-12 text-muted-foreground mb-3" />
-            <p className="text-sm text-muted-foreground">
-              Click to analyze health data with LLM
+          <div className="flex flex-col items-center justify-center p-4 text-center">
+            <SlidersIcon className="size-8 text-muted-foreground mb-2 opacity-50" />
+            <p className="text-xs text-muted-foreground">
+              Nhấp để tạo báo cáo chẩn đoán kỹ thuật cho toàn bộ phiên vận hành
             </p>
             <Button
-              className="mt-3"
+              className="mt-2.5 h-7.5 gap-1.5 text-xs font-medium cursor-pointer"
               size="sm"
               onClick={triggerDeepDive}
               disabled={isLoading}
             >
               {isLoading ? (
                 <>
-                  <LoaderIcon className="mr-2 size-4 animate-spin" />
-                  Analyzing...
+                  <LoaderIcon className="size-3 animate-spin" />
+                  <span>Đang tổng hợp...</span>
                 </>
               ) : (
                 <>
-                  <BrainCircuitIcon className="mr-2 size-4" />
-                  Ask LLM
+                  <SlidersIcon className="size-3" />
+                  <span>Kích hoạt LLM Deep-Dive</span>
                 </>
               )}
             </Button>

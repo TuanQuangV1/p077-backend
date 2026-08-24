@@ -40,10 +40,10 @@ function TopicBubbleCard({
 
   const statusLabel =
     topic.status === "zero"
-      ? "ZERO"
+      ? "RỖNG"
       : topic.status === "warning"
-      ? "WARN"
-      : "OK"
+      ? "CẢNH BÁO"
+      : "ỔN ĐỊNH"
 
   // Size based on percentage
   const size = Math.max(60, Math.min(100, topic.percentage * 1.5))
@@ -205,14 +205,14 @@ export function DataBandwidthPanel({
             <HardDriveIcon className="size-4" />
             Băng thông Dữ liệu (Data Bandwidth)
           </CardTitle>
-          <div className="flex gap-1">
+            <div className="flex gap-1">
             <Button
               variant={viewMode === "bubbles" ? "secondary" : "ghost"}
               size="sm"
               className="h-7 text-[10px]"
               onClick={() => setViewMode("bubbles")}
             >
-              Thẻ bọt (Bubbles)
+              Dạng thẻ (Bubbles)
             </Button>
             <Button
               variant={viewMode === "doughnut" ? "secondary" : "ghost"}
@@ -220,7 +220,7 @@ export function DataBandwidthPanel({
               className="h-7 text-[10px]"
               onClick={() => setViewMode("doughnut")}
             >
-              Doughnut
+              Biểu đồ tròn (Doughnut)
             </Button>
           </div>
         </div>
@@ -250,8 +250,8 @@ export function DataBandwidthPanel({
             <div className="flex-1">
               <p className="text-xs font-medium text-red-600 dark:text-red-400">
                 {payloadAnomalies.length > 0
-                  ? `${payloadAnomalies.length} bandwidth anomaly detected`
-                  : `${totalZeroCount} zero-byte messages`}
+                  ? `Phát hiện ${payloadAnomalies.length} bất thường băng thông`
+                  : `Phát hiện ${totalZeroCount} tin nhắn rỗng (0-byte)`}
               </p>
             </div>
             <Badge

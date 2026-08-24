@@ -68,7 +68,7 @@ function TFNodeComponent({
         <span className="text-xs font-semibold">{node.label}</span>
         {isRoot && (
           <span className="text-[9px] uppercase tracking-wider text-muted-foreground">
-            root
+            GỐC (ROOT)
           </span>
         )}
       </button>
@@ -91,7 +91,7 @@ function TFNodeComponent({
               className="text-[9px] font-medium uppercase"
               style={{ color }}
             >
-              {anomaly.severity}
+              {anomaly.severity === "critical" ? "Nghiêm trọng" : "Cảnh báo"}
             </span>
           </div>
           <p className="mt-1 text-[10px] text-muted-foreground">
@@ -175,9 +175,9 @@ export function TFTreeStatus({
       status: hasJump ? "jump" : hasGap ? "gap" : "healthy",
       anomalyId: hasJump || hasGap ? tfAnomalies[0]?.id : undefined,
       details: hasJump
-        ? "Frame re-parented"
+        ? "Khung bị nhảy tọa độ (Drift)"
         : hasGap
-        ? "Transform gap detected"
+        ? "Phát hiện đứt đoạn tọa độ (Gap)"
         : undefined,
     },
     {
@@ -272,7 +272,7 @@ export function TFTreeStatus({
         {tfAnomalies.length > 0 && (
           <div className="space-y-1.5 border-t border-border pt-3">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Anomalies
+              Sự cố phát hiện ({tfAnomalies.length})
             </span>
             {tfAnomalies.map((anomaly) => (
               <button
@@ -289,7 +289,7 @@ export function TFTreeStatus({
                 </span>
                 <Badge
                   variant="outline"
-                  className="text-[9px]"
+                  className="text-[9px] uppercase"
                   style={{
                     borderColor:
                       anomaly.severity === "critical"
@@ -301,7 +301,7 @@ export function TFTreeStatus({
                         : "#fd7e14",
                   }}
                 >
-                  {anomaly.severity}
+                  {anomaly.severity === "critical" ? "Nghiêm trọng" : "Cảnh báo"}
                 </Badge>
               </button>
             ))}
@@ -312,7 +312,7 @@ export function TFTreeStatus({
         {!hasAnyAnomaly && (
           <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
             <CheckCircleIcon className="size-4 text-green-500" />
-            <span>All transforms healthy</span>
+            <span className="font-medium text-emerald-400">Tất cả liên kết tọa độ hoạt động bình thường</span>
           </div>
         )}
       </CardContent>

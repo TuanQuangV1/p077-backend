@@ -39,6 +39,12 @@ export default async function globalSetup(): Promise<void> {
             )
         }
 
+        try {
+            await api.post("/api/v1/analysis/thresholds", { data: { thresholds: { frequency_gap_min_threshold_sec: 0.08, silent_node_min_span_sec: 0.3 } } })
+        } catch {
+            // ignore if not supported
+        }
+
         for (const datasetId of SEED_DATASETS) {
             const res = await api.post("/api/v1/analysis", { data: { rosbag_id: datasetId } })
             if (!res.ok()) {
