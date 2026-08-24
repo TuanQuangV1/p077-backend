@@ -92,6 +92,9 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.5.7"
+          # Self-hosted runner has no system node; the default CLI wrapper
+          # (#!/usr/bin/env node) exits 127. Use the real binary on PATH.
+          terraform_wrapper: false
 
       # Terraform must run BEFORE docker build/push: it creates the Artifact
       # Registry repositories and grants roles/artifactregistry.writer to the
