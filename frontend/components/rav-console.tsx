@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation"
 import {
     ActivityIcon, ArrowRightIcon, BotIcon, CircleAlertIcon,
     CpuIcon, DatabaseIcon, DownloadIcon, FileTextIcon, GaugeIcon,
-    HelpCircleIcon, PlayIcon, RefreshCwIcon, SearchIcon, ServerIcon, ShieldCheckIcon, Trash2Icon, UploadIcon,
+    HelpCircleIcon, MinusIcon, PlayIcon, PlusIcon, RefreshCwIcon, RotateCcwIcon, SearchIcon, ServerIcon, ShieldCheckIcon, SparklesIcon, Trash2Icon, UploadIcon, ZoomInIcon, ZoomOutIcon,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -23,9 +23,11 @@ import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { bytes, clock, compact, del, fetchWindowSummaries, fetcher, ms, post, uploadRosbag, type WindowSummaryRow } from "@/lib/api"
-import type { AIResult, Anomaly, AnalysisRun, LogEvent, ReviewStats, Rosbag, TopicStat, VllmRequest } from "@/lib/types"
+import type { AIResult, Anomaly, AnalysisRun, LogEvent, ReviewStats, Rosbag, Severity, TopicStat, VllmRequest } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 import { AnalysisHealthPanel } from "@/components/health/analysis-health-panel"
+import { VLLMObservability } from "@/components/vllm/vllm-observability"
 
 type Overview = { totals: Record<string, number>; topIssues: { label: string; count: number }[]; severity: { severity: string; count: number }[]; trend: { date: string; bags: number; anomalies: number; p95Ms: number; costUsd: number }[]; recentRuns: AnalysisRun[] }
 
@@ -181,6 +183,20 @@ export function RavConsole() {
     useEffect(() => { if (section === "vllm") { fetcher<any>("/api/vllm/metrics?windowMin=60").then(setMetrics); fetcher<{ items: VllmRequest[] }>('/api/vllm/requests').then((x) => setRequests(x.items)) } }, [section])
     useEffect(() => { if (section === "analysis") { fetcher<{ thresholds: Record<string, number> }>('/api/v1/analysis/thresholds').then((payload) => setThresholds(payload.thresholds)).catch(() => toast.error('Thresholds unavailable')) } }, [section])
 
+    const loadVllm = async () => {
+        try {
+            const [m, r] = await Promise.all([
+                fetcher<any>("/api/vllm/metrics?windowMin=60"),
+                fetcher<{ items: VllmRequest[] }>('/api/vllm/requests'),
+            ])
+            setMetrics(m)
+            setRequests(r.items)
+            toast.success("Đã làm mới dữ liệu đo lường vLLM")
+        } catch {
+            toast.error("Không thể tải thông số vLLM")
+        }
+    }
+
     const selectedAnomaly = anomalies.find((a) => a.id === selected) ?? anomalies[0]
     const selectedResult = aiResults.find((r) => r.anomalyId === selectedAnomaly?.id) ?? aiResults[0]
     const navigate = (href: string) => router.push(href)
@@ -265,29 +281,13 @@ export function RavConsole() {
         {section === "analysis" && <AnalysisWorkspace activeRun={activeRun} rosbag={bags.find(b => b.id === activeRun?.rosbagId) ?? null} anomalies={anomalies} logs={logs} selected={selected} setSelected={setSelected} lanes={timelineLanes} playhead={playhead} setPlayhead={setPlayhead} selectedResult={selectedResult} view={timelineView} setView={setTimelineView} topicFilter={topicFilter} setTopicFilter={setTopicFilter} timeRange={timeRange} setTimeRange={setTimeRange} thresholds={thresholds} setThresholds={setThresholds} savingThresholds={savingThresholds} setSavingThresholds={setSavingThresholds} onReviewed={handleReviewed} durationSec={timelineDuration} startSec={timelineStart} topics={topicStats} />}
         {section === "review" && <Review results={aiResults} anomalies={anomalies} onReviewed={handleReviewed} />}
         {section === "reports" && <ReportsEnhanced activeRun={activeRun} />}
-        {section === "vllm" && <Vllm metrics={metrics} requests={requests} />}
+        {section === "vllm" && <VLLMObservability metrics={metrics} requests={requests} onRefresh={loadVllm} />}
         {section === "architecture" && <Architecture />}
     </div></main>
 }
 
 function Review({ results, anomalies, onReviewed }: { results: AIResult[]; anomalies: Anomaly[]; onReviewed: (result: AIResult) => void }) { return <div className="grid gap-4 lg:grid-cols-2">{results.map((r) => <AIConclusion key={r.id} result={r} anomaly={anomalies.find((a) => a.id === r.anomalyId)} onReviewed={onReviewed} compact />)}</div> }
 function Reports({ overview }: { overview: Overview | null }) { return <SectionCard title="Report ledger" description="Auditable outputs generated from reviewed diagnosis"><div className="flex flex-col gap-3"><div className="flex items-center justify-between border-b border-border pb-3"><div><p className="text-sm font-medium">Warehouse navigation incident review</p><p className="font-mono text-[10px] text-muted-foreground">RPT-2026-071 · 3 key issues · 2 approvals</p></div><div className="flex gap-2"><Button variant="outline" size="sm"><DownloadIcon data-icon="inline-start" />JSON</Button><Button size="sm">Publish</Button></div></div><pre className="max-h-72 overflow-auto border border-border bg-muted/20 p-4 font-mono text-xs text-muted-foreground">{json({ generatedAt: "2026-07-31T09:00:00Z", anomalies: overview?.totals.anomalies ?? 0, recommendations: ["Isolate sensor VLAN", "Reserve controller CPU"] })}</pre></div></SectionCard> }
-function Vllm({ metrics, requests }: { metrics: any; requests: VllmRequest[] }) {
-    const [tab, setTab] = useState("metrics")
-    const [selectedRequest, setSelectedRequest] = useState<VllmRequest | null>(null)
-    const a = metrics?.aggregates
-    const errors = requests.filter((request) => request.status !== "ok")
-    return <>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><StatTile label="GPU utilization" value={a ? `${a.gpuUtil}%` : "--"} tone="primary" icon={<GaugeIcon className="size-4" />} /><StatTile label="VRAM" value={metrics?.current ? `${metrics.current.vramUsedGb.toFixed(1)}` : "--"} unit="/ 80 GB" /><StatTile label="Decode rate" value={a?.tokensPerSec ?? "--"} unit="tok/s" /><StatTile label="P95 latency" value={a?.p95 ?? "--"} unit="ms" /><StatTile label="Queue" value={a?.queueLen ?? "--"} unit="req" /></div>
-        <Tabs value={tab} onValueChange={setTab} className="w-full"><TabsList><TabsTrigger value="metrics">System metrics</TabsTrigger><TabsTrigger value="requests">Request logs</TabsTrigger><TabsTrigger value="errors">Errors <span className="ml-1 font-mono text-[10px]">{errors.length}</span></TabsTrigger></TabsList>
-            <TabsContent value="metrics"><div className="grid gap-4 xl:grid-cols-[1.1fr_1fr]"><SectionCard title="Inference health" description="Live performance window"><div className="grid grid-cols-2 gap-4 sm:grid-cols-4">{[["p50", a?.p50], ["p95", a?.p95], ["p99", a?.p99], ["requests/s", a?.rps]].map(([label, value]) => <div key={label as string} className="border-l-2 border-primary/50 pl-3"><p className="font-mono text-[10px] uppercase text-muted-foreground">{label}</p><p className="mt-1 font-mono text-xl">{value ?? "--"}</p></div>)}</div><div className="mt-5 h-24 border-b border-border"><div className="flex h-full items-end gap-1 px-1">{(metrics?.points ?? []).slice(-40).map((point: any, index: number) => <div key={index} className="flex-1 bg-primary/60" style={{ height: `${Math.max(8, point.gpuUtil)}%` }} />)}</div></div></SectionCard><SectionCard title="GPU runtime" description="vLLM engine capacity"><MetaRow label="engine" value={metrics?.gpu?.engine ?? "--"} /><MetaRow label="device" value={metrics?.gpu?.name ?? "--"} /><MetaRow label="max model length" value={metrics?.gpu?.maxModelLen ?? "--"} /><MetaRow label="KV cache" value={metrics?.gpu?.kvCacheUtil ? `${(metrics.gpu.kvCacheUtil * 100).toFixed(1)}%` : "--"} /><Progress className="mt-3" value={(metrics?.gpu?.kvCacheUtil ?? 0) * 100} /></SectionCard></div></TabsContent>
-            <TabsContent value="requests"><RequestLog requests={requests} onSelect={setSelectedRequest} /></TabsContent>
-            <TabsContent value="errors"><RequestLog requests={errors} onSelect={setSelectedRequest} empty="No VLLM errors in this window." /></TabsContent>
-        </Tabs>{selectedRequest ? <Card className="border-primary/40"><CardHeader className="flex-row items-center justify-between py-3"><CardTitle className="text-sm">Trace {selectedRequest.id}</CardTitle><Button variant="ghost" size="sm" onClick={() => setSelectedRequest(null)}>Close</Button></CardHeader><CardContent><div className="grid gap-2 sm:grid-cols-5">{[["input", selectedRequest.promptTokens], ["tokenizer", selectedRequest.tokenizeMs], ["prefill", selectedRequest.prefillMs], ["decode", selectedRequest.decodeMs], ["output", selectedRequest.completionTokens]].map(([label, value]) => <div key={label as string} className="border border-border p-3"><p className="font-mono text-[10px] uppercase text-muted-foreground">{label}</p><p className="mt-1 font-mono text-sm">{value}{label === "input" || label === "output" ? " tok" : " ms"}</p></div>)}</div><p className="mt-3 font-mono text-xs text-muted-foreground">{selectedRequest.promptPreview}</p></CardContent></Card> : null}
-    </>
-}
-
-function RequestLog({ requests, onSelect, empty = "No request logs." }: { requests: VllmRequest[]; onSelect: (request: VllmRequest) => void; empty?: string }) { return <SectionCard title="Request trace log" description="Select a request to inspect input â†’ tokenizer â†’ model â†’ output"><div className="flex flex-col divide-y divide-border">{requests.slice(0, 40).map((request) => <button key={request.id} onClick={() => onSelect(request)} className="py-2 text-left hover:bg-accent/40"><div className="flex items-center gap-2"><StatusLabel status={request.status} /><span className="min-w-0 flex-1 truncate font-mono text-[11px]">{request.promptPreview}</span><span className="font-mono text-[10px] text-muted-foreground">{ms(request.latencyMs)}</span></div><div className="mt-1 flex gap-2 pl-16 font-mono text-[10px] text-muted-foreground"><span>queue {request.queueMs}ms</span><span>prefill {request.prefillMs}ms</span><span>decode {request.decodeMs}ms</span></div></button>)}{requests.length === 0 ? <p className="py-8 text-sm text-muted-foreground">{empty}</p> : null}</div></SectionCard> }
 function Architecture() { return <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr]"><SectionCard title="Pipeline topology" description="Production boundary between capture, diagnosis, review, and observability"><div className="grid gap-3 sm:grid-cols-2">{[[DatabaseIcon, "Object storage", "rosbag2 / MCAP files"], [ServerIcon, "FastAPI worker", "parse â†’ index â†’ detect"], [BotIcon, "Agent + VLLM", "evidence-grounded diagnosis"], [ShieldCheckIcon, "Human review", "labelled feedback loop"]].map(([Icon, label, detail]) => <div key={label as string} className="flex items-start gap-3 border border-border p-3"><div className="grid size-8 shrink-0 place-items-center bg-primary/10 text-primary"><Icon className="size-4" /></div><div><p className="text-sm font-medium">{label as string}</p><p className="text-xs text-muted-foreground">{detail as string}</p></div></div>)}</div><div className="mt-4 flex flex-wrap items-center gap-2 font-mono text-[10px] text-muted-foreground"><Badge variant="outline">REST</Badge><ArrowRightIcon className="size-3" /><Badge variant="outline">WebSocket /stream</Badge><ArrowRightIcon className="size-3" /><Badge variant="outline">Next.js console</Badge></div></SectionCard><SectionCard title="Contract reference" description="Core API surfaces for the Python service"><pre className="overflow-auto font-mono text-xs leading-6 text-muted-foreground">{`POST /api/rosbags\nPOST /api/rosbags/:id/parse\nPOST /api/runs\nGET  /api/runs/:id/timeline\nGET  /api/runs/:id/ai\nPOST /api/feedback\nGET  /api/reports\nGET  /api/vllm/metrics\nWS   /api/stream`}</pre><Separator className="my-4" /><div className="flex flex-col gap-2 text-xs"><p><span className="text-primary">job.progress</span> parsing / analyzing stage updates</p><p><span className="text-primary">log</span> structured ROS2 log events</p><p><span className="text-primary">simulation.sync</span> timestamp and anomaly selection</p></div></SectionCard></div> }
 
 import { DashboardOverview } from "@/components/dashboard/dashboard-overview"
@@ -296,8 +296,42 @@ import { AnalysisControlBar } from "@/components/analysis/analysis-control-bar"
 
 function AnalysisWorkspace({ activeRun, rosbag, anomalies, logs, selected, setSelected, lanes, playhead, setPlayhead, selectedResult, view, setView, topicFilter, setTopicFilter, timeRange, setTimeRange, thresholds, setThresholds, savingThresholds, setSavingThresholds, onReviewed, durationSec, startSec, topics }: { activeRun: AnalysisRun | null; rosbag: Rosbag | null; anomalies: Anomaly[]; logs: LogEvent[]; selected: string | null; setSelected: (id: string) => void; lanes: Lane[]; playhead: number; setPlayhead: (time: number) => void; selectedResult?: AIResult; view: { from: number; to: number }; setView: (view: { from: number; to: number }) => void; topicFilter: string; setTopicFilter: (topic: string) => void; timeRange: string; setTimeRange: (range: string) => void; thresholds: Record<string, number>; setThresholds: (thresholds: Record<string, number>) => void; savingThresholds: boolean; setSavingThresholds: (saving: boolean) => void; onReviewed: (result: AIResult) => void; durationSec: number; startSec: number; topics: TopicStat[] }) {
     const duration = durationSec
+    const [severities, setSeverities] = useState<Severity[]>([])
     const visibleLanes = topicFilter === "all" ? lanes : lanes.filter((lane) => lane.topic === topicFilter)
     const visibleAnomalies = timeRange === "all" ? anomalies : anomalies.filter((item) => item.tSec <= startSec + Number(timeRange))
+
+    const zoomIn = () => {
+        const span = Math.max(view.to - view.from, 0.1)
+        const newSpan = Math.max(0.5, span * 0.6) // Thu hẹp khoảng thời gian (zoom in)
+        const center = (playhead >= view.from && playhead <= view.to) ? playhead : (view.from + view.to) / 2
+        let from = center - newSpan / 2
+        let to = center + newSpan / 2
+        if (from < 0) {
+            from = 0
+            to = Math.min(duration, newSpan)
+        } else if (to > duration) {
+            to = duration
+            from = Math.max(0, duration - newSpan)
+        }
+        setView({ from, to })
+    }
+
+    const zoomOut = () => {
+        const span = Math.max(view.to - view.from, 0.1)
+        const newSpan = Math.min(duration, span * 1.6) // Mở rộng khoảng thời gian (zoom out)
+        const center = (playhead >= view.from && playhead <= view.to) ? playhead : (view.from + view.to) / 2
+        let from = center - newSpan / 2
+        let to = center + newSpan / 2
+        if (from < 0) {
+            from = 0
+            to = Math.min(duration, newSpan)
+        } else if (to > duration) {
+            to = duration
+            from = Math.max(0, duration - newSpan)
+        }
+        setView({ from, to })
+    }
+
     const saveThresholds = async () => {
         setSavingThresholds(true)
         try {
@@ -310,7 +344,7 @@ function AnalysisWorkspace({ activeRun, rosbag, anomalies, logs, selected, setSe
             setSavingThresholds(false)
         }
     }
-    return <div className="flex min-h-[680px] flex-col gap-3">
+    return <div className="flex min-h-[680px] flex-col gap-4">
         <AnalysisControlBar
             activeRun={activeRun}
             lanes={lanes}
@@ -327,34 +361,162 @@ function AnalysisWorkspace({ activeRun, rosbag, anomalies, logs, selected, setSe
             savingThresholds={savingThresholds}
             saveThresholds={saveThresholds}
         />
-        <AnalysisHealthPanel activeRunId={activeRun?.id ?? null} rosbag={rosbag} anomalies={anomalies} logs={logs} topics={topics} onSelectAnomaly={(id) => { setSelected(id); setPlayhead(anomalies.find(a => a.id === id)?.tSec ?? 0) }} onSeek={setPlayhead} />
-        <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[230px_minmax(0,1fr)_380px]">
-            <Card className="min-h-0 overflow-hidden">
-                <CardHeader className="border-b border-border py-3">
-                    <CardTitle className="text-sm">Detections <span className="font-mono text-[10px] text-muted-foreground">{visibleAnomalies.length}</span></CardTitle>
+        <AnalysisHealthPanel
+            activeRunId={activeRun?.id ?? null}
+            rosbag={rosbag}
+            anomalies={anomalies}
+            logs={logs}
+            topics={topics}
+            onSelectAnomaly={(id) => {
+                setSelected(id)
+                const a = anomalies.find(item => item.id === id)
+                if (a) setPlayhead(a.tSec)
+            }}
+            onSeek={setPlayhead}
+        />
+
+        {/* Bố cục Chữ L (L-Layout) chuẩn công nghiệp */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start" id="analysis-timeline-section">
+            {/* Cột Trái (4/12 cols): Danh sách Bất thường phát hiện (Detections Stream) */}
+            <Card className="lg:col-span-4 flex flex-col border border-border/80 bg-card/60 shadow-xs overflow-hidden h-full min-h-[580px] max-h-[660px]">
+                <CardHeader className="border-b border-border/70 py-2.5 px-4 bg-muted/20 flex flex-row items-center justify-between shrink-0">
+                    <CardTitle className="text-xs font-semibold uppercase tracking-wider text-foreground">
+                        Bất thường phát hiện
+                    </CardTitle>
+                    <Badge variant="outline" className="font-mono text-[10px] font-bold">
+                        {visibleAnomalies.length} sự kiện
+                    </Badge>
                 </CardHeader>
-                <AnomalyList anomalies={visibleAnomalies} selectedId={selected} severities={[]} onSeveritiesChange={() => { }} onSelect={(anomaly) => { setSelected(anomaly.id); setPlayhead(anomaly.tSec) }} />
+                <div className="flex-1 min-h-0">
+                    <AnomalyList
+                        anomalies={visibleAnomalies}
+                        selectedId={selected}
+                        severities={severities}
+                        onSeveritiesChange={setSeverities}
+                        onSelect={(anomaly) => {
+                            setSelected(anomaly.id)
+                            setPlayhead(anomaly.tSec)
+                        }}
+                    />
+                </div>
             </Card>
-            <Card className="min-w-0 overflow-hidden">
-                <CardHeader className="flex-row items-center justify-between border-b border-border py-3">
-                    <div>
-                        <CardTitle className="text-sm">Message timeline</CardTitle>
-                        <p className="font-mono text-[10px] text-muted-foreground">{activeRun?.rosbagName ?? "Loading run"} · drag scrub · shift-drag pan</p>
-                    </div>
-                    <Badge variant="outline" data-testid="timeline-playhead" className="font-mono text-[10px]">{clock(playhead)}</Badge>
-                </CardHeader>
-                <CardContent className="p-0 pt-3">
-                    <TimelineCanvas durationSec={duration} lanes={visibleLanes} anomalies={visibleAnomalies} playhead={playhead} view={view} selectedAnomalyId={selected} onScrub={setPlayhead} onViewChange={setView} onSelectAnomaly={setSelected} />
-                </CardContent>
-            </Card>
-            <div className="min-h-0 overflow-auto space-y-3">
-                {selectedResult ? (
-                    <AIConclusion result={selectedResult} anomaly={visibleAnomalies.find((item) => item.id === selectedResult.anomalyId)} onSeek={setPlayhead} onReviewed={onReviewed} />
-                ) : (
-                    <Card>
-                        <CardContent className="p-5 text-sm text-muted-foreground">Select a detection to inspect the agent conclusion.</CardContent>
-                    </Card>
-                )}
+
+            {/* Cột Phải (8/12 cols): 2 Tầng gồm Timeline ở trên & Chẩn đoán AI ở dưới */}
+            <div className="lg:col-span-8 flex flex-col gap-4 min-w-0">
+                {/* Tầng 1: Trục Thời Gian Viễn Trắc (Message Timeline) */}
+                <Card className="border border-border/80 bg-card/60 shadow-xs overflow-hidden">
+                    <CardHeader className="flex flex-row items-center justify-between border-b border-border/70 py-2.5 px-4 bg-muted/20 shrink-0">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                            <CardTitle className="text-xs font-semibold uppercase tracking-wider text-foreground truncate">
+                                Trục Thời Gian Viễn Trắc
+                            </CardTitle>
+                            <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground hidden sm:inline-flex truncate max-w-[150px]">
+                                {activeRun?.rosbagName ?? "Loading run"}
+                            </Badge>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                            {/* Cụm Nút Phóng to (+) và Thu nhỏ (-) Trục thời gian */}
+                            <div className="flex items-center rounded-md border border-border/70 bg-background/60 p-0.5 shadow-2xs">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-6 p-0 hover:bg-muted text-foreground cursor-pointer"
+                                    onClick={zoomIn}
+                                    title="Phóng to trục thời gian (Zoom In +)"
+                                >
+                                    <PlusIcon className="size-3.5" />
+                                    <span className="sr-only">Zoom in</span>
+                                </Button>
+                                <div className="h-3.5 w-px bg-border/60 mx-0.5" />
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-6 p-0 hover:bg-muted text-foreground cursor-pointer"
+                                    onClick={zoomOut}
+                                    title="Thu nhỏ trục thời gian (Zoom Out -)"
+                                >
+                                    <MinusIcon className="size-3.5" />
+                                    <span className="sr-only">Zoom out</span>
+                                </Button>
+                            </div>
+
+                            {/* Cụm Nút Preset Zoom Nhanh */}
+                            <div className="flex items-center gap-1">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-6 px-2 text-[10px] font-mono cursor-pointer"
+                                    onClick={() => setView({ from: Math.max(0, playhead - 5), to: Math.min(duration, playhead + 5) })}
+                                    title="Phóng to 10s xung quanh vị trí hiện tại"
+                                >
+                                    ±5s
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-6 px-2 text-[10px] font-mono cursor-pointer"
+                                    onClick={() => setView({ from: Math.max(0, playhead - 15), to: Math.min(duration, playhead + 15) })}
+                                    title="Phóng to 30s xung quanh vị trí hiện tại"
+                                >
+                                    ±15s
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-6 px-2 text-[10px] font-mono cursor-pointer"
+                                    onClick={() => setView({ from: 0, to: duration })}
+                                    title="Xem toàn bộ thời gian rosbag"
+                                >
+                                    Toàn bộ
+                                </Button>
+                            </div>
+                            <Badge variant="secondary" data-testid="timeline-playhead" className="font-mono text-xs font-bold px-2 py-0.5 border border-primary/30 text-primary">
+                                ⏱ {clock(playhead)}
+                            </Badge>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="p-0 pt-2 pb-2">
+                        <TimelineCanvas
+                            durationSec={duration}
+                            lanes={visibleLanes}
+                            anomalies={visibleAnomalies}
+                            playhead={playhead}
+                            view={view}
+                            selectedAnomalyId={selected}
+                            onScrub={setPlayhead}
+                            onViewChange={setView}
+                            onSelectAnomaly={(id) => {
+                                setSelected(id)
+                                const a = anomalies.find(item => item.id === id)
+                                if (a) setPlayhead(a.tSec)
+                            }}
+                        />
+                    </CardContent>
+                </Card>
+
+                {/* Tầng 2: Kết luận & Chẩn đoán AI (AI Conclusion & HITL Review) */}
+                <div className="min-h-0 flex flex-col">
+                    {selectedResult ? (
+                        <AIConclusion
+                            result={selectedResult}
+                            anomaly={visibleAnomalies.find((item) => item.id === selectedResult.anomalyId)}
+                            onSeek={setPlayhead}
+                            onReviewed={onReviewed}
+                        />
+                    ) : (
+                        <Card className="flex flex-1 flex-col items-center justify-center border border-dashed border-border/80 bg-card/40 p-8 text-center min-h-[340px]">
+                            <div className="flex flex-col items-center gap-2.5 max-w-sm">
+                                <div className="size-10 rounded-full bg-muted/40 border border-border flex items-center justify-center text-muted-foreground">
+                                    <SparklesIcon className="size-5" />
+                                </div>
+                                <span className="text-sm font-semibold text-foreground">Chưa chọn sự cố bất thường</span>
+                                <p className="text-xs text-muted-foreground leading-relaxed">
+                                    Hãy nhấp vào một sự cố ở danh sách bên trái hoặc trên biểu đồ Timeline để xem phân tích nguyên nhân gốc rễ và phê duyệt kết luận của AI.
+                                </p>
+                            </div>
+                        </Card>
+                    )}
+                </div>
             </div>
         </div>
     </div>

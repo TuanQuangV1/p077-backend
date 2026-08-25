@@ -48,12 +48,14 @@ export function AIConclusion({
   onSeek,
   onReviewed,
   compact = false,
+  className,
 }: {
   result: AIResult
   anomaly?: Anomaly
   onSeek?: (t: number) => void
   onReviewed?: (result: AIResult) => void
   compact?: boolean
+  className?: string
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(result.rootCause)
@@ -96,7 +98,7 @@ export function AIConclusion({
   const reviewed = result.reviewStatus !== "pending"
 
   return (
-    <Card className={cn("gap-3 py-4", compact && "border-border/70")}>
+    <Card className={cn("gap-3 py-4", compact && "border-border/70", className)}>
       <CardHeader className="gap-2 px-4">
         <div className="flex flex-wrap items-center gap-2">
           {anomaly ? <SeverityBadge severity={anomaly.severity} /> : null}
@@ -231,33 +233,51 @@ export function AIConclusion({
         ) : null}
       </CardContent>
 
-      <CardFooter className="flex flex-wrap items-center gap-2 px-4">
+      <CardFooter className="flex flex-wrap items-center justify-between gap-3 border-t border-border/70 bg-muted/10 px-4 py-3">
         {editing ? (
-          <>
-            <Button size="sm" onClick={() => submit("edited")} disabled={busy}>
-              <CheckIcon data-icon="inline-start" />
-              Lưu chỉnh sửa
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={() => submit("edited")} disabled={busy} className="cursor-pointer gap-1.5">
+              <CheckIcon className="size-3.5" />
+              <span>Lưu chỉnh sửa</span>
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={busy}>
+            <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={busy} className="cursor-pointer">
               Hủy
             </Button>
-          </>
+          </div>
         ) : (
           <>
-            <ButtonGroup>
-              <Button size="sm" variant="outline" onClick={() => submit("approved")} disabled={busy}>
-                <CheckIcon data-icon="inline-start" className="text-ok" />
-                Phê duyệt (Approve)
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => submit("approved")}
+                disabled={busy}
+                className="gap-1.5 border-emerald-500/40 bg-emerald-500/10 text-xs font-semibold text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300 transition-colors cursor-pointer"
+              >
+                <CheckIcon className="size-3.5 text-emerald-400" />
+                <span>Phê duyệt (Approve)</span>
               </Button>
-              <Button size="sm" variant="outline" onClick={() => submit("rejected")} disabled={busy}>
-                <XIcon data-icon="inline-start" className="text-critical" />
-                Từ chối (Reject)
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => submit("rejected")}
+                disabled={busy}
+                className="gap-1.5 border-rose-500/40 bg-rose-500/10 text-xs font-semibold text-rose-400 hover:bg-rose-500/20 hover:text-rose-300 transition-colors cursor-pointer"
+              >
+                <XIcon className="size-3.5 text-rose-400" />
+                <span>Từ chối (Reject)</span>
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setEditing(true)} disabled={busy}>
-                <PencilIcon data-icon="inline-start" />
-                Sửa đổi (Correct)
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setEditing(true)}
+                disabled={busy}
+                className="gap-1.5 border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+              >
+                <PencilIcon className="size-3.5" />
+                <span>Sửa đổi (Edit)</span>
               </Button>
-            </ButtonGroup>
+            </div>
             <span className="ml-auto font-mono text-[10px] text-muted-foreground">{result.vllmRequestId}</span>
           </>
         )}
