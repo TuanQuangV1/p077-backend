@@ -17,5 +17,4 @@ eval/
 *.md
 !README.md
 .dockerignore
-Dockerfile
 docker-compose.yml
