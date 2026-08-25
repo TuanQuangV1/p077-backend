@@ -29,10 +29,10 @@ secrets/
 .DS_Store
 Thumbs.db
 
-# Data (never commit large databases, allow demo datasets)
-data/*.db
-data/*.sqlite3
+# Data (allow pre-seeded runs.db and demo datasets)
+!data/runs.db
 !data/*/*.mcap
+!data/*/*.db3
 
 
 # Logs
