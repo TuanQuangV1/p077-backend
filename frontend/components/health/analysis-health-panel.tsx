@@ -6,17 +6,16 @@ import { AlertCircleIcon, LoaderIcon } from "lucide-react"
 import { HealthGauge, HealthScoreCard } from "@/components/health/health-gauge"
 import { LLMDeepDivePanel } from "@/components/health/llm-deep-dive-panel"
 import { TopicHealthTable } from "@/components/health/topic-health-table"
-import { LogSeverityPanel } from "@/components/health/log-severity-panel"
 import { TFTreeStatus } from "@/components/health/tf-tree-status"
 import { LatencyJitterPanel } from "@/components/health/latency-jitter-panel"
 import { DataBandwidthPanel } from "@/components/health/data-bandwidth-panel"
-import { TimelineDensityHeatmap } from "@/components/health/timeline-density-heatmap"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
 import { ChevronDownIcon } from "lucide-react"
 import { fetcher } from "@/lib/api"
 import { filterByGroup, ungrouped } from "@/lib/anomaly-groups"
+import { computeSystemMetrics } from "@/lib/health-engine"
 import type { Anomaly, HealthSummary, LogEvent, Rosbag, TopicStat } from "@/lib/types"
 
 interface AnalysisHealthPanelProps {
@@ -52,35 +51,37 @@ export function AnalysisHealthPanel({
       return
     }
 
+    let isMounted = true
     setIsLoading(true)
-    fetcher<{ health: HealthSummary } | HealthSummary>(`/api/runs/${activeRunId}/health`)
-      .then((res) => setHealth("health" in res ? res.health : res))
-      .catch((err) => {
-        console.error("Failed to fetch health:", err)
-        setHealth(null)
+
+    fetcher<{ health?: HealthSummary } & HealthSummary>(`/api/v1/analysis/${activeRunId}/health`)
+      .then((data) => {
+        if (isMounted) {
+          setHealth(data.health ?? data)
+          setIsLoading(false)
+        }
       })
-      .finally(() => setIsLoading(false))
+      .catch((err) => {
+        console.error("Failed to fetch health summary:", err)
+        if (isMounted) {
+          setHealth(null)
+          setIsLoading(false)
+        }
+      })
+
+    return () => {
+      isMounted = false
+    }
   }, [activeRunId])
 
-  // Group anomalies by type
+  // Topics: prop > fallback to empty
+  const topics = topicsProp ?? []
+
+  // Group anomalies by domain
   const tfAnomalies = filterByGroup("transform", anomalies)
-  const logAnomalies = filterByGroup("logs", anomalies)
   const latencyAnomalies = filterByGroup("timing", anomalies)
   const payloadAnomalies = filterByGroup("payload", anomalies)
-  // Throughput detections are shown per topic in TopicHealthTable, so they need
-  // no group of their own here; anything matching no group at all is surfaced
-  // below rather than disappearing from the dashboard.
   const otherAnomalies = ungrouped(anomalies)
-
-  // Find worst drop topic
-  const topics: TopicStat[] = topicsProp?.length ? topicsProp : (rosbag?.topics ?? [])
-  let worstDrop = { topic: null as string | null, pct: 0 }
-  for (const t of topics) {
-    const dropPct = Math.round(t.dropRate * 100)
-    if (dropPct > worstDrop.pct) {
-      worstDrop = { topic: t.name, pct: dropPct }
-    }
-  }
 
   if (isLoading) {
     return (
@@ -152,78 +153,68 @@ export function AnalysisHealthPanel({
         </button>
         <CollapsibleContent>
           <CardContent className="space-y-4">
-            {/* KPI Cards Row */}
-            <HealthScoreCard
-              score={health.health_score}
-              status={health.status}
-              worstSeverity={health.summary?.worst_severity ?? null}
-              topDropPct={worstDrop.pct}
-              topDropTopic={worstDrop.topic}
-              duration={durationSec}
-              messageCount={rosbag?.messageCount ?? 0}
-            />
+            {/* Row 1: 5 KPI Cards */}
+            {(() => {
+              const systemMetrics = computeSystemMetrics({
+                rosbag,
+                topics,
+                anomalies,
+                logs,
+                health,
+              })
+              return <HealthScoreCard metrics={systemMetrics} />
+            })()}
 
-            {/* Main Grid */}
-            <div className="grid gap-4 lg:grid-cols-2">
-              {/* Left Column */}
-              <div className="space-y-4">
-                {/* Health Gauge + TF Tree */}
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="flex justify-center">
-                    <HealthGauge
-                      score={health.health_score}
-                      status={health.status}
-                      size="md"
-                    />
-                  </div>
-                  <TFTreeStatus
-                    tfAnomalies={tfAnomalies}
-                    onSelectAnomaly={onSelectAnomaly}
+            {/* Row 2: 3 High-Level Overview Cards (Harmonious Executive Row) */}
+            <div className="grid gap-4 md:grid-cols-3">
+              {/* Card 1: Health Gauge */}
+              <Card className="flex flex-col border border-border/70 bg-card/60">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold tracking-wide">
+                    Điểm Sức khỏe Tổng quan
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-1 items-center justify-center py-4">
+                  <HealthGauge
+                    score={health.health_score}
+                    status={health.status}
+                    size="md"
                   />
-                </div>
+                </CardContent>
+              </Card>
 
-                {/* Topic Health Table */}
-                <TopicHealthTable
-                  topics={topics}
-                  anomalies={anomalies}
-                  onSelectAnomaly={onSelectAnomaly}
-                />
+              {/* Card 2: TF Tree Status */}
+              <TFTreeStatus
+                tfAnomalies={tfAnomalies}
+                onSelectAnomaly={onSelectAnomaly}
+              />
 
-                {/* Latency + Data Bandwidth */}
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <LatencyJitterPanel
-                    latencyAnomalies={latencyAnomalies}
-                    durationSec={durationSec}
-                  />
-                  <DataBandwidthPanel
-                    topics={topics}
-                    payloadAnomalies={payloadAnomalies}
-                  />
-                </div>
-              </div>
-
-              {/* Right Column */}
-              <div className="space-y-4">
-                {/* Log Severity */}
-                <LogSeverityPanel
-                  logs={logs}
-                  anomalies={logAnomalies}
-                />
-
-                {/* Timeline Heatmap */}
-                <TimelineDensityHeatmap
-                  anomalies={anomalies}
-                  durationSec={durationSec}
-                  onSelectAnomaly={onSelectAnomaly}
-                  onRangeSelect={(from, to) => onSeek?.(from)}
-                />
-
-                {/* Group Scores Summary */}
-                <GroupScoresSummary health={health} />
-              </div>
+              {/* Card 3: Group Scores Summary */}
+              <GroupScoresSummary health={health} />
             </div>
 
-            {/* LLM Deep-Dive Panel */}
+            {/* Row 3: Sức khỏe Cảm biến (Topic Health) - Nguyên 1 hàng ngang full width */}
+            <div className="w-full">
+              <TopicHealthTable
+                topics={topics}
+                anomalies={anomalies}
+                onSelectAnomaly={onSelectAnomaly}
+              />
+            </div>
+
+            {/* Row 4: Độ trễ & Băng thông (Latency & Bandwidth) - 2 cột nằm ngang song song 50/50 */}
+            <div className="grid gap-4 md:grid-cols-2">
+              <LatencyJitterPanel
+                latencyAnomalies={latencyAnomalies}
+                durationSec={durationSec}
+              />
+              <DataBandwidthPanel
+                topics={topics}
+                payloadAnomalies={payloadAnomalies}
+              />
+            </div>
+
+            {/* Row 4: LLM Deep-Dive Panel */}
             <LLMDeepDivePanel
               health={health}
               activeRunId={activeRunId}
@@ -243,6 +234,13 @@ function HealthBadge({ score, status }: { score: number; status: string }) {
     : status === "yellow" ? "#ffc107"
     : "#dc3545"
 
+  const label =
+    status === "green" ? "TỐT"
+    : status === "yellow" ? "SUY GIẢM"
+    : "NGHIÊM TRỌNG"
+
+  const scoreVal = typeof score === "number" && !isNaN(score) ? Math.round(score) : (status === "green" ? 100 : 70)
+
   return (
     <div
       className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold"
@@ -256,72 +254,58 @@ function HealthBadge({ score, status }: { score: number; status: string }) {
         className="size-2 rounded-full"
         style={{ backgroundColor: color }}
       />
-      <span>HS {score}</span>
-      <span className="text-muted-foreground">|</span>
-      <span>
-        {status === "green" ? "HEALTHY"
-          : status === "yellow" ? "DEGRADED"
-          : "INCIDENT"}
-      </span>
+      <span>HS {scoreVal} | {label}</span>
     </div>
   )
 }
 
 function GroupScoresSummary({ health }: { health: HealthSummary }) {
-  const groups = [
-    { key: "frequency", label: "Frequency", icon: "Hz" },
-    { key: "tf", label: "TF Tree", icon: "TF" },
-    { key: "log", label: "Log", icon: "LOG" },
-    { key: "latency", label: "Latency", icon: "LAT" },
-    { key: "payload", label: "Payload", icon: "PLD" },
-  ]
+  const groups = health?.summary?.groups ?? {}
+
+  const groupLabels: Record<string, { label: string; icon: string }> = {
+    frequency: { label: "Tần số (Frequency)", icon: "Hz" },
+    tf: { label: "Cây Tọa độ (TF Tree)", icon: "TF" },
+    log: { label: "Nhật ký (Log)", icon: "LOG" },
+    latency: { label: "Độ trễ (Latency)", icon: "LAT" },
+    payload: { label: "Dung lượng (Payload)", icon: "PLD" },
+  }
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Group Scores</CardTitle>
+    <Card className="flex flex-col border border-border/70 bg-card/60">
+      <CardHeader className="py-2.5 px-3.5">
+        <CardTitle className="text-xs font-semibold">
+          Phân bố Điểm Nhóm (Group Scores)
+        </CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-2">
-          {groups.map((g) => {
-            const data = health.summary.groups[g.key]
-            if (!data) return null
-            const score = data.score
-            const color =
-              score >= 80 ? "#28a745"
-              : score >= 60 ? "#ffc107"
-              : "#dc3545"
+      <CardContent className="space-y-2 py-2 px-3.5">
+        {Object.entries(groups).map(([key, data]) => {
+          const info = groupLabels[key] || { label: key, icon: key }
+          const score = data.score
+          const color =
+            score >= 80 ? "bg-ok"
+            : score >= 60 ? "bg-warn"
+            : "bg-danger"
 
-            return (
-              <div key={g.key} className="space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="flex items-center gap-2">
-                    <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[9px]">
-                      {g.icon}
-                    </span>
-                    {g.label}
+          return (
+            <div key={key} className="space-y-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="flex items-center gap-1 text-muted-foreground">
+                  <span className="font-mono text-[9px] font-semibold text-primary">
+                    {info.icon}
                   </span>
-                  <span className="font-mono tabular-nums" style={{ color }}>
-                    {score.toFixed(1)}/100
-                  </span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{
-                      width: `${score}%`,
-                      backgroundColor: color,
-                    }}
-                  />
-                </div>
-                <div className="flex justify-between text-[9px] text-muted-foreground">
-                  <span>{data.detection_count} detections</span>
-                  <span>weight: {data.weight}</span>
-                </div>
+                  <span>{info.label}</span>
+                </span>
+                <span className="font-mono font-medium">{score.toFixed(1)}/100</span>
               </div>
-            )
-          })}
-        </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className={`h-full transition-all ${color}`}
+                  style={{ width: `${score}%` }}
+                />
+              </div>
+            </div>
+          )
+        })}
       </CardContent>
     </Card>
   )

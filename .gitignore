@@ -85,6 +85,7 @@ terraform/gcp/.terraform/
 
 nginx/certs/
 .opencode/plans/
+*.exe
 crash.*.log
 *.tfvars
 !*.tfvars.example
