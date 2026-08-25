@@ -29,10 +29,11 @@ secrets/
 .DS_Store
 Thumbs.db
 
-# Data (never commit large data)
-data/
-*.db
-*.sqlite3
+# Data (never commit large databases, allow demo datasets)
+data/*.db
+data/*.sqlite3
+!data/*/*.mcap
+
 
 # Logs
 # Anchored to the repo root: an unanchored `logs/` also swallowed the
