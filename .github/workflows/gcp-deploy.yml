@@ -85,6 +85,8 @@ jobs:
             artifactregistry.googleapis.com \
             storage.googleapis.com \
             iam.googleapis.com \
+            iap.googleapis.com \
+            cloudresourcemanager.googleapis.com \
             --project=${{ env.GCP_PROJECT_ID }} || true
 
       - name: Setup Terraform

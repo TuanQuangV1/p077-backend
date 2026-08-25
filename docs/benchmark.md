@@ -242,4 +242,4 @@ LLM không cho kết quả giống hệt nhau giữa các lượt. Cấu hình c
 
 ---
 
-*Script: `scripts/eval_root_cause.py` · Dữ liệu: `~/ros2_doctor_ws/bags/` · Kế hoạch kỹ thuật chi tiết: `plan_llm.md`*
+*Script: `scripts/eval_root_cause.py` · Dữ liệu: `~/ros2_doctor_ws/bags/`*

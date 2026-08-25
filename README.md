@@ -26,6 +26,23 @@ Robot ghi lại dữ liệu cảm biến dưới dạng rosbag, nhưng việc t�
 - Run detail: danh sách anomaly, timeline, log stream, kết quả AI + review
 - Dashboard overview: tổng quan metrics, top issues, severity, xu hướng, recent runs
 
+## 📊 Benchmark
+
+Đo trên 48 bản ghi ROS 2 thật (38 bag tiêm 56 lỗi + 10 bag sạch),
+n=3 lượt, `gpt-4.1` — median [min–max]:
+
+| Chỉ số | Giá trị |
+|---|---|
+| Phát hiện lỗi | **98.2%** (55/56 lỗi tiêm) |
+| Báo nhầm trên bag sạch | **0.2 cảnh báo/bag** |
+| Root cause đúng | **87.7%** [87.7–89.2] (baseline ban đầu: 44.9%) |
+| Mỗi lỗi có chẩn đoán riêng | **82.1%** [82.1–83.9] |
+| Trần lý thuyết (cụm chứa manh mối) | **96.9%** |
+| Chi phí một lượt chạy đủ 48 bag | ~0.48 USD |
+
+Tái lập: `python scripts/eval_root_cause.py --runs 3` ·
+Phương pháp & lịch sử các vòng tối ưu: [docs/benchmark.md](docs/benchmark.md)
+
 ## 🏗️ Tech Stack
 
 | Layer | Công nghệ |
@@ -125,13 +142,13 @@ pnpm install
 pnpm dev
 ```
 
-#### Option B: Docker Compose (Local & Production Simulation)
+#### Option B: Docker Compose (Local)
 ```bash
 # Development (Hot reload):
 docker compose --profile dev up --build
 
-# Production Simulation Local:
-docker compose -f docker-compose.prod.yml up --build
+# Production: deploy tự động lên VM GCP qua CI/CD khi merge vào `main`
+# (xem .github/workflows/gcp-deploy.yml và scripts/gcp/deploy.sh)
 ```
 
 ---

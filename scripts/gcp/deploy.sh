@@ -12,6 +12,17 @@ cd /opt/app
 export BACKEND_IMAGE
 export FRONTEND_IMAGE
 
+# Authenticate Docker against Artifact Registry using the VM service account
+# token from the metadata server (SA needs roles/artifactregistry.reader).
+# Token lives ~1h, so re-login on every deploy. The registry host is derived
+# from the backend image URI (first path segment before the first slash).
+REGISTRY_HOST="${BACKEND_IMAGE%%/*}"
+log "authenticating docker against ${REGISTRY_HOST}"
+TOKEN=$(curl -sS -H "Metadata-Flavor: Google" \
+  "http://metadata.google.internal/computeInstance/v1/instance/service-accounts/default/token")
+printf '%s' "$TOKEN" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])' \
+  | docker login -u oauth2 --password-stdin "$REGISTRY_HOST"
+
 echo "[deploy] pulling backend=${BACKEND_IMAGE}"
 echo "[deploy] pulling frontend=${FRONTEND_IMAGE}"
 
