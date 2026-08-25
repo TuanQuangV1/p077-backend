@@ -17,11 +17,9 @@ RUN useradd --create-home appuser && \
     mkdir -p /app/data && \
     chown -R appuser:appuser /app
 
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+USER appuser
 
 ENV PORT=8000
 EXPOSE 8000
 
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["sh", "-c", "uvicorn src.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
