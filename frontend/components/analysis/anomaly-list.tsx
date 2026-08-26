@@ -37,7 +37,7 @@ export function AnomalyList({
       <div className="flex flex-col gap-2 border-b border-border/70 px-3 py-2 bg-muted/10">
         <div className="flex items-center justify-between gap-2">
           <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            Lọc theo mức độ (Severity)
+            Lọc theo mức độ nghiêm trọng
           </span>
           <Badge variant="secondary" className="tnum font-mono text-[10px]">
             {visible.length}/{anomalies.length}

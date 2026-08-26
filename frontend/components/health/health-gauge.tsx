@@ -252,7 +252,7 @@ export function HealthScoreCard({ metrics }: HealthScoreCardProps) {
       {/* Card 1: System Message Rate */}
       <div className="flex flex-col items-center justify-center rounded-xl border border-border/70 bg-card/60 p-4 text-center transition-colors hover:border-border hover:bg-card/80">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Tốc độ xử lý (Rate)
+          Tốc độ xử lý
         </span>
         <div className="my-1.5 flex items-baseline justify-center gap-1">
           <span className="font-mono text-2xl font-bold tracking-tight text-foreground">

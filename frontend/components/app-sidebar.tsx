@@ -33,21 +33,21 @@ const NAV = [
     {
         label: "Vận hành",
         items: [
-            { href: "/", label: "Tổng quan (Dashboard)", icon: GaugeIcon },
-            { href: "/datasets", label: "Tập dữ liệu (Datasets)", icon: DatabaseIcon },
+            { href: "/", label: "Tổng quan", icon: GaugeIcon },
+            { href: "/datasets", label: "Tập dữ liệu", icon: DatabaseIcon },
         ],
     },
     {
         label: "Chẩn đoán",
         items: [
-            { href: "/analysis", label: "Phân tích (Analysis)", icon: ScanSearchIcon },
-            { href: "/review", label: "Duyệt thủ công (Human Review)", icon: UserCheckIcon, badge: "pending" as const },
+            { href: "/analysis", label: "Phân tích", icon: ScanSearchIcon },
+            { href: "/review", label: "Duyệt thủ công", icon: UserCheckIcon, badge: "pending" as const },
         ],
     },
     {
         label: "Nền tảng",
         items: [
-            { href: "/vllm", label: "Giám sát VLLM", icon: CpuIcon },
+            { href: "/vllm", label: "Giám sát vLLM", icon: CpuIcon },
             { href: "/reports", label: "Báo cáo", icon: FileTextIcon },
             { href: "/architecture", label: "Kiến trúc", icon: LayersIcon },
         ],

@@ -50,8 +50,8 @@ Phương pháp & lịch sử các vòng tối ưu: [docs/benchmark.md](docs/benc
 | Backend | Python 3.11+, FastAPI, Pydantic v2, uvicorn, httpx, numpy |
 | Frontend | Next.js 16 (App Router), React 19, TypeScript, shadcn/ui, Tailwind CSS v4, Recharts, SWR |
 | Testing | pytest + pytest-asyncio + pytest-cov, Vitest, Playwright |
-| Infrastructure | Terraform (Azure Container Apps, Azure Container Registry, Azure Storage File Share) |
-| CI/CD | GitHub Actions (`staging.yml`, `production.yml`, `ci.yml`) |
+| Infrastructure | Terraform (Google Cloud Platform: Compute Engine, Artifact Registry, Cloud Storage) |
+| CI/CD | GitHub Actions (`gcp-deploy.yml`, `ci.yml`, `codeql.yml`, `docker-security.yml`, `gitleaks.yml`, `trivy.yml`) |
 
 ## 📁 Cấu trúc dự án
 
@@ -70,20 +70,20 @@ Phương pháp & lịch sử các vòng tối ưu: [docs/benchmark.md](docs/benc
 │   ├── app/                     # Next.js App Router (console, runs, dashboard...)
 │   ├── components/              # RAV Console, analysis UI, shadcn/ui
 │   └── lib/                     # api client, types, mock store
-├── terraform/                   # Infrastructure as Code (AzureRM Provider)
-│   ├── main.tf                  # Resource Group, ACR, Azure Storage Share, Azure Container Apps
-│   ├── variables.tf             # Biến cấu hình (azure_location, app_name, ports)
-│   ├── outputs.tf               # Azure Container App FQDNs, ACR login server
-│   ├── providers.tf             # AzureRM Provider configuration
+├── terraform/gcp/               # Infrastructure as Code (Google Cloud Platform)
+│   ├── main.tf                  # Compute Engine VM, Artifact Registry, Firewall, Service Account
+│   ├── variables.tf             # Biến cấu hình (region, machine_type, environment)
+│   ├── outputs.tf               # VM Public IP, Artifact Registry URL
+│   ├── providers.tf             # Google Provider & Backend configuration
 │   └── environments/            # File cấu hình riêng biệt cho Staging & Production
-├── env/                         # Mẫu cấu hình môi trường biệt lập
-│   ├── staging.env.example      # Variable mẫu cho Staging
-│   └── production.env.example   # Variable mẫu cho Production
-├── nginx/                       # Reverse proxy SSL/TLS & API routing config
+├── nginx/                       # Reverse proxy Nginx config (gcp-nginx.conf)
 ├── .github/workflows/
-│   ├── staging.yml              # CI/CD tự động deploy Azure Staging khi merge vào develop
-│   ├── production.yml           # CI/CD tự động deploy Azure Production khi merge vào main
-│   └── ci.yml                   # CI PR Gatekeeper Tests
+│   ├── gcp-deploy.yml           # CI/CD tự động deploy lên GCP VM khi merge vào develop / main
+│   ├── ci.yml                   # CI PR Gatekeeper Tests (Backend + Frontend)
+│   ├── codeql.yml               # CodeQL Security Analysis
+│   ├── docker-security.yml      # Docker Image Vulnerability Scanning
+│   ├── gitleaks.yml             # Secret Leak Detection
+│   └── trivy.yml                # Trivy Vulnerability Scanner
 ├── data/                        # Local storage data & thresholds
 ├── tests/                       # Pytest test suite
 └── Dockerfile                   # Multi-stage Docker build
@@ -91,37 +91,40 @@ Phương pháp & lịch sử các vòng tối ưu: [docs/benchmark.md](docs/benc
 
 ---
 
-## 🚀 Deployment & CI/CD Guide (Microsoft Azure)
+## 🚀 Deployment & CI/CD Guide (Google Cloud Platform - GCP)
 
-### 🌐 1. Kiến Trúc Deployment Azure
+### 🌐 1. Kiến Trúc Deployment GCP
 
-Hệ thống được triển khai trên hạ tầng **Microsoft Azure** với 2 môi trường biệt lập (**Staging** và **Production**):
+Hệ thống được triển khai trên hạ tầng **Google Cloud Platform (GCP)** với 2 môi trường biệt lập (**Staging** và **Production**):
 
 ```mermaid
 graph TD
     DEV[Developer Code] --> FEATURE[Feature Branch: feature/*]
     FEATURE --> PR_DEV[Pull Request / Merge]
     PR_DEV --> BRANCH_DEV[Branch: develop]
-    BRANCH_DEV --> CI_STG[GitHub Actions: staging.yml]
-    CI_STG --> AZ_STG[Azure Login & Docker Push to ACR]
-    AZ_STG --> TF_STG[Terraform Apply Staging]
-    TF_STG --> DEPLOY_STG[Deploy to Azure Container Apps STAGING]
-    DEPLOY_STG --> HEALTH_STG[Health Check: https://app-ai20krosbag-staging-backend.eastus.azurecontainerapps.io/health]
+    BRANCH_DEV --> CI_STG[GitHub Actions: gcp-deploy.yml]
+    CI_STG --> GCP_AUTH_STG[GCP Auth via Workload Identity Federation]
+    GCP_AUTH_STG --> AR_STG[Build & Push Docker Images to Artifact Registry]
+    AR_STG --> TF_STG[Terraform Apply Staging VM]
+    TF_STG --> DEPLOY_STG[SSH & Deploy Stack to VM: ai20k-p077-staging]
+    DEPLOY_STG --> HEALTH_STG[Health Check: http://VM_IP/health]
 
     BRANCH_DEV --> PR_MAIN[Pull Request / Merge]
     PR_MAIN --> BRANCH_MAIN[Branch: main]
-    BRANCH_MAIN --> CI_PROD[GitHub Actions: production.yml]
-    CI_PROD --> AZ_PROD[Azure Login & Docker Push to ACR]
-    AZ_PROD --> TF_PROD[Terraform Apply Production]
-    TF_PROD --> DEPLOY_PROD[Deploy to Azure Container Apps PRODUCTION]
-    DEPLOY_PROD --> HEALTH_PROD[Health Check: https://app-ai20krosbag-production-backend.eastus.azurecontainerapps.io/health]
+    BRANCH_MAIN --> CI_PROD[GitHub Actions: gcp-deploy.yml]
+    CI_PROD --> GCP_AUTH_PROD[GCP Auth via Workload Identity Federation]
+    GCP_AUTH_PROD --> AR_PROD[Build & Push Docker Images to Artifact Registry]
+    AR_PROD --> TF_PROD[Terraform Apply Production VM]
+    TF_PROD --> DEPLOY_PROD[SSH & Deploy Stack to VM: ai20k-p077-production]
+    DEPLOY_PROD --> HEALTH_PROD[Health Check: http://VM_IP/health]
 ```
 
 #### Ánh Xạ Dịch Vụ Hạ Tầng:
-- **Compute Platform**: **Azure Container Apps (ACA)** — serverless container execution với auto-scaling & ingress HTTP/HTTPS.
-- **Container Registry**: **Azure Container Registry (ACR)** — lưu trữ & bảo mật các Docker image Backend & Frontend.
-- **Persistent Data Volume**: **Azure Files Share** — mount trực tiếp vào Container App tại `/app/data` bảo toàn dữ liệu SQLite (`runs.db`) và rosbag upload.
-- **Logging**: **Azure Log Analytics Workspace** — thu thập log ứng dụng tập trung.
+- **Compute Platform**: **Google Compute Engine (GCE) VM** — chạy Docker stack với Docker Compose (`e2-small` cho Staging, `e2-medium` cho Production).
+- **Container Registry**: **GCP Artifact Registry** — lưu trữ & bảo mật các Docker image Backend & Frontend tại region `asia-southeast1` (Singapore).
+- **Reverse Proxy**: **Nginx** — cân bằng tải và điều hướng routing `/api/*` tới Backend và `/` tới Frontend trên cổng 80.
+- **Persistent Data Volume**: Thư mục `/opt/app/data` trên VM — bảo toàn dữ liệu SQLite (`runs.db`) và rosbag upload.
+- **Terraform State Backend**: **Google Cloud Storage (GCS)** (`tfstate-ai20k-p077-gcp`).
 
 ---
 
@@ -153,20 +156,17 @@ docker compose --profile dev up --build
 
 ---
 
-### 🧪 3. Quy Trình Deploy Staging (Azure)
+### 🧪 3. Quy Trình Deploy Staging (GCP)
 
 Deployment cho Staging diễn ra **hoàn toàn tự động** khi code được merge vào nhánh `develop`.
 
 #### Các bước thực hiện thủ công bằng Terraform:
 ```bash
-# Đăng nhập Azure CLI
-az login
+cd terraform/gcp
+# Khởi tạo Terraform GCP Backend
+terraform init -backend-config="prefix=terraform-gcp/staging"
 
-cd terraform
-# Khởi tạo Terraform Azure Provider
-terraform init
-
-# Kiểm tra kế hoạch thay đổi hạ tầng Staging trên Azure
+# Kiểm tra kế hoạch thay đổi hạ tầng Staging trên GCP
 terraform plan -var-file=environments/staging.tfvars
 
 # Apply hạ tầng Staging
@@ -175,69 +175,51 @@ terraform apply -var-file=environments/staging.tfvars -auto-approve
 
 ---
 
-### 🏭 4. Quy Trình Deploy Production (Azure)
+### 🏭 4. Quy Trình Deploy Production (GCP)
 
 Deployment cho Production diễn ra **hoàn toàn tự động** khi code từ `develop` được merge vào nhánh `main`.
 
 #### Các bước thực hiện thủ công bằng Terraform:
 ```bash
-cd terraform
-# Khởi tạo & Apply hạ tầng Production trên Azure
-terraform init
+cd terraform/gcp
+# Khởi tạo & Apply hạ tầng Production trên GCP
+terraform init -backend-config="prefix=terraform-gcp/production"
 terraform plan -var-file=environments/production.tfvars
 terraform apply -var-file=environments/production.tfvars -auto-approve
 ```
 
 ---
 
-### 🔄 5. Quy Trình Rollback Trên Azure Container Apps
-
-Trong trường hợp có sự cố phiên bản mới:
-
-#### Rollback Instant Revision (Ứng cứu sự cố < 1 phút):
-Azure Container Apps tự động lưu vết toàn bộ các Revision trước đó. Để chuyển sang Revision ổn định cũ:
-```bash
-# Xem danh sách revisions hiện tại
-az containerapp revision list --name app-ai20krosbag-production-backend --resource-group rg-ai20krosbag-production -o table
-
-# Switch 100% traffic về revision cũ
-az containerapp revision set-mode --name app-ai20krosbag-production-backend --resource-group rg-ai20krosbag-production --mode single
-az containerapp revision activate --name app-ai20krosbag-production-backend --resource-group rg-ai20krosbag-production --revision <previous_revision_name>
-```
-
----
-
-### 🔑 6. Danh Mục Biến Môi Trường (Environment Variables)
+### 🔑 5. Danh Mục Biến Môi Trường (Environment Variables)
 
 | Biến Môi Trường | Mô Tả | Mặc Định Staging | Mặc Định Production |
 |---|---|---|---|
 | `APP_ENV` | Môi trường ứng dụng | `staging` | `production` |
 | `APP_PORT` | Port lắng nghe Backend | `8000` | `8000` |
-| `CORS_ORIGINS` | Tên miền CORS được phép | `https://staging.yourdomain.com` | `https://yourdomain.com` |
-| `API_AUTH_TOKEN` | Bearer Token bảo vệ API | Staging Secret | Production Secret |
+| `CORS_ORIGINS` | Tên miền CORS được phép | `http://localhost:3000` | `https://yourdomain.com` |
 | `RUN_DB_PATH` | File đường dẫn SQLite | `data/runs.db` | `data/runs.db` |
 | `OPENAI_API_KEY` | Key gọi LLM | Staging Key | Production Key |
 | `LOG_LEVEL` | Cấp độ ghi Log | `DEBUG` | `INFO` |
 
 ---
 
-### 🔀 7. Quy Trình Thử Nghiệm CI/CD Flow Chi Tiết
+### 🔀 6. Quy Trình Thử Nghiệm CI/CD Flow Chi Tiết
 
 1. **Feature Branch Work**:
    ```bash
-   git checkout -b feature/terraform-deploy-model
+   git checkout -b feature/your-feature-name
    git add .
-   git commit -m "feat: migrate terraform infrastructure to azure container apps"
-   git push origin feature/terraform-deploy-model
+   git commit -m "feat: implement new diagnostic rule"
+   git push origin feature/your-feature-name
    ```
 
 2. **Deploy STAGING (Merge vào `develop`)**:
-   - Tạo PR từ `feature/terraform-deploy-model` vào `develop`.
-   - Workflow `.github/workflows/staging.yml` tự động chạy test, push Docker image lên ACR `acrai20krosbagstaging.azurecr.io`, apply Terraform Azure và verify healthcheck.
+   - Tạo PR từ `feature/your-feature-name` vào `develop`.
+   - Workflow `.github/workflows/gcp-deploy.yml` tự động chạy test, build & push Docker image lên Artifact Registry, apply Terraform GCP và deploy lên VM `ai20k-p077-staging`.
 
 3. **Deploy PRODUCTION (Merge vào `main`)**:
    - Tạo PR từ `develop` vào `main`.
-   - Workflow `.github/workflows/production.yml` tự động chạy testsuite, push Docker image lên ACR `acrai20krosbagprod.azurecr.io`, apply Terraform Azure và verify healthcheck.
+   - Workflow `.github/workflows/gcp-deploy.yml` tự động chạy testsuite, build & push Docker image lên Artifact Registry, apply Terraform GCP và deploy lên VM `ai20k-p077-production`.
 
 ---
 

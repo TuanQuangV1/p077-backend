@@ -62,7 +62,7 @@ export function IssueBreakdownCard({ topIssues = [], severity = [] }: IssueBreak
       <div className="space-y-3">
         <div className="flex items-center justify-between border-b border-border/40 pb-2">
           <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            Phân loại lỗi phổ biến (Top Issues)
+            Phân loại lỗi phổ biến
           </span>
           <span className="font-mono text-[11px] text-muted-foreground">
             {topIssues.length} dạng lỗi
@@ -106,7 +106,7 @@ export function IssueBreakdownCard({ topIssues = [], severity = [] }: IssueBreak
       <div className="space-y-3 border-t border-border/50 pt-4">
         <div className="flex items-center justify-between">
           <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            Mức độ nghiêm trọng (Severity)
+            Mức độ nghiêm trọng
           </span>
           <span className="font-mono text-[11px] text-muted-foreground">
             {totalSeverityCount} tổng số

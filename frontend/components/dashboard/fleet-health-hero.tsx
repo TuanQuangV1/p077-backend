@@ -41,10 +41,10 @@ export function FleetHealthHero({
 
   const statusText =
     status === "green"
-      ? "Hệ thống ổn định (Healthy)"
+      ? "Hệ thống ổn định"
       : status === "yellow"
-      ? "Cảnh báo suy giảm (Degraded)"
-      : "Sự cố nghiêm trọng (Critical)"
+      ? "Cảnh báo suy giảm"
+      : "Sự cố nghiêm trọng"
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-border/80 bg-gradient-to-r from-card/90 via-card/60 to-primary/5 p-5 shadow-lg backdrop-blur-md">

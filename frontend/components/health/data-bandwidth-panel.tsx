@@ -203,7 +203,7 @@ export function DataBandwidthPanel({
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-sm">
             <HardDriveIcon className="size-4" />
-            Băng thông Dữ liệu (Data Bandwidth)
+            Băng thông dữ liệu
           </CardTitle>
             <div className="flex gap-1">
             <Button
@@ -212,7 +212,7 @@ export function DataBandwidthPanel({
               className="h-7 text-[10px]"
               onClick={() => setViewMode("bubbles")}
             >
-              Dạng thẻ (Bubbles)
+              Dạng thẻ
             </Button>
             <Button
               variant={viewMode === "doughnut" ? "secondary" : "ghost"}
@@ -220,7 +220,7 @@ export function DataBandwidthPanel({
               className="h-7 text-[10px]"
               onClick={() => setViewMode("doughnut")}
             >
-              Biểu đồ tròn (Doughnut)
+              Biểu đồ tròn
             </Button>
           </div>
         </div>

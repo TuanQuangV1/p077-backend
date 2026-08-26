@@ -90,7 +90,7 @@ export function TopicHealthTable({
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-sm">
             <SignalIcon className="size-4" />
-            Sức khỏe Cảm biến (Topic Health)
+            Sức khỏe Topic cảm biến
           </CardTitle>
           <div className="flex items-center gap-1">
             {(["all", "critical", "warning", "healthy", "silent"] as FilterType[]).map(
@@ -116,7 +116,7 @@ export function TopicHealthTable({
             <thead className="sticky top-0 bg-background">
               <tr className="border-b border-border">
                 <th className="px-3 py-2 font-mono text-[10px] uppercase text-muted-foreground">
-                  Chủ đề (Topic)
+                  Topic
                 </th>
                 <th className="px-2 py-2 text-right font-mono text-[10px] uppercase text-muted-foreground">
                   Hz Kỳ vọng
@@ -209,7 +209,7 @@ export function TopicHealthTable({
                           <div className="space-y-2">
                             <div className="flex items-center justify-between text-[10px]">
                               <span className="text-muted-foreground">
-                                {topic.messageCount.toLocaleString()} tin nhắn (messages)
+                                {topic.messageCount.toLocaleString()} tin nhắn
                               </span>
                               <span className="font-mono text-muted-foreground">
                                 {topic.messageType}

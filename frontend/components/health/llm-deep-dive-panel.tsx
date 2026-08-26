@@ -104,10 +104,10 @@ interface LLMDeepDivePanelProps {
 }
 
 const SEVERITY_BADGES: Record<string, { label: string; className: string }> = {
-  critical: { label: "NGHIÊM TRỌNG (CRITICAL)", className: "border-red-500/40 bg-red-500/10 text-red-400 font-semibold" },
-  high: { label: "MỨC ĐỘ CAO (HIGH)", className: "border-orange-500/40 bg-orange-500/10 text-orange-400 font-semibold" },
-  medium: { label: "CẢNH BÁO (MEDIUM)", className: "border-yellow-500/40 bg-yellow-500/10 text-yellow-400 font-semibold" },
-  low: { label: "BÌNH THƯỜNG (LOW)", className: "border-emerald-500/40 bg-emerald-500/10 text-emerald-400 font-semibold" },
+  critical: { label: "Nghiêm trọng", className: "border-red-500/40 bg-red-500/10 text-red-400 font-semibold" },
+  high: { label: "Mức độ cao", className: "border-orange-500/40 bg-orange-500/10 text-orange-400 font-semibold" },
+  medium: { label: "Cảnh báo", className: "border-yellow-500/40 bg-yellow-500/10 text-yellow-400 font-semibold" },
+  low: { label: "Bình thường", className: "border-emerald-500/40 bg-emerald-500/10 text-emerald-400 font-semibold" },
 }
 
 function LoadingSkeleton() {
@@ -126,9 +126,9 @@ function EmptyState({ score }: { score: number }) {
   return (
     <div className="flex flex-col items-center justify-center p-6 text-center">
       <CheckCircleIcon className="size-10 text-emerald-500 mb-2" />
-      <h3 className="text-sm font-semibold text-foreground">System Healthy</h3>
+      <h3 className="text-sm font-semibold text-foreground">Hệ thống ổn định</h3>
       <p className="mt-1 text-xs text-muted-foreground font-mono">
-        Health Score {score}/100 - no critical issues detected.
+        Điểm sức khỏe {score}/100 - không phát hiện sự cố nghiêm trọng.
       </p>
       <p className="mt-1 text-[11px] text-muted-foreground">
         Tất cả các kênh cảm biến và thông số viễn trắc đều hoạt động đạt chuẩn kỹ thuật.

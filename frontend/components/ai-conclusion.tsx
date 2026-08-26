@@ -78,7 +78,7 @@ export function AIConclusion({
         reviewer,
         notes: combinedNotes,
       })
-      toast.success(`Conclusion ${verdict}`, { description: result.issue })
+      toast.success("Đã ghi nhận đánh giá", { description: result.issue })
       setEditing(false)
       onReviewed?.({
         ...result,
@@ -89,13 +89,19 @@ export function AIConclusion({
         reviewedAt: new Date().toISOString(),
       })
     } catch {
-      toast.error("Could not record verdict")
+      toast.error("Không thể lưu đánh giá")
     } finally {
       setBusy(false)
     }
   }
 
   const reviewed = result.reviewStatus !== "pending"
+  const reviewStatusVi: Record<string, string> = {
+    approved: "đã phê duyệt",
+    rejected: "đã từ chối",
+    edited: "đã chỉnh sửa",
+    pending: "chờ duyệt",
+  }
 
   return (
     <Card className={cn("gap-3 py-4", compact && "border-border/70", className)}>
@@ -116,13 +122,13 @@ export function AIConclusion({
                 result.reviewStatus === "edited" && "border-primary/40 bg-primary/10 text-primary",
               )}
             >
-              {result.reviewStatus}
+              {reviewStatusVi[result.reviewStatus] ?? result.reviewStatus}
               {result.reviewedAt ? ` · ${reviewedStamp(result.reviewedAt)}` : ""}
               {result.reviewer ? ` · ${result.reviewer}` : ""}
             </Badge>
           ) : (
             <Badge variant="secondary" className="font-mono text-[10px] uppercase">
-              pending review
+              chờ duyệt
             </Badge>
           )}
           <span className="ml-auto font-mono text-[10px] text-muted-foreground">
@@ -136,7 +142,7 @@ export function AIConclusion({
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between gap-3">
             <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              Độ tin cậy của AI (Model confidence)
+              Độ tin cậy của AI
             </span>
             <span className="font-mono text-xs tabular-nums">{(result.confidence * 100).toFixed(0)}%</span>
           </div>
@@ -144,7 +150,7 @@ export function AIConclusion({
         </div>
 
         <div className="flex flex-col gap-1">
-          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Nguyên nhân gốc rễ (Root cause)</span>
+          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Nguyên nhân gốc rễ</span>
           {editing ? (
             <FieldGroup>
               <Field>
@@ -189,7 +195,7 @@ export function AIConclusion({
 
         <div className="flex flex-col gap-1.5">
           <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            Chuỗi bằng chứng (Evidence chain)
+            Chuỗi bằng chứng
           </span>
           <ul className="flex flex-col gap-1">
             {result.evidence.map((e, i) => (
@@ -213,7 +219,7 @@ export function AIConclusion({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Đề xuất hướng khắc phục (Suggested fix)</span>
+          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Đề xuất hướng khắc phục</span>
           <ol className="flex list-decimal flex-col gap-1 pl-4">
             {result.suggestedFix.map((f) => (
               <li key={f} className="text-xs leading-relaxed text-foreground/90">
@@ -255,7 +261,7 @@ export function AIConclusion({
                 className="gap-1.5 border-emerald-500/40 bg-emerald-500/10 text-xs font-semibold text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300 transition-colors cursor-pointer"
               >
                 <CheckIcon className="size-3.5 text-emerald-400" />
-                <span>Phê duyệt (Approve)</span>
+                <span>Phê duyệt</span>
               </Button>
               <Button
                 size="sm"
@@ -265,7 +271,7 @@ export function AIConclusion({
                 className="gap-1.5 border-rose-500/40 bg-rose-500/10 text-xs font-semibold text-rose-400 hover:bg-rose-500/20 hover:text-rose-300 transition-colors cursor-pointer"
               >
                 <XIcon className="size-3.5 text-rose-400" />
-                <span>Từ chối (Reject)</span>
+                <span>Từ chối</span>
               </Button>
               <Button
                 size="sm"
@@ -275,7 +281,7 @@ export function AIConclusion({
                 className="gap-1.5 border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
               >
                 <PencilIcon className="size-3.5" />
-                <span>Sửa đổi (Edit)</span>
+                <span>Chỉnh sửa</span>
               </Button>
             </div>
             <span className="ml-auto font-mono text-[10px] text-muted-foreground">{result.vllmRequestId}</span>

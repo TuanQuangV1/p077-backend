@@ -202,13 +202,13 @@ export function RavConsole() {
     const navigate = (href: string) => router.push(href)
     const handleReviewed = (updated: AIResult) => setAiResults((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
     const title = ({
-        dashboard: "Tổng quan hạm đội (Fleet overview)",
-        datasets: "Tập dữ liệu Rosbag (Rosbag datasets)",
-        analysis: "Không gian phân tích (Analysis workspace)",
-        review: "Hàng đợi duyệt thủ công (Human review queue)",
-        reports: "Báo cáo chẩn đoán (Diagnostic reports)",
-        vllm: "Giám sát VLLM (VLLM observability)",
-        architecture: "Kiến trúc hệ thống (System architecture)",
+        dashboard: "Tổng quan hạm đội",
+        datasets: "Tập dữ liệu Rosbag",
+        analysis: "Không gian phân tích",
+        review: "Hàng đợi duyệt thủ công",
+        reports: "Báo cáo chẩn đoán",
+        vllm: "Giám sát vLLM",
+        architecture: "Kiến trúc hệ thống",
     } as Record<string, string>)[section] ?? "RAV-13"
 
     const currentMeta = {
@@ -264,7 +264,7 @@ export function RavConsole() {
             actions={
                 <div className="flex gap-2">
                     <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
-                        <RefreshCwIcon data-icon="inline-start" />Làm mới (Refresh)
+                        <RefreshCwIcon data-icon="inline-start" />Làm mới
                     </Button>
                     {section === "datasets" ? (
                         <Button size="sm" onClick={refreshBags}>
@@ -542,30 +542,30 @@ function ReportsEnhanced({ activeRun }: { activeRun: AnalysisRun | null }) {
     }
     useEffect(load, [])
 
-    if (failed) return <SectionCard title="Agent accuracy" description="Human-in-the-loop verdict summary"><p className="py-8 text-sm text-muted-foreground">Review statistics unavailable.</p></SectionCard>
-    if (!stats) return <SectionCard title="Agent accuracy" description="Human-in-the-loop verdict summary"><p className="py-8 text-sm text-muted-foreground">Loading review statistics...</p></SectionCard>
+    if (failed) return <SectionCard title="Độ chính xác AI" description="Tổng kết đánh giá kiểm thử từ chuyên gia"><p className="py-8 text-sm text-muted-foreground">Không có dữ liệu thống kê đánh giá.</p></SectionCard>
+    if (!stats) return <SectionCard title="Độ chính xác AI" description="Tổng kết đánh giá kiểm thử từ chuyên gia"><p className="py-8 text-sm text-muted-foreground">Đang tải thống kê đánh giá...</p></SectionCard>
 
     const copyJson = () => {
         navigator.clipboard?.writeText(json(stats))
-        toast.success("Accuracy report copied as JSON")
+        toast.success("Đã sao chép báo cáo độ chính xác dạng JSON")
     }
 
     return <>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <StatTile label="Agent accuracy" value={pct(stats.accuracy)} tone={stats.accuracy !== null && stats.accuracy < 0.7 ? "critical" : "primary"} hint={`${stats.approved} approved of ${stats.reviewed} reviewed`} icon={<ShieldCheckIcon className="size-4" />} />
-            <StatTile label="Reviewed" value={stats.reviewed} hint={`${stats.pending} still pending`} icon={<FileTextIcon className="size-4" />} />
-            <StatTile label="Rejected" value={stats.rejected} tone="critical" hint="conclusion judged wrong" icon={<CircleAlertIcon className="size-4" />} />
-            <StatTile label="Corrected" value={stats.edited} hint="root cause edited by reviewer" icon={<ActivityIcon className="size-4" />} />
+            <StatTile label="Độ chính xác AI" value={pct(stats.accuracy)} tone={stats.accuracy !== null && stats.accuracy < 0.7 ? "critical" : "primary"} hint={`${stats.approved} đã phê duyệt / ${stats.reviewed} đã đánh giá`} icon={<ShieldCheckIcon className="size-4" />} />
+            <StatTile label="Đã đánh giá" value={stats.reviewed} hint={`${stats.pending} kết luận đang chờ`} icon={<FileTextIcon className="size-4" />} />
+            <StatTile label="Từ chối" value={stats.rejected} tone="critical" hint="kết luận AI không chính xác" icon={<CircleAlertIcon className="size-4" />} />
+            <StatTile label="Đã hiệu chỉnh" value={stats.edited} hint="nguyên nhân gốc được sửa lại" icon={<ActivityIcon className="size-4" />} />
         </div>
         <SectionCard
-            title="Accuracy by run"
-            description="Verdicts recorded by engineers on each analysis run"
-            actions={<div className="flex gap-2"><Button variant="outline" size="sm" onClick={load}><RefreshCwIcon data-icon="inline-start" />Refresh</Button><Button variant="outline" size="sm" onClick={copyJson}><DownloadIcon data-icon="inline-start" />JSON</Button></div>}
+            title="Độ chính xác theo từng lượt chạy"
+            description="Kết luận đánh giá được chuyên gia ghi nhận theo từng lượt phân tích"
+            actions={<div className="flex gap-2"><Button variant="outline" size="sm" onClick={load}><RefreshCwIcon data-icon="inline-start" />Làm mới</Button><Button variant="outline" size="sm" onClick={copyJson}><DownloadIcon data-icon="inline-start" />JSON</Button></div>}
         >
             <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
                     <thead className="border-b border-border font-mono text-[10px] uppercase text-muted-foreground">
-                        <tr><th className="pb-2">Run</th><th className="pb-2 text-right">Detections</th><th className="pb-2 text-right">Reviewed</th><th className="pb-2 text-right">Approved</th><th className="pb-2 text-right">Rejected</th><th className="pb-2 text-right">Edited</th><th className="pb-2 text-right">Accuracy</th></tr>
+                        <tr><th className="pb-2">Lượt chạy</th><th className="pb-2 text-right">Phát hiện</th><th className="pb-2 text-right">Đã đánh giá</th><th className="pb-2 text-right">Phê duyệt</th><th className="pb-2 text-right">Từ chối</th><th className="pb-2 text-right">Đã sửa</th><th className="pb-2 text-right">Độ chính xác</th></tr>
                     </thead>
                     <tbody className="divide-y divide-border">
                         {stats.runs.map((run) => (
@@ -581,11 +581,10 @@ function ReportsEnhanced({ activeRun }: { activeRun: AnalysisRun | null }) {
                         ))}
                     </tbody>
                 </table>
-                {stats.runs.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No analysis runs yet.</p> : null}
+                {stats.runs.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">Chưa có lượt phân tích nào.</p> : null}
             </div>
             <p className="mt-4 border-t border-border pt-3 text-[11px] text-muted-foreground">
-                Accuracy = approved / reviewed. Recall is not reported: it needs ground-truth labels for
-                anomalies the agent never raised, which the review queue cannot observe.
+                Độ chính xác = Đã phê duyệt / Đã đánh giá.
             </p>
         </SectionCard>
     </>
