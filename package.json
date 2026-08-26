@@ -1,5 +1,6 @@
 {
     "scripts": {
+        "sync": "git pull origin develop && git checkout deploy/render && git merge develop -m 'sync latest develop' && git push personal deploy/render:main && git checkout develop",
         "frontend:dev": "pnpm --dir frontend dev",
         "frontend:lint": "pnpm --dir frontend lint",
         "frontend:build": "pnpm --dir frontend build"
