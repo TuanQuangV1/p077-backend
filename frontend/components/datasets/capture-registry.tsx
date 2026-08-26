@@ -170,7 +170,7 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
           icon={<ClockIcon className="size-4" />}
         />
         <StatTile
-          label="Tổng số gói tin (Messages)"
+          label="Tổng số gói tin"
           value={totalMessages.toLocaleString()}
           hint="Gói tin ROS 2 đã nạp & giải mã"
           icon={<LayersIcon className="size-4" />}
@@ -217,7 +217,7 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
 
       {/* 3. Main Dataset Registry Card */}
       <SectionCard
-        title="Danh mục tệp dữ liệu (Capture registry)"
+        title="Danh mục tệp dữ liệu"
         description="Quản lý, nạp và khởi chạy chẩn đoán lỗi từ các tệp ghi dữ liệu cảm biến robot"
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -229,7 +229,7 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
               className="text-xs"
             >
               <PlayIcon data-icon="inline-start" className="size-3.5" />
-              Chẩn đoán đã chọn (Analyze selected){selected.size ? ` (${selected.size})` : ""}
+              Chẩn đoán đã chọn{selected.size ? ` (${selected.size})` : ""}
             </Button>
             <Button
               size="sm"
@@ -238,7 +238,7 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
               className="text-xs"
             >
               <UploadIcon data-icon="inline-start" className="size-3.5" />
-              {uploading ? "Đang nạp..." : "Nạp Rosbag (Upload rosbag)"}
+              {uploading ? "Đang nạp..." : "Nạp Rosbag"}
             </Button>
           </div>
         }
@@ -250,7 +250,7 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Tìm kiếm tệp, địa điểm, robot (Filter file, site, or robot type)..."
+              placeholder="Tìm kiếm tệp, địa điểm, robot..."
               className="pl-9 text-xs"
             />
           </div>
@@ -260,7 +260,7 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
             <button
               onClick={() => setFormatFilter("all")}
               className={cn(
-                "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                "rounded-md px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer",
                 formatFilter === "all"
                   ? "bg-background text-foreground shadow-xs"
                   : "text-muted-foreground hover:text-foreground"
@@ -271,7 +271,7 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
             <button
               onClick={() => setFormatFilter("mcap")}
               className={cn(
-                "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                "rounded-md px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer",
                 formatFilter === "mcap"
                   ? "bg-background text-foreground shadow-xs"
                   : "text-muted-foreground hover:text-foreground"
@@ -282,7 +282,7 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
             <button
               onClick={() => setFormatFilter("db3")}
               className={cn(
-                "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                "rounded-md px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer",
                 formatFilter === "db3"
                   ? "bg-background text-foreground shadow-xs"
                   : "text-muted-foreground hover:text-foreground"
@@ -301,7 +301,7 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
                 <th className="pb-2.5 pt-1 w-8">
                   <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all" />
                 </th>
-                <th className="pb-2.5 pt-1 font-medium">Tập tin Rosbag (Capture)</th>
+                <th className="pb-2.5 pt-1 font-medium">Tập tin Rosbag</th>
                 <th className="pb-2.5 pt-1 font-medium hidden sm:table-cell">Loại robot / Địa điểm</th>
                 <th className="pb-2.5 pt-1 font-medium">Dung lượng / Thời lượng</th>
                 <th className="pb-2.5 pt-1 font-medium">Trạng thái</th>

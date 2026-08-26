@@ -95,9 +95,9 @@ function generateMockData(
 }
 
 const MODE_LABELS: Record<ViewMode, string> = {
-  latency: "Độ trễ Header (Latency)",
-  jitter: "Biến động (Jitter)",
-  clock: "Trôi đồng hồ (Clock Drift)",
+  latency: "Độ trễ Header",
+  jitter: "Biến thiên Jitter",
+  clock: "Lệch đồng hồ (Clock Drift)",
 }
 
 const MODE_HELP: Record<ViewMode, string> = {
@@ -123,7 +123,7 @@ export function LatencyJitterPanel({
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-sm">
             <ClockIcon className="size-4" />
-            Độ trễ & Biến động (Latency & Jitter)
+            Độ trễ & Biến thiên Jitter
           </CardTitle>
         </div>
         {/* Mode toggle */}

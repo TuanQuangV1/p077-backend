@@ -63,7 +63,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
         <div className="flex items-center justify-between gap-4">
           <span className="flex items-center gap-1.5 text-rose-400">
             <AlertTriangleIcon className="size-3.5" />
-            Bất thường (Anomalies):
+            Bất thường:
           </span>
           <span className="font-semibold text-rose-400">
             {dataPoint?.anomalies ?? 0}
@@ -163,7 +163,7 @@ export function FleetTrendChart({ data }: FleetTrendChartProps) {
             <Bar
               yAxisId="left"
               dataKey="anomalies"
-              name="Anomalies"
+              name="Bất thường"
               fill="url(#anomaliesGradient)"
               radius={[4, 4, 0, 0]}
               maxBarSize={28}
@@ -173,7 +173,7 @@ export function FleetTrendChart({ data }: FleetTrendChartProps) {
               yAxisId="right"
               type="monotone"
               dataKey="p95Ms"
-              name="P95 Latency"
+              name="Độ trễ P95"
               stroke="#a855f7"
               strokeWidth={2.5}
               dot={{ r: 4, fill: "#a855f7", strokeWidth: 2, stroke: "#18181b" }}
@@ -192,7 +192,7 @@ export function FleetTrendChart({ data }: FleetTrendChartProps) {
           </div>
           <div className="flex items-center gap-1.5">
             <span className="size-2.5 rounded-sm bg-rose-500" />
-            <span>Bất thường (Anomalies)</span>
+            <span>Bất thường</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="h-0.5 w-3 bg-purple-400 inline-block" />

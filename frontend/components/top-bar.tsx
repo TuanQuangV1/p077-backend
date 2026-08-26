@@ -25,7 +25,7 @@ export function TopBar() {
       <div className="flex min-w-0 items-center gap-2">
         <RadioIcon className={cn("size-3.5 shrink-0", connected ? "text-ok" : "text-muted-foreground")} />
         <span className="font-mono text-xs text-muted-foreground">
-          {connected ? "luồng trực tiếp (live)" : "luồng nhàn rỗi (idle)"}
+          {connected ? "luồng trực tiếp" : "luồng nhàn rỗi"}
           <span className="hidden sm:inline"> · /ws?topics=jobs,logs,vllm</span>
         </span>
       </div>

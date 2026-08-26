@@ -148,9 +148,9 @@ export function VLLMObservability({ metrics, requests, onRefresh }: VLLMObservab
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-bold text-foreground">Giám sát VLLM (vLLM Observability)</span>
+              <span className="text-sm font-bold text-foreground">Giám sát vLLM</span>
               <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 font-mono text-[10px] text-emerald-400">
-                {gpu?.engine ?? "vLLM 0.6.3"} · ONLINE
+                {gpu?.engine ?? "vLLM 0.6.3"} · TRỰC TUYẾN
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground">
@@ -183,7 +183,7 @@ export function VLLMObservability({ metrics, requests, onRefresh }: VLLMObservab
           <CardContent className="p-3.5 space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Tải GPU (GPU Util)
+                Tải GPU
               </span>
               <GaugeIcon className="size-4 text-primary" />
             </div>
@@ -256,7 +256,7 @@ export function VLLMObservability({ metrics, requests, onRefresh }: VLLMObservab
           <CardContent className="p-3.5 space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Độ trễ P95 (Latency)
+                Độ trễ P95
               </span>
               <ClockIcon className="size-4 text-purple-400" />
             </div>
@@ -278,7 +278,7 @@ export function VLLMObservability({ metrics, requests, onRefresh }: VLLMObservab
           <CardContent className="p-3.5 space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Hàng đợi (Queue)
+                Hàng đợi
               </span>
               <LayersIcon className="size-4 text-emerald-400" />
             </div>
@@ -302,18 +302,18 @@ export function VLLMObservability({ metrics, requests, onRefresh }: VLLMObservab
           <TabsList className="bg-muted/40 p-1">
             <TabsTrigger value="metrics" className="gap-1.5 text-xs">
               <ActivityIcon className="size-3.5" />
-              <span>Chỉ số Hệ thống (System Metrics)</span>
+              <span>Chỉ số hệ thống</span>
             </TabsTrigger>
             <TabsTrigger value="requests" className="gap-1.5 text-xs">
               <ServerIcon className="size-3.5" />
-              <span>Nhật ký Yêu cầu (Request Logs)</span>
+              <span>Nhật ký yêu cầu</span>
               <Badge variant="secondary" className="font-mono text-[10px] px-1 py-0">
                 {requests.length}
               </Badge>
             </TabsTrigger>
             <TabsTrigger value="errors" className="gap-1.5 text-xs text-rose-400 data-[state=active]:text-rose-400">
               <AlertCircleIcon className="size-3.5" />
-              <span>Lỗi & Sự cố (Errors)</span>
+              <span>Lỗi & sự cố</span>
               <Badge variant="outline" className="border-rose-500/40 text-rose-400 bg-rose-500/10 font-mono text-[10px] px-1 py-0">
                 {errors.length}
               </Badge>
@@ -585,7 +585,7 @@ export function VLLMObservability({ metrics, requests, onRefresh }: VLLMObservab
             <div className="flex items-center gap-2">
               <ActivityIcon className="size-4 text-primary" />
               <CardTitle className="text-xs font-semibold uppercase tracking-wider text-foreground">
-                Phân tích Chi tiết Yêu cầu (Request Trace): <span className="font-mono text-primary">{selectedRequest.id}</span>
+                Chi tiết yêu cầu: <span className="font-mono text-primary">{selectedRequest.id}</span>
               </CardTitle>
             </div>
             <Button
@@ -602,7 +602,7 @@ export function VLLMObservability({ metrics, requests, onRefresh }: VLLMObservab
             {/* Waterfall Phase Timing Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
               <div className="rounded-lg border border-border/70 bg-background/50 p-2.5">
-                <span className="text-[10px] text-muted-foreground uppercase font-mono">1. Hàng đợi (Queue)</span>
+                <span className="text-[10px] text-muted-foreground uppercase font-mono">1. Hàng đợi</span>
                 <p className="text-sm font-bold font-mono text-amber-400">{selectedRequest.queueMs} ms</p>
               </div>
               <div className="rounded-lg border border-border/70 bg-background/50 p-2.5">
@@ -614,7 +614,7 @@ export function VLLMObservability({ metrics, requests, onRefresh }: VLLMObservab
                 <p className="text-sm font-bold font-mono text-purple-400">{selectedRequest.prefillMs} ms</p>
               </div>
               <div className="rounded-lg border border-border/70 bg-background/50 p-2.5">
-                <span className="text-[10px] text-muted-foreground uppercase font-mono">4. Decode (Generate)</span>
+                <span className="text-[10px] text-muted-foreground uppercase font-mono">4. Giải mã (Decode)</span>
                 <p className="text-sm font-bold font-mono text-emerald-400">{selectedRequest.decodeMs} ms</p>
               </div>
               <div className="rounded-lg border border-border/70 bg-background/50 p-2.5">
@@ -628,7 +628,7 @@ export function VLLMObservability({ metrics, requests, onRefresh }: VLLMObservab
             {/* Prompt Preview */}
             <div className="rounded-lg border border-border/70 bg-muted/20 p-3 space-y-1.5">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Nội dung Yêu cầu (Prompt Content Preview)
+                Xem trước nội dung Prompt
               </span>
               <pre className="font-mono text-xs text-foreground/90 whitespace-pre-wrap leading-relaxed max-h-36 overflow-y-auto">
                 {selectedRequest.promptPreview}
@@ -687,7 +687,7 @@ function RequestTableSection({
             className="h-7 text-xs font-medium text-emerald-400 cursor-pointer"
             onClick={() => setStatusFilter("ok")}
           >
-            Thành công (OK)
+            Thành công
           </Button>
           <Button
             variant={statusFilter === "error" ? "secondary" : "ghost"}
@@ -695,7 +695,7 @@ function RequestTableSection({
             className="h-7 text-xs font-medium text-rose-400 cursor-pointer"
             onClick={() => setStatusFilter("error")}
           >
-            Có lỗi (Errors)
+            Có lỗi
           </Button>
         </div>
       </div>

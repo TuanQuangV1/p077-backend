@@ -122,7 +122,7 @@ export function TimelineDensityHeatmap({
           <div className="flex items-center gap-2">
             <ActivityIcon className="size-4 text-cyan-400" />
             <CardTitle className="text-sm font-semibold tracking-wide">
-              DÒNG THỜI GIAN PHÁT HIỆN SỰ CỐ (DETECTION TIMELINE)
+              DÒNG THỜI GIAN PHÁT HIỆN SỰ CỐ
             </CardTitle>
             <Badge variant="outline" className="text-[10px] font-mono">
               {anomalies.length} sự cố ghi nhận
@@ -133,19 +133,19 @@ export function TimelineDensityHeatmap({
           <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <span className="size-2.5 rounded-sm bg-[#dc3545]" />
-              <span>Nghiêm trọng (Critical)</span>
+              <span>Nghiêm trọng</span>
             </span>
             <span className="flex items-center gap-1.5">
               <span className="size-2.5 rounded-sm bg-[#fd7e14]" />
-              <span>Cao (High)</span>
+              <span>Cao</span>
             </span>
             <span className="flex items-center gap-1.5">
               <span className="size-2.5 rounded-sm bg-[#ffc107]" />
-              <span>Cảnh báo (Warn)</span>
+              <span>Cảnh báo</span>
             </span>
             <span className="flex items-center gap-1.5">
               <span className="size-2.5 rounded-sm bg-emerald-500/30 border border-emerald-500/50" />
-              <span>Bình thường (OK)</span>
+              <span>Bình thường</span>
             </span>
           </div>
         </div>

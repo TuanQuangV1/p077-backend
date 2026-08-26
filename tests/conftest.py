@@ -24,6 +24,7 @@ DIAGNOSTICS_DATA_DIR = Path.cwd() / "data" / "diagnostics"
 def _isolate_state(tmp_path, monkeypatch):
     """Isolate per-test persistence, module-level caches and LLM configuration."""
     monkeypatch.setenv("RUN_DB_PATH", str(tmp_path / "runs.db"))
+    monkeypatch.setenv("DIAGNOSTICS_THRESHOLDS_FILE", str(tmp_path / "thresholds.json"))
     # A developer .env holding real credentials would otherwise send analysis
     # runs to the live provider; tests that exercise the LLM stub it explicitly.
     monkeypatch.setenv("OPENAI_API_KEY", "")

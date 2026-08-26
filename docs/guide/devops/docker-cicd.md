@@ -6,7 +6,7 @@ weight: 1
 
 ## Overview
 
-This project uses **8 GitHub Actions workflows** running on a self-hosted runner (`[self-hosted, linux, x64]`) to automate testing, security scanning, and deployment across two environments:
+This project uses **6 GitHub Actions workflows** running on a self-hosted runner (`[self-hosted, linux, x64]`) to automate testing, security scanning, and deployment across two environments:
 
 ```
 main (production)
@@ -20,7 +20,6 @@ main (production)
 |----------|-----------|---------|
 | CI | `ci.yml` | push `main`/`develop`, PR → `main` |
 | Security | `trivy.yml`, `docker-security.yml`, `gitleaks.yml`, `codeql.yml` | push + PR + schedule |
-| CD (Azure) | `staging.yml`, `production.yml` | push `develop` / `main` |
 | CD (GCP) | `gcp-deploy.yml` | push `main`/`develop` |
 
 ---
@@ -143,52 +142,6 @@ Artifacts are retained for **14 days**.
 
 ---
 
-## CD Pipeline — Azure
-
-### Staging — `staging.yml`
-
-Triggered on push to `develop`. Deploys to Azure Container Apps (East US).
-
-```
-test-and-lint ──► build-and-deploy-staging
-```
-
-**Job 1: `test-and-lint`**
-
-Runs backend (ruff + pytest) and frontend (typecheck) verification before any deployment.
-
-**Job 2: `build-and-deploy-staging`**
-
-| Step | Description |
-|------|-------------|
-| Azure Login | Service Principal via `AZURE_CREDENTIALS` |
-| ACR Login | `acrai20krosbagstaging.azurecr.io` |
-| Build & Push Backend | Tagged with `{sha}` + `staging-latest` |
-| Build & Push Frontend | Tagged with `{sha}` + `staging-latest`, with API proxy build arg |
-| Terraform Apply | `terraform/environments/staging.tfvars` |
-| Health Check | `curl --retry 6 --retry-delay 10` against `/health` |
-
-**Environment**:
-- Frontend: `https://app-ai20krosbag-staging-frontend.eastus.azurecontainerapps.io`
-- Backend: `https://app-ai20krosbag-staging-backend.eastus.azurecontainerapps.io`
-
-### Production — `production.yml`
-
-Triggered on push to `main`. Same structure as staging, but with stricter controls:
-
-| Difference | Staging | Production |
-|-----------|---------|------------|
-| Concurrency cancel | `true` | `false` (never cancel mid-deploy) |
-| ACR | `acrai20krosbagstaging` | `acrai20krosbagprod` |
-| Image tags | `staging-latest` | `latest` |
-| Terraform vars | `staging.tfvars` | `production.tfvars` |
-
-**Environment**:
-- Frontend: `https://app-ai20krosbag-production-frontend.eastus.azurecontainerapps.io`
-- Backend: `https://app-ai20krosbag-production-backend.eastus.azurecontainerapps.io`
-
----
-
 ## CD Pipeline — GCP — `gcp-deploy.yml`
 
 Triggered on push to `main`/`develop` and manual dispatch. Deploys to Google Compute Engine VMs.
@@ -197,7 +150,7 @@ Triggered on push to `main`/`develop` and manual dispatch. Deploys to Google Com
 verification ──► deploy-gcp (matrix: staging | production)
 ```
 
-**Job 1: `verification`** — same backend + frontend checks as Azure.
+**Job 1: `verification`** — runs backend (ruff + pytest) and frontend (typecheck) verification before deployment.
 
 **Job 2: `deploy-gcp`** — matrix strategy per environment:
 
@@ -230,21 +183,11 @@ verification ──► deploy-gcp (matrix: staging | production)
 | `docker-security.yml` | ✅ | ✅ | ✅ | — |
 | `gitleaks.yml` | ✅ | ✅ | ✅ | — |
 | `codeql.yml` | ✅ | ✅ | ✅ | Mon 2:30 UTC |
-| `staging.yml` | — | ✅ | — | — |
-| `production.yml` | ✅ | — | — | — |
 | `gcp-deploy.yml` | ✅ | ✅ | — | — |
 
 ---
 
 ## Required Secrets
-
-### Azure
-
-| Secret | Used by | Purpose |
-|--------|---------|---------|
-| `AZURE_CREDENTIALS` | `staging.yml`, `production.yml` | Service Principal JSON for `azure/login` |
-| `REGISTRY_USERNAME` | `staging.yml`, `production.yml` | ACR login username |
-| `REGISTRY_PASSWORD` | `staging.yml`, `production.yml` | ACR login password |
 
 ### GCP
 

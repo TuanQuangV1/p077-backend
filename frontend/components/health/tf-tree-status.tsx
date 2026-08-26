@@ -68,7 +68,7 @@ function TFNodeComponent({
         <span className="text-xs font-semibold">{node.label}</span>
         {isRoot && (
           <span className="text-[9px] uppercase tracking-wider text-muted-foreground">
-            GỐC (ROOT)
+            GỐC
           </span>
         )}
       </button>
@@ -79,26 +79,20 @@ function TFNodeComponent({
           <div className="flex items-center gap-1.5">
             <Badge
               variant="outline"
-              className="text-[9px]"
+              className="text-[9px] uppercase"
               style={{
-                borderColor: color,
-                color,
+                borderColor: FRAME_COLORS[node.status],
+                color: FRAME_COLORS[node.status],
               }}
             >
-              {anomaly.kind}
+              {node.status === "gap" ? "Đứt đoạn" : "Nhảy tọa độ"}
             </Badge>
-            <span
-              className="text-[9px] font-medium uppercase"
-              style={{ color }}
-            >
-              {anomaly.severity === "critical" ? "Nghiêm trọng" : "Cảnh báo"}
+            <span className="text-[10px] text-muted-foreground">
+              t={relativeSpan(anomaly).start.toFixed(1)}s
             </span>
           </div>
-          <p className="mt-1 text-[10px] text-muted-foreground">
+          <p className="mt-1 text-[10px] text-muted-foreground line-clamp-2">
             {node.details}
-          </p>
-          <p className="mt-0.5 font-mono text-[9px] text-muted-foreground">
-            t={relativeSpan(anomaly).start.toFixed(1)}s
           </p>
         </div>
       )}
@@ -117,30 +111,41 @@ function TFEdge({
   status: "healthy" | "gap" | "jump"
   label?: string
 }) {
-  const color = FRAME_COLORS[status]
   const isHealthy = status === "healthy"
+  const color = FRAME_COLORS[status]
 
   return (
-    <div className="flex flex-col items-center">
-      <div
-        className="w-0.5 rounded-full"
-        style={{
-          height: 24,
-          backgroundColor: color,
-          opacity: isHealthy ? 0.5 : 1,
-        }}
-      />
-      {label && (
-        <span
-          className="mb-1 rounded px-1.5 py-0.5 text-[9px] font-medium"
+    <div className="flex items-center">
+      {/* Arrow line */}
+      <div className="relative flex items-center">
+        <div
+          className="h-0.5 w-16"
           style={{
-            backgroundColor: `${color}20`,
-            color,
+            backgroundColor: color,
           }}
-        >
-          {label}
-        </span>
-      )}
+        />
+        {/* Arrow head */}
+        <div
+          className="size-0 border-y-4 border-l-6 border-y-transparent"
+          style={{
+            borderLeftColor: color,
+          }}
+        />
+
+        {/* Edge label / Status badge */}
+        {label && (
+          <div
+            className="absolute -top-5 left-1/2 -translate-x-1/2 rounded px-1 text-[9px] font-bold"
+            style={{
+              backgroundColor: `${color}20`,
+              color,
+              border: `1px solid ${color}`,
+            }}
+          >
+            {label}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -151,16 +156,11 @@ export function TFTreeStatus({
 }: TFTreeStatusProps) {
   const [showHelp, setShowHelp] = useState(false)
 
-  // Determine TF chain status
-  const hasGap = tfAnomalies.some((a) => a.kind === "tf_missing_gap" || a.kind === "tf_timeout")
-  const hasJump = tfAnomalies.some(
-    (a) =>
-      a.kind === "tf_drift_jump" ||
-      a.kind === "tf_conflict" ||
-      a.kind === "localization_jump",
-  )
+  // Determine tree node statuses based on anomalies
+  const hasGap = tfAnomalies.some((a) => a.kind === "tf_missing_gap" || a.kind === "tf_timeout" || a.kind === "frequency_gap")
+  const hasJump = tfAnomalies.some((a) => a.kind === "tf_drift_jump" || a.kind === "tf_conflict" || a.kind === "localization_jump")
 
-  // Build TF nodes
+  // Mock tree structure: map -> odom -> base_link
   const nodes: TFNode[] = [
     {
       id: "map",
@@ -175,9 +175,9 @@ export function TFTreeStatus({
       status: hasJump ? "jump" : hasGap ? "gap" : "healthy",
       anomalyId: hasJump || hasGap ? tfAnomalies[0]?.id : undefined,
       details: hasJump
-        ? "Khung bị nhảy tọa độ (Drift)"
+        ? "Khung bị nhảy tọa độ"
         : hasGap
-        ? "Phát hiện đứt đoạn tọa độ (Gap)"
+        ? "Phát hiện đứt đoạn tọa độ"
         : undefined,
     },
     {
@@ -196,7 +196,7 @@ export function TFTreeStatus({
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-sm">
             <GitBranchIcon className="size-4" />
-            Trạng thái Cây Tọa độ (TF Tree Status)
+            Trạng thái cây tọa độ TF
           </CardTitle>
           <Tooltip>
             <TooltipTrigger
@@ -219,7 +219,7 @@ export function TFTreeStatus({
         {/* Help panel */}
         {showHelp && (
           <div className="mb-3 rounded border border-border bg-muted/50 p-2 text-[10px]">
-            <p className="font-semibold">Chuỗi chuyển đổi (Transform Chain):</p>
+            <p className="font-semibold">Chuỗi chuyển đổi:</p>
             <p className="mt-0.5 text-muted-foreground">
               map &rarr; odom &rarr; base_link
             </p>

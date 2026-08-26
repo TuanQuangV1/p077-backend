@@ -1,13 +1,13 @@
 import { expect, test } from "@playwright/test"
 
 const SECTIONS: { path: string; title: string }[] = [
-    { path: "/", title: "Fleet overview" },
-    { path: "/datasets", title: "Rosbag datasets" },
-    { path: "/analysis", title: "Analysis workspace" },
-    { path: "/review", title: "Human review queue" },
-    { path: "/reports", title: "Diagnostic reports" },
-    { path: "/vllm", title: "VLLM observability" },
-    { path: "/architecture", title: "System architecture" },
+    { path: "/", title: "Tổng quan hạm đội" },
+    { path: "/datasets", title: "Tập dữ liệu Rosbag" },
+    { path: "/analysis", title: "Không gian phân tích" },
+    { path: "/review", title: "Hàng đợi duyệt thủ công" },
+    { path: "/reports", title: "Báo cáo chẩn đoán" },
+    { path: "/vllm", title: "Giám sát vLLM" },
+    { path: "/architecture", title: "Kiến trúc hệ thống" },
 ]
 
 for (const { path, title } of SECTIONS) {

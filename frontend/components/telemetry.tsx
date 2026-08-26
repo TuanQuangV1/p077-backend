@@ -46,10 +46,17 @@ export function StatTile({
   )
 }
 
+const SEVERITY_VI: Record<string, string> = {
+  critical: "nghiêm trọng",
+  high: "cao",
+  medium: "trung bình",
+  low: "thấp",
+}
+
 export function SeverityBadge({ severity, className }: { severity: Severity; className?: string }) {
   return (
     <Badge variant="outline" className={cn("font-mono text-[10px] uppercase", severityBorder[severity], className)}>
-      {severity}
+      {SEVERITY_VI[severity] ?? severity}
     </Badge>
   )
 }

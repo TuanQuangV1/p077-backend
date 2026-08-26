@@ -33,6 +33,7 @@ Thumbs.db
 !data/runs.db
 !data/*/*.mcap
 !data/*/*.db3
+eval/**/runtime/*.db
 
 
 # Logs

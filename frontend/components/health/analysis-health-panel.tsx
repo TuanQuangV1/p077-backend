@@ -263,18 +263,18 @@ function GroupScoresSummary({ health }: { health: HealthSummary }) {
   const groups = health?.summary?.groups ?? {}
 
   const groupLabels: Record<string, { label: string; icon: string }> = {
-    frequency: { label: "Tần số (Frequency)", icon: "Hz" },
-    tf: { label: "Cây Tọa độ (TF Tree)", icon: "TF" },
-    log: { label: "Nhật ký (Log)", icon: "LOG" },
-    latency: { label: "Độ trễ (Latency)", icon: "LAT" },
-    payload: { label: "Dung lượng (Payload)", icon: "PLD" },
+    frequency: { label: "Tần số gói tin", icon: "Hz" },
+    tf: { label: "Cây tọa độ TF", icon: "TF" },
+    log: { label: "Nhật ký Log", icon: "LOG" },
+    latency: { label: "Độ trễ truyền nhận", icon: "LAT" },
+    payload: { label: "Dung lượng dữ liệu", icon: "PLD" },
   }
 
   return (
     <Card className="flex flex-col border border-border/70 bg-card/60">
       <CardHeader className="py-2.5 px-3.5">
         <CardTitle className="text-xs font-semibold">
-          Phân bố Điểm Nhóm (Group Scores)
+          Phân bố điểm nhóm
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2 py-2 px-3.5">

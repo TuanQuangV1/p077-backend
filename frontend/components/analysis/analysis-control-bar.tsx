@@ -151,7 +151,7 @@ export function AnalysisControlBar({
                 {/* Topic Selector */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-medium text-muted-foreground">
-                    Kênh cảm biến (Topic)
+                    Kênh Topic
                   </label>
                   <div className="relative flex items-center">
                     <select
@@ -202,7 +202,7 @@ export function AnalysisControlBar({
                 <div className="space-y-1">
                   <label className="text-[10px] font-medium text-muted-foreground flex items-center justify-between">
                     <span>Gián đoạn tần số tối đa</span>
-                    <span className="font-mono text-[9px] text-muted-foreground">(sec)</span>
+                    <span className="font-mono text-[9px] text-muted-foreground">(giây)</span>
                   </label>
                   <div className="relative flex items-center">
                     <Input
@@ -227,7 +227,7 @@ export function AnalysisControlBar({
                 <div className="space-y-1">
                   <label className="text-[10px] font-medium text-muted-foreground flex items-center justify-between">
                     <span>Ngưỡng node im lặng</span>
-                    <span className="font-mono text-[9px] text-muted-foreground">(sec)</span>
+                    <span className="font-mono text-[9px] text-muted-foreground">(giây)</span>
                   </label>
                   <div className="relative flex items-center">
                     <Input
@@ -259,7 +259,7 @@ export function AnalysisControlBar({
                 className="h-8 w-full gap-1.5 text-xs font-medium text-primary-foreground cursor-pointer shadow-xs"
               >
                 <SaveIcon className="size-3.5" />
-                {savingThresholds ? "Đang lưu..." : "Lưu cấu hình (Save thresholds)"}
+                {savingThresholds ? "Đang lưu..." : "Lưu cấu hình ngưỡng"}
               </Button>
             </div>
           </div>
