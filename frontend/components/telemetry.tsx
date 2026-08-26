@@ -90,6 +90,7 @@ const STATUS_VI: Record<string, string> = {
   queued: "đang chờ",
   pending: "chờ duyệt",
   draft: "bản nháp",
+  uploaded: "đã nạp",
 }
 
 export function StatusLabel({ status, className }: { status: string; className?: string }) {

@@ -355,7 +355,7 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
                               {bag.name}
                             </span>
                             <span className="text-[11px] text-muted-foreground font-sans">
-                              {bag.messageCount.toLocaleString()} messages
+                              {bag.messageCount.toLocaleString()} gói tin
                             </span>
                           </div>
                         </div>
@@ -400,7 +400,7 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
                             className="h-7 px-2.5 text-xs text-primary font-medium"
                           >
                             <PlayIcon className="size-3 mr-1" />
-                            Analyze
+                            Chẩn đoán
                           </Button>
                           <Button
                             size="sm"
@@ -410,7 +410,7 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
                             className="h-7 px-2 text-xs text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10"
                           >
                             <Trash2Icon data-icon="inline-start" className="size-3.5" />
-                            Delete
+                            Xóa
                           </Button>
                         </div>
                       </td>
