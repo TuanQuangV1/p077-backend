@@ -112,6 +112,7 @@ export interface Rosbag {
   analysisAnomalyCount?: number | null
   worstSeverity?: Severity | null
   lastRunId?: string | null
+  duplicateOf?: string | null
 }
 
 export interface AnalysisRun {
