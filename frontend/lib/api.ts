@@ -217,7 +217,9 @@ export async function fetchWindowSummaries(runId: string, windowSec = 5): Promis
 export async function uploadRosbag(file: File): Promise<Rosbag> {
     const form = new FormData()
     form.append("file", file)
-    const res = await fetch("/api/v1/datasets/upload", {
+    const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "")
+    const target = base ? `${base}/api/v1/datasets/upload` : "/api/v1/datasets/upload"
+    const res = await fetch(target, {
         method: "POST",
         headers: { ...authHeaders() },
         body: form,
@@ -228,8 +230,19 @@ export async function uploadRosbag(file: File): Promise<Rosbag> {
         throw new Error("Unauthorized")
     }
     if (!res.ok) {
-        const body = await res.json().catch(() => null) as { detail?: string } | null
-        throw new Error(body?.detail ?? `HTTP error ${res.status}`)
+        let detail = `HTTP error ${res.status}`
+        try {
+            const text = await res.text()
+            if (text) {
+                try {
+                    const j = JSON.parse(text) as { detail?: string }
+                    detail = j.detail ?? text
+                } catch {
+                    detail = text
+                }
+            }
+        } catch {}
+        throw new Error(detail)
     }
     return res.json() as Promise<Rosbag>
 }
