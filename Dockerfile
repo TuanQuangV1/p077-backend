@@ -1,46 +1,5 @@
 # syntax=docker/dockerfile:1
 
-# ---- Backend dependency layer ----
-# Pin to a specific digest for reproducible builds.
-# To update: docker pull python:3.11-slim && docker inspect python:3.11-slim --format '{{index .RepoDigests 0}}'
-FROM python:3.11-slim AS backend-builder
-
-WORKDIR /app
-
-COPY pyproject.toml README.md ./
-COPY src ./src
-
-RUN --mount=type=cache,target=/root/.cache/pip \
-    python -m pip install --default-timeout=100 --retries 5 --prefix=/install .
-
-# ---- Backend production image ----
-FROM python:3.11-slim AS backend
-
-WORKDIR /app
-
-COPY --from=backend-builder /install /usr/local
-COPY src ./src
-
-RUN apt-get update \
-    && apt-get upgrade -y \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* \
-    && pip uninstall -y setuptools \
-    && useradd --create-home appuser \
-    && mkdir -p /app/data \
-    && chown -R appuser:appuser /app
-
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-
-EXPOSE 8000
-
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
-
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
-
 # ---- Frontend dependency layer ----
 FROM node:22-bookworm-slim AS frontend-deps
 
@@ -88,7 +47,53 @@ CMD ["node", "frontend/server.js"]
 # ---- Frontend development image ----
 FROM frontend-deps AS frontend-dev
 
+WORKDIR /app/frontend
 COPY frontend ./
 EXPOSE 3000
 
 CMD ["pnpm", "dev"]
+
+# ---- Backend dependency layer ----
+# Pin to a specific digest for reproducible builds.
+# To update: docker pull python:3.11-slim && docker inspect python:3.11-slim --format '{{index .RepoDigests 0}}'
+FROM python:3.11-slim AS backend-builder
+
+WORKDIR /app
+
+COPY pyproject.toml README.md requirements.txt ./
+COPY src ./src
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install --default-timeout=100 --retries 5 --prefix=/install -r requirements.txt && \
+    python -m pip install --no-deps --prefix=/install -e .
+
+# ---- Backend production image (default final stage) ----
+FROM python:3.11-slim AS backend
+
+WORKDIR /app
+
+COPY --from=backend-builder /install /usr/local
+COPY pyproject.toml README.md ./
+COPY src ./src
+COPY data ./data
+
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip uninstall -y setuptools \
+    && useradd --create-home appuser \
+    && mkdir -p /app/data \
+    && chown -R appuser:appuser /app
+
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+ENV PORT=8000
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+    CMD python -c "import os, urllib.request; port = os.environ.get('PORT', '8000'); urllib.request.urlopen(f'http://localhost:{port}/health')" || exit 1
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+CMD ["sh", "-c", "exec uvicorn src.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
