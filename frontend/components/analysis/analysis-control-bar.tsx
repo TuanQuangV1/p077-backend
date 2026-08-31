@@ -62,15 +62,15 @@ export function AnalysisControlBar({
 
   const selectedTopicLabel =
     topicFilter === "all"
-      ? `Tất cả kênh (${lanes.length})`
+      ? `All Topics (${lanes.length})`
       : topicFilter
 
   const selectedTimeLabel =
     timeRange === "30"
-      ? "30s đầu"
+      ? "First 30s"
       : timeRange === "60"
-      ? "60s đầu"
-      : "Toàn bộ"
+      ? "First 60s"
+      : "Full Run"
 
   return (
     <div
@@ -92,7 +92,7 @@ export function AnalysisControlBar({
         >
           <SlidersHorizontalIcon className="size-3.5 text-primary" />
           <span className="font-semibold text-foreground">
-            Bộ lọc & Điều chỉnh phân tích
+            Filters & Diagnostic Controls
           </span>
 
           <div className="flex items-center gap-1.5 pl-1 text-[11px] text-muted-foreground border-l border-border/60">
@@ -132,11 +132,11 @@ export function AnalysisControlBar({
               <div className="flex items-center gap-2">
                 <SlidersHorizontalIcon className="size-4 text-primary" />
                 <span className="text-xs font-semibold text-foreground">
-                  Tùy chỉnh Bộ lọc & Tham số
+                  Diagnostic Scope & Sensitivity
                 </span>
               </div>
               <span className="text-[10px] text-muted-foreground font-mono">
-                Tự ẩn khi rời chuột
+                Auto-dismiss on blur
               </span>
             </div>
 
@@ -144,14 +144,14 @@ export function AnalysisControlBar({
             <div className="space-y-3 rounded-lg border border-border/60 bg-muted/20 p-2.5">
               <div className="text-[11px] font-semibold text-foreground/90 flex items-center gap-1.5">
                 <LayersIcon className="size-3.5 text-primary" />
-                <span>1. Bộ lọc phạm vi phân tích</span>
+                <span>1. Telemetry Scope</span>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 {/* Topic Selector */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-medium text-muted-foreground">
-                    Kênh Topic
+                    ROS Topic Lane
                   </label>
                   <div className="relative flex items-center">
                     <select
@@ -159,7 +159,7 @@ export function AnalysisControlBar({
                       onChange={(e) => setTopicFilter(e.target.value)}
                       className="h-8 w-full rounded-md border border-border/80 bg-background pl-2 pr-4 font-sans text-[11px] font-medium text-foreground transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden cursor-pointer"
                     >
-                      <option value="all">Tất cả kênh ({lanes.length})</option>
+                      <option value="all">All Topics ({lanes.length})</option>
                       {lanes.map((lane) => (
                         <option key={lane.topic} value={lane.topic} className="font-mono text-xs">
                           {lane.topic}
@@ -173,7 +173,7 @@ export function AnalysisControlBar({
                 <div className="space-y-1">
                   <label className="text-[10px] font-medium text-muted-foreground flex items-center gap-1">
                     <ClockIcon className="size-2.5 text-primary" />
-                    <span>Khoảng thời gian</span>
+                    <span>Time Window</span>
                   </label>
                   <div className="relative flex items-center">
                     <select
@@ -181,9 +181,9 @@ export function AnalysisControlBar({
                       onChange={(e) => onTimeRangeChange(e.target.value)}
                       className="h-8 w-full rounded-md border border-border/80 bg-background pl-2 pr-4 font-sans text-[11px] font-medium text-foreground transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden cursor-pointer"
                     >
-                      <option value="all">Toàn bộ lượt chạy</option>
-                      <option value="30">30 giây đầu</option>
-                      <option value="60">60 giây đầu</option>
+                      <option value="all">Full ROSBag Run</option>
+                      <option value="30">First 30 Seconds</option>
+                      <option value="60">First 60 Seconds</option>
                     </select>
                   </div>
                 </div>
@@ -194,15 +194,15 @@ export function AnalysisControlBar({
             <div className="space-y-3 rounded-lg border border-border/60 bg-muted/20 p-2.5">
               <div className="text-[11px] font-semibold text-foreground/90 flex items-center gap-1.5">
                 <CheckCircle2Icon className="size-3.5 text-primary" />
-                <span>2. Độ nhạy phát hiện bất thường</span>
+                <span>2. Anomaly Detection Sensitivity</span>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 {/* Max frequency gap */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-medium text-muted-foreground flex items-center justify-between">
-                    <span>Gián đoạn tần số tối đa</span>
-                    <span className="font-mono text-[9px] text-muted-foreground">(giây)</span>
+                    <span>Frequency Gap Threshold</span>
+                    <span className="font-mono text-[9px] text-muted-foreground">(sec)</span>
                   </label>
                   <div className="relative flex items-center">
                     <Input
@@ -226,8 +226,8 @@ export function AnalysisControlBar({
                 {/* Silent node span */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-medium text-muted-foreground flex items-center justify-between">
-                    <span>Ngưỡng node im lặng</span>
-                    <span className="font-mono text-[9px] text-muted-foreground">(giây)</span>
+                    <span>Silent Node Timeout</span>
+                    <span className="font-mono text-[9px] text-muted-foreground">(sec)</span>
                   </label>
                   <div className="relative flex items-center">
                     <Input
@@ -259,7 +259,7 @@ export function AnalysisControlBar({
                 className="h-8 w-full gap-1.5 text-xs font-medium text-primary-foreground cursor-pointer shadow-xs"
               >
                 <SaveIcon className="size-3.5" />
-                {savingThresholds ? "Đang lưu..." : "Lưu cấu hình ngưỡng"}
+                {savingThresholds ? "Saving..." : "Save Threshold Configuration"}
               </Button>
             </div>
           </div>

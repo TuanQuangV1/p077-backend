@@ -31,18 +31,18 @@ import {
 } from "@/components/ui/sidebar"
 
 const NAV = [
-    { label: "Vận hành", items: [
-        { href: "/", label: "Tổng quan", icon: GaugeIcon },
-        { href: "/datasets", label: "Tập dữ liệu", icon: DatabaseIcon },
+    { label: "Operations", items: [
+        { href: "/", label: "Fleet Overview", icon: GaugeIcon },
+        { href: "/datasets", label: "ROSBag Registry", icon: DatabaseIcon },
     ]},
-    { label: "Chẩn đoán", items: [
-        { href: "/analysis", label: "Phân tích", icon: ScanSearchIcon },
-        { href: "/review", label: "Duyệt thủ công", icon: UserCheckIcon, badge: "pending" as const },
+    { label: "Diagnostics", items: [
+        { href: "/analysis", label: "Diagnostics Workspace", icon: ScanSearchIcon },
+        { href: "/review", label: "Human Review", icon: UserCheckIcon, badge: "pending" as const },
     ]},
-    { label: "Nền tảng", items: [
-        { href: "/llm", label: "Giám sát LLM", icon: BotIcon },
-        { href: "/reports", label: "Báo cáo", icon: FileTextIcon },
-        { href: "/architecture", label: "Kiến trúc", icon: LayersIcon },
+    { label: "Platform", items: [
+        { href: "/llm", label: "LLM Observability", icon: BotIcon },
+        { href: "/reports", label: "Diagnostic Reports", icon: FileTextIcon },
+        { href: "/architecture", label: "System Architecture", icon: LayersIcon },
     ]},
 ]
 
@@ -57,12 +57,12 @@ export function AppSidebar({ pendingReviews }: { pendingReviews?: number }) {
         <Sidebar collapsible="icon">
             <SidebarHeader>
                 <div className="flex items-center gap-2.5 px-1 py-1.5">
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-sm">
                         <RadarIcon className="size-4.5" />
                     </div>
                     <div className="flex min-w-0 flex-col group-data-[collapsible=icon]:hidden">
                         <span className="truncate font-mono text-sm font-semibold tracking-tight">RAV&#8209;13</span>
-                        <span className="truncate text-[11px] text-muted-foreground">bảng điều khiển chẩn đoán rosbag</span>
+                        <span className="truncate text-[11px] text-muted-foreground">ROS2 Autonomous Diagnostics</span>
                     </div>
                 </div>
             </SidebarHeader>
@@ -101,16 +101,16 @@ export function AppSidebar({ pendingReviews }: { pendingReviews?: number }) {
                 <div className="flex flex-col gap-2 group-data-[collapsible=icon]:hidden">
                     <button
                         onClick={handleLogout}
-                        className="flex items-center gap-2 rounded-md border border-sidebar-border bg-sidebar-accent/40 px-2 py-2 text-left hover:bg-sidebar-accent"
+                        className="flex items-center gap-2 rounded-md border border-sidebar-border bg-sidebar-accent/40 px-2.5 py-2 text-left transition-colors hover:bg-sidebar-accent cursor-pointer"
                     >
                         <LogOutIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                        <span className="font-mono text-[11px] text-sidebar-foreground">Đăng xuất</span>
+                        <span className="font-mono text-[11px] text-sidebar-foreground">Sign Out</span>
                     </button>
-                    <div className="flex items-center gap-2 rounded-md border border-sidebar-border bg-sidebar-accent/40 px-2 py-2">
+                    <div className="flex items-center gap-2 rounded-md border border-sidebar-border bg-sidebar-accent/40 px-2.5 py-2">
                         <ActivityIcon className="size-3.5 shrink-0 text-primary" />
                         <div className="min-w-0 flex-1 font-mono text-[11px] leading-4">
-                            <div className="truncate text-sidebar-foreground">gpt-4.1</div>
-                            <div className="truncate text-muted-foreground">OpenAI</div>
+                            <div className="truncate text-sidebar-foreground font-semibold">gpt-4.1</div>
+                            <div className="truncate text-muted-foreground text-[10px]">OpenAI Diagnostics LLM</div>
                         </div>
                     </div>
                 </div>

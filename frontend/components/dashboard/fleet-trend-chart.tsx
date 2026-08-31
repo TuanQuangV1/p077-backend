@@ -29,7 +29,7 @@ function formatDateLabel(dateStr: string): string {
   try {
     const d = new Date(dateStr)
     if (isNaN(d.getTime())) return dateStr
-    return d.toLocaleDateString("vi-VN", { month: "short", day: "numeric" })
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
   } catch {
     return dateStr
   }
@@ -47,14 +47,14 @@ const CustomTooltip = ({ active, payload, label }: any) => {
           {dataPoint?.date || label}
         </span>
         <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-          Snapshot
+          Telemetry Snapshot
         </span>
       </div>
       <div className="space-y-1.5 text-xs font-mono">
         <div className="flex items-center justify-between gap-4">
           <span className="flex items-center gap-1.5 text-cyan-400">
             <LayersIcon className="size-3.5" />
-            Rosbags nạp:
+            ROSBags Ingested:
           </span>
           <span className="font-semibold text-foreground">
             {dataPoint?.bags ?? 0}
@@ -63,7 +63,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
         <div className="flex items-center justify-between gap-4">
           <span className="flex items-center gap-1.5 text-rose-400">
             <AlertTriangleIcon className="size-3.5" />
-            Bất thường:
+            Anomalies:
           </span>
           <span className="font-semibold text-rose-400">
             {dataPoint?.anomalies ?? 0}
@@ -72,7 +72,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
         <div className="flex items-center justify-between gap-4">
           <span className="flex items-center gap-1.5 text-purple-400">
             <ActivityIcon className="size-3.5" />
-            Độ trễ P95:
+            P95 Latency:
           </span>
           <span className="font-semibold text-purple-300">
             {dataPoint?.p95Ms ? `${dataPoint.p95Ms} ms` : "--"}
@@ -87,7 +87,7 @@ export function FleetTrendChart({ data }: FleetTrendChartProps) {
   if (!data || data.length === 0) {
     return (
       <div className="flex h-56 items-center justify-center rounded-lg border border-dashed border-border/60 p-6 text-sm text-muted-foreground">
-        Chưa có dữ liệu xu hướng hoạt động 14 ngày.
+        No telemetry trend data available for the past 14 days.
       </div>
     )
   }
@@ -154,7 +154,7 @@ export function FleetTrendChart({ data }: FleetTrendChartProps) {
             <Bar
               yAxisId="left"
               dataKey="bags"
-              name="Rosbags"
+              name="ROSBags"
               fill="url(#bagsGradient)"
               radius={[4, 4, 0, 0]}
               maxBarSize={28}
@@ -163,7 +163,7 @@ export function FleetTrendChart({ data }: FleetTrendChartProps) {
             <Bar
               yAxisId="left"
               dataKey="anomalies"
-              name="Bất thường"
+              name="Anomalies"
               fill="url(#anomaliesGradient)"
               radius={[4, 4, 0, 0]}
               maxBarSize={28}
@@ -173,7 +173,7 @@ export function FleetTrendChart({ data }: FleetTrendChartProps) {
               yAxisId="right"
               type="monotone"
               dataKey="p95Ms"
-              name="Độ trễ P95"
+              name="P95 Latency"
               stroke="#a855f7"
               strokeWidth={2.5}
               dot={{ r: 4, fill: "#a855f7", strokeWidth: 2, stroke: "#18181b" }}
@@ -188,19 +188,19 @@ export function FleetTrendChart({ data }: FleetTrendChartProps) {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
             <span className="size-2.5 rounded-sm bg-cyan-500" />
-            <span>Rosbags</span>
+            <span>ROSBags</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="size-2.5 rounded-sm bg-rose-500" />
-            <span>Bất thường</span>
+            <span>Anomalies</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="h-0.5 w-3 bg-purple-400 inline-block" />
-            <span>Độ trễ P95 (ms)</span>
+            <span>P95 Latency (ms)</span>
           </div>
         </div>
         <span className="text-[11px] text-muted-foreground/70 hidden sm:inline">
-          Dữ liệu thống kê 14 ngày
+          14-Day Statistical Window
         </span>
       </div>
     </div>

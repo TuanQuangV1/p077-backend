@@ -31,7 +31,7 @@ function LogStatCard({
 }) {
   return (
     <div
-      className="flex flex-col items-center justify-center rounded-lg border p-3"
+      className="flex flex-col items-center justify-center rounded-lg border p-3 font-mono"
       style={{
         borderColor: isAlert ? color : "var(--border)",
         backgroundColor: isAlert ? `${color}10` : "transparent",
@@ -44,7 +44,7 @@ function LogStatCard({
         {count}
       </span>
       <span
-        className="text-[10px] uppercase tracking-wider"
+        className="text-[10px] uppercase tracking-wider font-semibold"
         style={{ color: isAlert ? color : "var(--muted-foreground)" }}
       >
         {label}
@@ -68,7 +68,7 @@ function LogBanner({
 
   return (
     <div
-      className="flex items-start gap-2 rounded-lg border p-2"
+      className="flex items-start gap-2 rounded-lg border p-2 font-mono"
       style={{
         borderColor: `${color}40`,
         backgroundColor: `${color}08`,
@@ -85,7 +85,7 @@ function LogBanner({
         <div className="flex items-center gap-2">
           <Badge
             variant="outline"
-            className="text-[9px]"
+            className="text-[9px] font-bold uppercase"
             style={{ borderColor: color, color }}
           >
             {level.toUpperCase()}
@@ -94,7 +94,7 @@ function LogBanner({
             t={timestamp.toFixed(1)}s
           </span>
         </div>
-        <p className="mt-1 truncate text-xs">{message}</p>
+        <p className="mt-1 truncate text-xs font-sans text-foreground/90">{message}</p>
       </div>
     </div>
   )
@@ -114,8 +114,6 @@ export function LogSeverityPanel({ logs, anomalies }: LogSeverityPanelProps) {
     .filter((l) => l.level === "warn")
     .sort((a, b) => b.tSec - a.tSec)
 
-  // `anomalies` is already the log group (see lib/anomaly-groups.ts); filtering
-  // it again by demo-only kinds discarded every real backend log detection.
   const logAnomalies = anomalies
 
   const latestError = errorLogs[0]
@@ -130,26 +128,26 @@ export function LogSeverityPanel({ logs, anomalies }: LogSeverityPanelProps) {
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-sm">
           <AlertCircleIcon className="size-4" />
-          Mức độ nghiêm trọng nhật ký
+          ROS Logger Severity & Diagnostic Alerts
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         {/* Stat Cards */}
         <div className="grid grid-cols-3 gap-2">
           <LogStatCard
-            label="NGHIÊM TRỌNG"
+            label="FATAL"
             count={fatalCount}
             color="#dc3545"
             isAlert={hasFatal}
           />
           <LogStatCard
-            label="LỖI"
+            label="ERROR"
             count={errorCount}
             color="#dc3545"
             isAlert={hasError}
           />
           <LogStatCard
-            label="CẢNH BÁO"
+            label="WARN"
             count={warnCount}
             color="#ffc107"
             isAlert={hasWarn}
@@ -159,8 +157,8 @@ export function LogSeverityPanel({ logs, anomalies }: LogSeverityPanelProps) {
         {/* Log Anomalies Banner */}
         {logAnomalies.length > 0 && (
           <div className="space-y-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Bất thường
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground font-mono">
+              Associated Log Faults
             </span>
             {logAnomalies.slice(0, 3).map((anomaly) => (
               <div
@@ -171,10 +169,10 @@ export function LogSeverityPanel({ logs, anomalies }: LogSeverityPanelProps) {
                   className="size-1.5 rounded-full"
                   style={{ backgroundColor: SEVERITY_COLORS[anomaly.severity] }}
                 />
-                <span className="flex-1 truncate text-xs">{anomaly.title}</span>
+                <span className="flex-1 truncate text-xs font-medium">{anomaly.title}</span>
                 <Badge
                   variant="outline"
-                  className="text-[9px]"
+                  className="text-[9px] font-mono"
                   style={{
                     borderColor: SEVERITY_COLORS[anomaly.severity],
                     color: SEVERITY_COLORS[anomaly.severity],
@@ -190,8 +188,8 @@ export function LogSeverityPanel({ logs, anomalies }: LogSeverityPanelProps) {
         {/* Latest Error */}
         {latestError && (
           <div className="space-y-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Lỗi mới nhất
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground font-mono">
+              Latest Error Log
             </span>
             <LogBanner
               level={latestError.level}
@@ -204,8 +202,8 @@ export function LogSeverityPanel({ logs, anomalies }: LogSeverityPanelProps) {
         {/* Latest Warn */}
         {latestWarn && (
           <div className="space-y-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Cảnh báo mới nhất
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground font-mono">
+              Latest Warning Log
             </span>
             <LogBanner
               level={latestWarn.level}
@@ -217,8 +215,8 @@ export function LogSeverityPanel({ logs, anomalies }: LogSeverityPanelProps) {
 
         {/* No Issues */}
         {!hasFatal && !hasError && !hasWarn && (
-          <p className="py-4 text-center text-xs text-muted-foreground">
-            Không phát hiện nhật ký lỗi hoặc cảnh báo
+          <p className="py-4 text-center text-xs text-muted-foreground font-mono">
+            Zero errors or warnings logged during this recording
           </p>
         )}
       </CardContent>

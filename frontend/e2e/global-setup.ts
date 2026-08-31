@@ -83,7 +83,7 @@ export default async function globalSetup(): Promise<void> {
             console.log(`seeded analysis run ${body.run.id} (${body.run.status})`)
         }
 
-        // Save storageState for authenticated e2e tests (admin) — cần cả cookie cho proxy middleware và localStorage cho lib/api
+        // Save storageState for authenticated e2e tests (admin) — requires both cookie for proxy middleware and localStorage for lib/api
         if (adminToken) {
             const storagePath = path.join(__dirname, ".auth", "admin.json")
             await fs.promises.mkdir(path.dirname(storagePath), { recursive: true })

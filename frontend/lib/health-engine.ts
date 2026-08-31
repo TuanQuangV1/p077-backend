@@ -128,12 +128,11 @@ export function computeSystemMetrics(params: {
 
   const avgRateHz = durationSec > 0 ? totalMessages / durationSec : 0
   const formattedAvgRateHz = avgRateHz >= 100 ? avgRateHz.toFixed(1) : avgRateHz.toFixed(2)
-  const rateSubtext = "Tốc độ tin nhắn toàn mạng"
+  const rateSubtext = "Aggregate message publish rate"
 
   // 2. Data Volume & Bandwidth Throughput
   let totalSizeBytes = rosbag?.sizeBytes ?? 0
   if (totalSizeBytes <= 0) {
-    // Estimate if sizeBytes not provided directly (avg ~100 bytes per ROS msg)
     totalSizeBytes = totalMessages * 100
   }
   const formattedTotalSize = formatBytes(totalSizeBytes)
@@ -142,7 +141,7 @@ export function computeSystemMetrics(params: {
   const avgBandwidthBps = durationSec > 0 ? totalSizeBytes / durationSec : 0
   const formattedBandwidth = `${formatBytes(avgBandwidthBps)}/s`
   const { value: bandwidthValue, unit: bandwidthUnit } = splitFormattedBytes(avgBandwidthBps)
-  const bandwidthSubtext = `~${bandwidthValue} ${bandwidthUnit}/s băng thông TB`
+  const bandwidthSubtext = `~${bandwidthValue} ${bandwidthUnit}/s avg throughput`
 
   // 3. Sensor Availability & Topic Status
   const totalTopics = topics.length
@@ -170,19 +169,19 @@ export function computeSystemMetrics(params: {
     availabilityStatus = "degraded"
   }
 
-  let availabilitySubtext = `${healthyTopicsCount}/${totalTopics} Topic đạt chuẩn`
+  let availabilitySubtext = `${healthyTopicsCount}/${totalTopics} topics nominal`
   if (silentTopicsCount > 0) {
-    availabilitySubtext = `${problematicTopicsCount} lỗi • ${silentTopicsCount} Silent node`
+    availabilitySubtext = `${problematicTopicsCount} issues • ${silentTopicsCount} silent nodes`
   } else if (problematicTopicsCount > 0) {
-    availabilitySubtext = `${problematicTopicsCount} Topic sụt giảm tần số`
+    availabilitySubtext = `${problematicTopicsCount} topics with rate drops`
   }
 
   // 4. Duration & Messages
   const actualDuration = Math.round(rosbag?.durationSec ?? 0)
   const formattedDuration = formatDuration(actualDuration)
-  const durationSubtext = `${actualDuration}s tổng cộng`
+  const durationSubtext = `${actualDuration}s total duration`
   const formattedMessages = totalMessages.toLocaleString()
-  const messagesSubtext = `Trên ${totalTopics} topics giám sát`
+  const messagesSubtext = `Across ${totalTopics} monitored topics`
 
   // 5. Anomaly breakdown
   let criticalCount = 0

@@ -31,7 +31,7 @@ function LatencyBarChart({ data, threshold }: { data: number[]; threshold: numbe
           bottom: `${(threshold / maxVal) * height}px`,
         }}
       >
-        <span className="absolute -top-4 right-0 text-[9px] text-red-400">
+        <span className="absolute -top-4 right-0 text-[9px] text-red-400 font-mono">
           {threshold}ms
         </span>
       </div>
@@ -95,15 +95,15 @@ function generateMockData(
 }
 
 const MODE_LABELS: Record<ViewMode, string> = {
-  latency: "Độ trễ Header",
-  jitter: "Biến động",
-  clock: "Trôi đồng hồ",
+  latency: "Header Latency",
+  jitter: "Timestamp Jitter",
+  clock: "Clock Skew",
 }
 
 const MODE_HELP: Record<ViewMode, string> = {
-  latency: "Thời gian giữa header.stamp và thời điểm xuất bản (publish time)",
-  jitter: "Độ lệch chuẩn khoảng cách giữa các tin nhắn liên tiếp",
-  clock: "Độ lệch timestamp trung vị giữa |bag - header|",
+  latency: "Delta between sensor header.stamp and transport publish time",
+  jitter: "Standard deviation of inter-message publishing period",
+  clock: "Median timestamp offset (|bag_time - header.stamp|)",
 }
 
 export function LatencyJitterPanel({
@@ -123,7 +123,7 @@ export function LatencyJitterPanel({
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-sm">
             <ClockIcon className="size-4" />
-            Độ trễ & Biến động
+            Timestamp Jitter & Transport Latency
           </CardTitle>
         </div>
         {/* Mode toggle */}
@@ -133,7 +133,7 @@ export function LatencyJitterPanel({
               key={m}
               variant={mode === m ? "secondary" : "ghost"}
               size="sm"
-              className="h-7 text-[10px]"
+              className="h-7 text-[10px] cursor-pointer"
               onClick={() => setMode(m)}
             >
               {MODE_LABELS[m]}
@@ -146,18 +146,18 @@ export function LatencyJitterPanel({
         <LatencyBarChart data={data} threshold={THRESHOLD_MS} />
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="grid grid-cols-3 gap-2 text-center font-mono">
           <div>
             <span className="text-lg font-bold tabular-nums">
               {maxVal.toFixed(0)}
             </span>
-            <span className="text-xs text-muted-foreground">ms tối đa</span>
+            <span className="text-xs text-muted-foreground ml-1">ms max</span>
           </div>
           <div>
             <span className="text-lg font-bold tabular-nums">
               {avgVal.toFixed(0)}
             </span>
-            <span className="text-xs text-muted-foreground">ms trung bình</span>
+            <span className="text-xs text-muted-foreground ml-1">ms avg</span>
           </div>
           <div>
             <span
@@ -165,32 +165,32 @@ export function LatencyJitterPanel({
             >
               {highCount}
             </span>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-muted-foreground ml-1">
               {">"}{THRESHOLD_MS}ms
             </span>
           </div>
         </div>
 
         {/* Mode description */}
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-[10px] text-muted-foreground font-mono">
           {MODE_HELP[mode]}
         </p>
 
         {/* Anomaly alert */}
         {latencyAnomalies.length > 0 && (
           <div className="flex items-center gap-2 rounded border border-border bg-card p-2">
-            <AlertTriangleIcon className="size-4 text-yellow-500" />
+            <AlertTriangleIcon className="size-4 text-amber-500" />
             <div className="flex-1">
               <p className="text-xs font-medium">
-                Phát hiện {latencyAnomalies.length} bất thường độ trễ
+                Detected {latencyAnomalies.length} transport latency anomalies
               </p>
-              <p className="text-[10px] text-muted-foreground">
-                Trễ duy trì tại t={latencyAnomalies[0] ? relativeSpan(latencyAnomalies[0]).start.toFixed(0) : "?"}s
+              <p className="text-[10px] text-muted-foreground font-mono">
+                Sustained jitter at t={latencyAnomalies[0] ? relativeSpan(latencyAnomalies[0]).start.toFixed(0) : "?"}s
               </p>
             </div>
             <Badge
               variant="outline"
-              className="text-[9px]"
+              className="text-[9px] font-mono"
               style={{
                 borderColor: "#ffc107",
                 color: "#ffc107",

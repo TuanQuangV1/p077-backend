@@ -109,19 +109,19 @@ interface AnomalyTemplate {
 const ANOMALY_TEMPLATES: AnomalyTemplate[] = [
   {
     kind: "tf_timeout",
-    title: "Timeout tra cứu TF trên map -> base_link",
+    title: "TF Transform Lookup Timeout on map -> base_link",
     severity: "high",
     topics: ["/tf", "/amcl_pose"],
-    metric: "độ trễ TF p99 0.41s (ngưỡng 0.20s)",
-    issue: "Nav2 không thể biến đổi pose mục tiêu vì map -> base_link vượt quá ngưỡng dung sai TF.",
+    metric: "TF latency P99 0.41s (tolerance threshold 0.20s)",
+    issue: "Nav2 unable to transform target goal pose because map -> base_link exceeded transform tolerance window.",
     rootCause:
-      "robot_state_publisher đang phát lại /tf ở ~12 Hz thay vì 100 Hz đã cấu hình. Nó chia sẻ core CPU 2 với pointcloud_to_laserscan, vốn bão hòa khi rẽ, khiến buffer TF không thể ngoại suy map -> base_link trong ngưỡng 0.20 s.",
+      "robot_state_publisher publishing /tf at ~12 Hz instead of configured 100 Hz due to CPU core 2 sharing with pointcloud_to_laserscan during turning maneuvers.",
     explanation:
-      "Khoảng phát /tf giãn từ 10 ms lên 83 ms đúng lúc /diagnostics báo vòng lặp controller_server bị quá hạn. amcl vẫn phát /amcl_pose ở 10 Hz nên định vị vẫn ổn — chỉ cây transform bị trễ. Nav2 đóng an toàn khi transform cũ và hủy goal hiện tại, gây ra khoảng dừng thấy được trên quỹ đạo.",
+      "Publish intervals on /tf expanded from 10 ms to 83 ms while /diagnostics reported controller_server deadline misses. AMCL continued publishing /amcl_pose at 10 Hz, indicating localization was intact while the transform tree lagged.",
     fixes: [
-      "Chuyển robot_state_publisher sang core riêng (taskset / cgroup cpuset) để tiền xử lý sensor không làm đói tài nguyên.",
-      "Nâng transform_tolerance cho controller từ 0.20 s lên 0.35 s như biện pháp tạm thời.",
-      "Phát /tf với QoS SensorDataQoS depth 100 để burst subscriber trễ không làm tắc publisher.",
+      "Pin robot_state_publisher to an isolated CPU core via cgroup cpuset / taskset.",
+      "Increase transform_tolerance for controller from 0.20s to 0.35s as an interim mitigation.",
+      "Configure /tf publisher QoS with SensorDataQoS depth 100 to prevent buffer starvation.",
     ],
     node: "bt_navigator",
     logs: [
@@ -132,19 +132,19 @@ const ANOMALY_TEMPLATES: AnomalyTemplate[] = [
   },
   {
     kind: "lidar_dropout",
-    title: "Mất tín hiệu LaserScan trên /scan",
+    title: "LaserScan Sensor Dropout on /scan",
     severity: "critical",
     topics: ["/scan", "/local_costmap/costmap"],
-    metric: "0 tin nhắn trong 2.20 s (kỳ vọng 20 Hz)",
-    issue: "Lidar 2D chính ngừng phát hơn hai giây khi robot đang di chuyển 0.6 m/s.",
+    metric: "0 messages received for 2.20s (expected 20 Hz)",
+    issue: "Primary 2D LiDAR driver stopped streaming for over 2 seconds while AMR was traveling at 0.6 m/s.",
     rootCause:
-      "Socket UDP của driver lidar rớt 3 cửa sổ gói liên tiếp sau bão ARP trên VLAN cảm biến. Driver không đồng bộ lại giữa chừng scan nên loại bỏ scan dở thay vì phát dữ liệu suy giảm.",
+      "UDP socket in LiDAR driver dropped 3 consecutive packet windows following an ARP storm on the sensor VLAN; driver discarded incomplete scan rather than streaming degraded buffers.",
     explanation:
-      "Bộ đếm kernel cho thấy rx_missed_errors tăng trên NIC cảm biến cùng cửa sổ. /scan im lặng trong khi /imu/data và /odom vẫn chảy, loại trừ tắc executor toàn cục và chỉ ra đường mạng của driver. Local costmap giữ quan sát cuối và đánh dấu tươi nên robot tạm thời lập kế hoạch qua vùng không nhìn thấy.",
+      "Kernel counters revealed rx_missed_errors on the sensor NIC during this temporal window. /scan went silent while /imu/data and /odom continued streaming, isolating the fault to the sensor network driver.",
     fixes: [
-      "Tách VLAN cảm biến khỏi VLAN quản lý đội và bật IGMP snooping trên switch.",
-      "Phát scan rỗng với header hợp lệ khi mất cửa sổ scan để costmap hết hạn quan sát đúng cách.",
-      "Đặt observation_persistence về 0.0 trên lớp chướng ngại vật để không coi dữ liệu cũ là hiện tại.",
+      "Isolate sensor VLAN from fleet management VLAN and enable IGMP snooping on the network switch.",
+      "Configure LiDAR driver to publish empty scans with valid headers during packet dropouts to expire observations gracefully.",
+      "Set observation_persistence to 0.0 on obstacle layers to prevent stale obstacle retention.",
     ],
     node: "lidar_driver",
     logs: [
@@ -155,19 +155,19 @@ const ANOMALY_TEMPLATES: AnomalyTemplate[] = [
   },
   {
     kind: "localization_jump",
-    title: "Gián đoạn pose AMCL",
+    title: "AMCL Pose Estimate Discontinuity",
     severity: "critical",
     topics: ["/amcl_pose", "/odom", "/tf"],
-    metric: "độ lệch pose 0.84 m trong một lần cập nhật (giới hạn 0.15 m)",
-    issue: "Ước lượng định vị nhảy gần một mét theo chiều ngang, làm vô hiệu kế hoạch đang hoạt động.",
+    metric: "Pose jump of 0.84m in a single update step (limit 0.15m)",
+    issue: "AMCL localization hypothesis jumped nearly one meter laterally, invalidating active navigation path.",
     rootCause:
-      "Bộ lọc particle hội tụ lại vào lối đi kệ đối xứng. Chỉ 26 trong 2000 particle còn trọng số đáng kể sau khi lidar mất tín hiệu, nên lần resample tiếp theo làm sụp phân bố vào giả thuyết lối đi bên cạnh.",
+      "Particle filter re-converged onto a symmetric racking aisle. Only 26 of 2000 particles retained significant weights after LiDAR dropout, causing distribution collapse into adjacent aisle hypothesis upon resampling.",
     explanation:
-      "Cú nhảy xảy ra 1.4 s sau khi khoảng trống /scan kết thúc. Vết hiệp phương sai tăng từ 0.02 lên 0.61 trước cú nhảy rồi sụp, là dấu hiệu điển hình của cạn kiệt particle rồi resample sai chứ không phải lỗi hiệu chuẩn cảm biến. Odometry bánh xe vẫn liên tục trong cùng khoảng.",
+      "The jump occurred 1.4s after the /scan gap ended. Covariance trace spiked from 0.02 to 0.61 before collapsing, characteristic of particle starvation rather than wheel odometry calibration error.",
     fixes: [
-      "Tăng recovery_alpha_slow/fast để AMCL bơm particle ngẫu nhiên khi trọng số trung bình giảm.",
-      "Đưa detector fiducial trần vào EKF để phá đối xứng lối đi.",
-      "Loại bỏ phép khớp scan khi tuổi buffer quan sát vượt 0.3 s thay vì khớp với dữ liệu cũ.",
+      "Increase recovery_alpha_slow / recovery_alpha_fast to inject random particles when average weight drops.",
+      "Integrate ceiling fiducial / AprilTag measurements into robot_localization EKF to break aisle symmetry.",
+      "Reject scan matching when observation buffer age exceeds 0.3s.",
     ],
     node: "amcl",
     logs: [
@@ -178,19 +178,19 @@ const ANOMALY_TEMPLATES: AnomalyTemplate[] = [
   },
   {
     kind: "costmap_stale",
-    title: "Tần suất cập nhật local costmap sụp giảm",
+    title: "Local Costmap Update Frequency Collapse",
     severity: "medium",
     topics: ["/local_costmap/costmap", "/scan"],
-    metric: "cập nhật costmap 1.2 Hz (cấu hình 5 Hz)",
-    issue: "Local costmap tụt lại sau vòng lặp controller khi inflate vùng chướng ngại vật dày đặc.",
+    metric: "Costmap update rate 1.2 Hz (configured 5.0 Hz)",
+    issue: "Local costmap fell behind controller loop frequency when inflating dense obstacle pointclouds.",
     rootCause:
-      "Lớp inflation được cấu hình bán kính 1.2 m trên cửa sổ lăn 0.025 m/cell, gấp 4 lần số cell ngân sách CPU cho phép. Mỗi lần cập nhật tính lại toàn bộ inflation thay vì chỉ vùng bẩn.",
+      "Inflation layer configured with 1.2m radius on 0.025m/cell resolution grid (4x CPU budget). Every cycle recomputed the entire rolling window rather than only updated dirty cells.",
     explanation:
-      "Thời gian cập nhật costmap bám gần tuyến tính theo số chướng ngại vật trong cửa sổ này, và controller server ghi 'control loop missed its desired rate' cùng mốc thời gian. Đây là vấn đề chi phí cấu hình, không phải cảm biến.",
+      "Costmap update execution time scaled linearly with obstacle density in the rolling window, causing controller_server to miss control deadlines.",
     fixes: [
-      "Thô hóa độ phân giải local costmap lên 0.05 m/cell, giảm 4 lần chi phí inflation mà hầu như không mất khoảng trống an toàn.",
-      "Giảm inflation_radius xuống 0.55 m và dựa vào padding footprint cho phần còn lại.",
-      "Bật đường cập nhật vùng bẩn của cửa sổ lăn thay vì tính lại toàn bản đồ.",
+      "Coarsen local costmap resolution to 0.05m/cell, reducing inflation compute overhead by 4x.",
+      "Reduce inflation_radius to 0.55m and rely on robot footprint padding for clearance margins.",
+      "Enable rolling window dirty-cell updates instead of full-map recomputations.",
     ],
     node: "costmap_2d",
     logs: [
@@ -201,19 +201,19 @@ const ANOMALY_TEMPLATES: AnomalyTemplate[] = [
   },
   {
     kind: "cpu_spike",
-    title: "Vòng lặp controller quá hạn do bão hòa CPU",
+    title: "Controller Loop Deadline Miss via CPU Saturation",
     severity: "high",
     topics: ["/diagnostics", "/cmd_vel"],
-    metric: "CPU 98% trong 3.4 s, vòng lặp điều khiển 6.1 Hz (mục tiêu 20 Hz)",
-    issue: "Controller phát lệnh vận tốc chỉ bằng một phần ba tần suất cấu hình, gây giật cục rõ rệt.",
+    metric: "CPU 98% for 3.4s, control loop degraded to 6.1 Hz (target 20 Hz)",
+    issue: "Nav2 controller issued velocity commands at only one-third configured rate, resulting in severe motion stutter.",
     rootCause:
-      "Nén log (rosbag2 zstd) chạy cùng cgroup với ngăn xếp điều hướng mà không có hạn mức CPU, nên việc ghi cạnh tranh với vòng lặp điều khiển thời gian thực trong đoạn tốc độ bản tin cao.",
+      "ROSBag2 zstd compression ran in the same cgroup as the real-time navigation stack without CPU quota caps, starving the trajectory controller thread during high message burst windows.",
     explanation:
-      "Khoảng trống giữa các bản tin cmd_vel giãn tới 160 ms trong khi /odom vẫn ổn định 50 Hz, nghĩa là pipeline cảm biến ổn và riêng luồng controller bị ngắt lập lịch. Đỉnh CPU khớp chính xác với khoảng xả bộ ghi.",
+      "Inter-message interval on cmd_vel stretched to 160ms while /odom remained stable at 50 Hz, indicating the controller thread was unscheduled during recorder buffer flushes.",
     fixes: [
-      "Tách bộ ghi ra cgroup riêng với cpu.max đặt 30% một core.",
-      "Ghi ra namespace NVMe riêng và chuyển nén sang cấp file, tránh đường nóng.",
-      "Chạy controller_server với độ ưu tiên SCHED_FIFO 60 và khóa bộ nhớ.",
+      "Isolate ROSBag recorder into a dedicated cgroup with cpu.max capped at 30% of single core.",
+      "Log to dedicated NVMe mount and defer compression to post-run archival jobs.",
+      "Run controller_server with SCHED_FIFO 60 real-time priority and mlockall memory locking.",
     ],
     node: "controller_server",
     logs: [
@@ -224,19 +224,19 @@ const ANOMALY_TEMPLATES: AnomalyTemplate[] = [
   },
   {
     kind: "nav_recovery",
-    title: "Nav2 rơi vào hành vi phục hồi",
+    title: "Nav2 Behavior Tree Recovery Cascade",
     severity: "medium",
     topics: ["/plan", "/cmd_vel"],
-    metric: "2 chu kỳ phục hồi (BackUp, Spin) trong 11 s",
-    issue: "Cây hành vi rơi xuống phục hồi hai lần dù mục tiêu vẫn tới được.",
+    metric: "2 recovery cycles (BackUp, Spin) in 11s",
+    issue: "Navigation behavior tree cascaded into recovery maneuvers despite valid global path.",
     rootCause:
-      "Bộ chấm điểm DWB đánh mọi quỹ đạo là không hợp lệ vì costmap bị inflate không còn hành lang khả dụng sau cửa sổ quan sát cũ. Mục tiêu vẫn tới được; bề mặt chi phí mới sai.",
+      "DWB trajectory scorer marked all candidate paths invalid due to costmap inflation closing off narrow corridor during stale observation window.",
     explanation:
-      "Phục hồi là triệu chứng hạ nguồn ở đây. Cả hai chu kỳ phục hồi bắt đầu trong 900 ms sau cảnh báo costmap cũ, và plan được phát lại không đổi sau đó, xác nhận planner luôn có đường toàn cục hợp lệ.",
+      "Recovery was a downstream symptom: both recovery cycles began within 900ms of stale costmap warnings, while the global planner retained a valid route throughout.",
     fixes: [
-      "Sửa vấn đề tươi mới của costmap ở thượng nguồn trước khi tinh chỉnh hành vi phục hồi.",
-      "Thêm ngưỡng trọng số PathAlign để hành lang bị chắn một phần vẫn được chấm điểm trên 0.",
-      "Ghi bảng điểm critic DWB đầy đủ ở mức DEBUG khi thất bại để chẩn đoán nhanh hơn.",
+      "Resolve upstream costmap freshness issue before tuning recovery thresholds.",
+      "Add PathAlign weight threshold to allow partially obstructed corridors to score above zero.",
+      "Enable DEBUG logging for DWB trajectory critics to inspect trajectory scores upon evaluation failure.",
     ],
     node: "bt_navigator",
     logs: [
@@ -247,19 +247,19 @@ const ANOMALY_TEMPLATES: AnomalyTemplate[] = [
   },
   {
     kind: "topic_hz_drop",
-    title: "Suy giảm tần suất phát odometry",
+    title: "Odometry Publish Cadence Degradation",
     severity: "medium",
     topics: ["/odom", "/joint_states"],
-    metric: "/odom 31 Hz (kỳ vọng 50 Hz)",
-    issue: "Tần suất phát odometry bánh xe giảm 38% trong nửa sau của lượt chạy.",
+    metric: "/odom rate 31 Hz (expected 50 Hz)",
+    issue: "Wheel odometry topic publish rate degraded by 38% across second half of recording.",
     rootCause:
-      "Node EKF được cấu hình tần suất 50 Hz nhưng timeout cảm biến là 0.02 s, nên mỗi bản tin /joint_states trễ buộc chu kỳ chỉ dự đoán và phát ở tick tiếp theo thay vì ngay lập tức.",
+      "robot_localization EKF node configured for 50 Hz with 0.02s sensor timeout; delayed /joint_states forced predict-only cycles on subsequent clock ticks.",
     explanation:
-      "Mất tần suất diễn ra mượt chứ không giật cục và tương quan với jitter của /joint_states, đặc trưng cho cấu hình sai timeout bộ lọc hơn là mất mát truyền dẫn.",
+      "Cadence drop was continuous rather than intermittent and correlated with /joint_states jitter, consistent with filter timeout misconfiguration.",
     fixes: [
-      "Đặt sensor_timeout của EKF thành 0.1 s để một bản tin joint state trễ đơn lẻ không bỏ lỡ lần phát.",
-      "Phát /joint_states với QoS best-effort và depth 1 để loại bỏ thay vì xếp hàng.",
-      "Thêm monitor tần suất vào /diagnostics để lần sau suy giảm sẽ ồn ào hơn.",
+      "Set EKF sensor_timeout to 0.1s to allow single delayed joint state packets without skipping updates.",
+      "Publish /joint_states with best-effort QoS and depth 1.",
+      "Add publish frequency monitor to /diagnostics topic.",
     ],
     node: "ekf_filter_node",
     logs: [
@@ -270,18 +270,18 @@ const ANOMALY_TEMPLATES: AnomalyTemplate[] = [
   },
   {
     kind: "message_drop",
-    title: "Không tương thích QoS làm rớt tin nhắn",
+    title: "QoS Policy Incompatibility Message Loss",
     severity: "low",
     topics: ["/joint_states"],
-    metric: "412 tin nhắn bị rớt (2.1% của topic)",
-    issue: "Một subscriber với chính sách durability không tương thích đã lặng lẽ mất tin nhắn.",
+    metric: "412 dropped messages (2.1% of topic volume)",
+    issue: "Subscriber with incompatible durability policy silently missed telemetry messages.",
     rootCause:
-      "Bộ tổng hợp diagnostics đăng ký với durability TRANSIENT_LOCAL trong khi publisher cung cấp VOLATILE. rmw báo không tương thích một lần khi khởi động rồi rớt mọi tin nhắn sau đó.",
+      "Diagnostics aggregator subscribed with TRANSIENT_LOCAL durability while driver publisher offered VOLATILE. RMW middleware warned at startup and dropped subsequent messages.",
     explanation:
-      "Trường hợp này lành tính cho điều hướng nhưng che giấu tín hiệu lỗi khỏi bộ tổng hợp, đó là lý do đỉnh CPU trước đó không bao giờ nâng lỗi diagnostic.",
+      "Non-critical for kinematic control but obscured diagnostic telemetry from aggregators.",
     fixes: [
-      "Khớp durability của subscriber về VOLATILE.",
-      "Nâng cảnh báo không tương thích QoS của rmw thành lỗi ở bước kiểm tra launch.",
+      "Align subscriber durability QoS to match VOLATILE publisher.",
+      "Promote RMW QoS incompatibility warnings to fatal launch-time assertions.",
     ],
     node: "controller_server",
     logs: [
@@ -295,14 +295,14 @@ const templateByKind = new Map<AnomalyKind, AnomalyTemplate>(ANOMALY_TEMPLATES.m
 export const anomalyTemplate = (kind: AnomalyKind) => templateByKind.get(kind) ?? ANOMALY_TEMPLATES[0]
 
 export const KIND_LABEL: Record<DemoAnomalyKind, string> = {
-  tf_timeout: "Timeout TF",
-  lidar_dropout: "Mất lidar",
-  costmap_stale: "Costmap cũ",
-  localization_jump: "Nhảy định vị",
-  cpu_spike: "Đỉnh CPU",
-  nav_recovery: "Phục hồi Nav",
-  topic_hz_drop: "Sụt tần suất",
-  message_drop: "Rớt tin nhắn",
+  tf_timeout: "TF Timeout",
+  lidar_dropout: "LiDAR Dropout",
+  costmap_stale: "Costmap Stale",
+  localization_jump: "Pose Jump",
+  cpu_spike: "CPU Saturation",
+  nav_recovery: "Nav Recovery",
+  topic_hz_drop: "Rate Drop",
+  message_drop: "Message Drop",
 }
 
 /* ------------------------------------------------------------------ */
@@ -388,7 +388,6 @@ function anomaliesForRun(runId: string, durationSec: number, count: number): Ano
     const k = pick(r, pool)
     if (!kinds.includes(k)) kinds.push(k)
   }
-  // spread anomalies across the run, keeping them ordered in time
   const slot = (durationSec - 12) / Math.max(count, 1)
   return kinds.map((kind, i) => {
     const tpl = anomalyTemplate(kind)
@@ -636,7 +635,7 @@ function buildReports(runs: AnalysisRun[], results: AIResult[], anomalies: Anoma
       id: `rep_${run.id.slice(4)}`,
       runId: run.id,
       rosbagName: run.rosbagName,
-      title: `${ROBOT_LABEL[run.robotType]} incident review - ${run.rosbagName.slice(0, 24)}`,
+      title: `${ROBOT_LABEL[run.robotType]} Incident Review - ${run.rosbagName.slice(0, 24)}`,
       createdAt: new Date(new Date(run.finishedAt ?? run.startedAt).getTime() + 20 * 60_000).toISOString(),
       author: pick(r, ["m.oyelaran", "s.kobayashi", "d.novak", "a.fernandes"]),
       status: i < 3 ? "published" : "draft",
@@ -700,7 +699,6 @@ function buildDataset(): Dataset {
   return dataset
 }
 
-// Eager initialization at module load - eliminates cold start on first request
 const datasetCache = buildDataset()
 
 export function data(): Dataset {

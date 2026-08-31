@@ -138,10 +138,10 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
         clearAuthToken()
         // Avoid infinite loop if already on login
         if (window.location.pathname !== "/login") window.location.href = "/login"
-        throw new Error("Phiên hết hạn — đang chuyển tới trang đăng nhập")
+        throw new Error("Session expired — redirecting to sign in page")
     }
     if (!res.ok) {
-        let detail = `Yêu cầu thất bại: ${res.status}`
+        let detail = `Request failed: ${res.status}`
         try {
             // Try text first, fallback to json detail
             if (typeof (res as unknown as { text?: () => Promise<string> }).text === "function") {
@@ -163,7 +163,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
                 if (j.detail) detail = j.detail
             } catch {}
         }
-        throw new Error(detail.includes("Yêu cầu thất bại") ? detail : `Yêu cầu thất bại: ${res.status} - ${detail}`)
+        throw new Error(detail.includes("Request failed") ? detail : `Request failed: ${res.status} - ${detail}`)
     }
     return res.json() as Promise<T>
 }
@@ -216,9 +216,9 @@ export async function fetchWindowSummaries(runId: string, windowSec = 5): Promis
     if (res.status === 401 && typeof window !== "undefined") {
         clearAuthToken()
         if (window.location.pathname !== "/login") window.location.href = "/login"
-        throw new Error("Không có quyền")
+        throw new Error("Unauthorized")
     }
-    if (!res.ok) throw new Error(`Yêu cầu thất bại: ${res.status}`)
+    if (!res.ok) throw new Error(`Request failed: ${res.status}`)
     const body = await res.text()
     return body.split("\n").filter(Boolean).map((line) => JSON.parse(line) as WindowSummaryRow)
 }
@@ -235,11 +235,11 @@ export async function uploadRosbag(file: File): Promise<Rosbag> {
     if (res.status === 401 && typeof window !== "undefined") {
         clearAuthToken()
         if (window.location.pathname !== "/login") window.location.href = "/login"
-        throw new Error("Không có quyền")
+        throw new Error("Unauthorized")
     }
     if (!res.ok) {
         const body = await res.json().catch(() => null) as { detail?: string } | null
-        throw new Error(body?.detail ?? `Lỗi HTTP ${res.status}`)
+        throw new Error(body?.detail ?? `HTTP error ${res.status}`)
     }
     return res.json() as Promise<Rosbag>
 }
@@ -276,11 +276,11 @@ export function ms(n: number): string {
 }
 
 export function timeOfDay(iso: string): string {
-    return new Date(iso).toLocaleTimeString("vi-VN", { hour12: false })
+    return new Date(iso).toLocaleTimeString("en-US", { hour12: false })
 }
 
 export function shortDate(iso: string): string {
-    return new Date(iso).toLocaleString("vi-VN", {
+    return new Date(iso).toLocaleString("en-US", {
         month: "short",
         day: "numeric",
         hour: "2-digit",
@@ -292,11 +292,11 @@ export function shortDate(iso: string): string {
 export function ago(iso: string): string {
     const diff = Date.now() - new Date(iso).getTime()
     const mins = Math.round(diff / 60000)
-    if (mins < 1) return "vừa xong"
-    if (mins < 60) return `${mins} phút trước`
+    if (mins < 1) return "just now"
+    if (mins < 60) return `${mins}m ago`
     const hours = Math.round(mins / 60)
-    if (hours < 24) return `${hours} giờ trước`
-    return `${Math.round(hours / 24)} ngày trước`
+    if (hours < 24) return `${hours}h ago`
+    return `${Math.round(hours / 24)}d ago`
 }
 
 /* ---------- severity ---------- */

@@ -7,12 +7,12 @@ test("dashboard renders stat tiles and recent runs", async ({ page }) => {
     await page.goto("/")
     const overview = await (await overviewResponse).json() as { recentRuns: Array<{ rosbagName: string }> }
 
-    await expect(page.getByRole("heading", { name: "Tổng quan" })).toBeVisible()
-    for (const label of ["Tệp Rosbag đã phân tích", "Tỷ lệ lượt chạy có lỗi", "Thời gian chẩn đoán TB", "Chi phí suy luận AI"]) {
-        await expect(page.getByText(label)).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Fleet Overview" })).toBeVisible()
+    for (const label of ["ROSBags Ingested", "Faulty Run Ratio", "Mean Time to Diagnose", "AI Inference Cost"]) {
+        await expect(page.getByText(label).first()).toBeVisible()
     }
 
-    await expect(page.getByText("Lượt chạy gần đây").first()).toBeVisible()
+    await expect(page.getByText("Recent Diagnostic Runs").first()).toBeVisible()
     if (overview.recentRuns.length > 0) {
         await expect(page.getByText(overview.recentRuns[0].rosbagName).first()).toBeVisible()
     }
@@ -22,13 +22,13 @@ test("dashboard exposes the full sidebar navigation", async ({ page }) => {
     await page.goto("/")
 
     for (const label of [
-        "Tổng quan",
-        "Tập dữ liệu",
-        "Phân tích",
-        "Duyệt thủ công",
-        "Giám sát LLM",
-        "Báo cáo",
-        "Kiến trúc",
+        "Overview",
+        "ROSBags",
+        "Diagnostics",
+        "Human Review",
+        "LLM Inference",
+        "Reports",
+        "Architecture",
     ]) {
         await expect(page.getByRole("link", { name: label })).toBeVisible()
     }

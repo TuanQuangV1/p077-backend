@@ -29,7 +29,7 @@ export function AnomalyList({
       <div className="flex flex-col gap-2 border-b border-border px-3 py-2.5">
         <div className="flex items-center justify-between gap-2">
           <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-            Bất thường phát hiện
+            Detected Anomalies
           </span>
           <Badge variant="secondary" className="tnum font-mono text-[10px]">
             {visible.length}/{anomalies.length}
@@ -42,8 +42,8 @@ export function AnomalyList({
           spacing={2}
         >
           {SEVERITY_ORDER.map((s) => (
-            <ToggleGroupItem key={s} value={s} size="sm" className="h-6 px-1.5 font-mono text-[10px] uppercase">
-              {s === "critical" ? "Nghiêm" : s === "high" ? "Cao" : s === "medium" ? "Trung" : "Thấp"}
+            <ToggleGroupItem key={s} value={s} size="sm" className="h-6 px-1.5 font-mono text-[10px] uppercase cursor-pointer">
+              {s === "critical" ? "Crit" : s === "high" ? "High" : s === "medium" ? "Med" : "Low"}
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
@@ -57,7 +57,7 @@ export function AnomalyList({
                 type="button"
                 onClick={() => onSelect(a)}
                 className={cn(
-                  "flex w-full flex-col gap-1 border-l-2 px-3 py-2 text-left hover:bg-accent/50",
+                  "flex w-full flex-col gap-1 border-l-2 px-3 py-2 text-left hover:bg-accent/50 cursor-pointer transition-colors",
                   a.id === selectedId ? "bg-accent/70" : "border-l-transparent",
                 )}
                 style={a.id === selectedId ? { borderLeftColor: severityColor[a.severity] } : undefined}
@@ -72,7 +72,7 @@ export function AnomalyList({
                 <span className="truncate font-mono text-[10px] text-muted-foreground">{a.metric}</span>
                 <div className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
                   <span className="truncate">{a.topics[0]}</span>
-                  <span className="ml-auto shrink-0">conf {(a.confidence * 100).toFixed(0)}%</span>
+                  <span className="ml-auto shrink-0 font-semibold">conf {(a.confidence * 100).toFixed(0)}%</span>
                 </div>
               </button>
             </li>

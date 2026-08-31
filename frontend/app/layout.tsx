@@ -2,10 +2,8 @@ import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 
-import { AppSidebar } from '@/components/app-sidebar'
+import { AppLayoutShell } from '@/components/app-layout-shell'
 import { ThemeProvider } from '@/components/theme-provider'
-import { TopBar } from '@/components/top-bar'
-import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
@@ -13,9 +11,9 @@ const _geistSans = Geist({ subsets: ['latin'] })
 const _geistMono = Geist_Mono({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'RAV-13 · Bảng điều khiển chẩn đoán rosbag ROS2',
+  title: 'RAV-13 · Autonomous Robotics Telemetry & Diagnostics Platform',
   description:
-    'Phân tích log rosbag có hỗ trợ AI cho đội robot: phân tích bag ROS2, phát hiện bất thường, chẩn đoán nguyên nhân gốc với LLM gpt-4.1, duyệt kết luận và xem lại lượt chạy.',
+    'AI-powered telemetry diagnostics for autonomous robot fleets: ROS2 bag ingestion, multi-topic anomaly triage, LLM root cause analysis, and Human-in-the-Loop audit workflows.',
   generator: 'v0.app',
   icons: {
     icon: [
@@ -47,16 +45,10 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="vi" suppressHydrationWarning className="bg-background">
+    <html lang="en" suppressHydrationWarning className="bg-background">
       <body className="antialiased">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
-          <SidebarProvider>
-            <AppSidebar />
-            <SidebarInset className="min-w-0 overflow-x-hidden">
-              <TopBar />
-              {children}
-            </SidebarInset>
-          </SidebarProvider>
+          <AppLayoutShell>{children}</AppLayoutShell>
           <Toaster position="bottom-right" />
           {process.env.NODE_ENV === 'production' && <Analytics />}
         </ThemeProvider>

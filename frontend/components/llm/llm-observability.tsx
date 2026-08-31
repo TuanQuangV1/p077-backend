@@ -21,7 +21,7 @@ import { compact, ms, shortDate } from "@/lib/api"
 import type { AnalysisRun } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
-/** "—" for zero/missing real data instead of a misleading "$0.00" (ai20k-13 §6.2). */
+/** "—" for zero/missing real data instead of a misleading "$0.00" */
 function costLabel(costUsd: number): string {
   return costUsd > 0 ? `$${costUsd.toFixed(4)}` : "—"
 }
@@ -33,12 +33,7 @@ interface LLMObservabilityProps {
 }
 
 /**
- * Real per-run LLM usage (model, latency, tokens, cost) from the `runs` table.
- *
- * Replaces a previous tab that displayed fabricated NVIDIA H100/vLLM GPU
- * telemetry with no backing data — this project calls OpenAI/Anthropic over
- * plain HTTP, so there is no GPU, VRAM or decode-queue metric to show. Every
- * number here comes from `GET /api/v1/runs`.
+ * Real per-run LLM observability (model, latency, tokens, cost) from the `runs` table.
  */
 export function LLMObservability({ runs, total, onRefresh }: LLMObservabilityProps) {
   const [searchQuery, setSearchQuery] = useState("")
@@ -82,19 +77,19 @@ export function LLMObservability({ runs, total, onRefresh }: LLMObservabilityPro
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-bold text-foreground">Giám sát LLM (LLM Observability)</span>
+              <span className="text-sm font-bold text-foreground">LLM Observability & Diagnostic Inference</span>
               <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground">
-                {stats.models.length ? stats.models.join(", ") : "chưa có run nào"}
+                {stats.models.length ? stats.models.join(", ") : "no active runs"}
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground">
-              Số liệu thật từ bảng <code className="font-mono">runs</code> — không có phần cứng GPU để đo, dự án gọi LLM qua HTTP.
+              Direct telemetry from the <code className="font-mono">runs</code> database — tracks model latency, prompt/completion tokens, and cost.
             </p>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing} className="h-8 gap-1.5 text-xs font-medium">
+        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing} className="h-8 gap-1.5 text-xs font-medium cursor-pointer">
           <RefreshCwIcon className={cn("size-3.5", isRefreshing && "animate-spin")} />
-          <span>Làm mới</span>
+          <span>Refresh</span>
         </Button>
       </div>
 
@@ -102,7 +97,7 @@ export function LLMObservability({ runs, total, onRefresh }: LLMObservabilityPro
         <Card className="border border-border/80 bg-card/60 shadow-xs">
           <CardContent className="p-3.5 space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tổng số run</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-mono">Total Runs</span>
               <ActivityIcon className="size-4 text-primary" />
             </div>
             <span className="text-2xl font-bold font-mono text-foreground">{total}</span>
@@ -111,7 +106,7 @@ export function LLMObservability({ runs, total, onRefresh }: LLMObservabilityPro
         <Card className="border border-border/80 bg-card/60 shadow-xs">
           <CardContent className="p-3.5 space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Độ trễ trung bình</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-mono">Average Latency</span>
               <ClockIcon className="size-4 text-purple-400" />
             </div>
             <span className="text-2xl font-bold font-mono text-foreground">
@@ -122,7 +117,7 @@ export function LLMObservability({ runs, total, onRefresh }: LLMObservabilityPro
         <Card className="border border-border/80 bg-card/60 shadow-xs">
           <CardContent className="p-3.5 space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tổng token</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-mono">Total Tokens</span>
               <CoinsIcon className="size-4 text-amber-400" />
             </div>
             <span className="text-2xl font-bold font-mono text-foreground">
@@ -133,7 +128,7 @@ export function LLMObservability({ runs, total, onRefresh }: LLMObservabilityPro
         <Card className="border border-border/80 bg-card/60 shadow-xs">
           <CardContent className="p-3.5 space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tổng chi phí</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground font-mono">Cumulative Cost</span>
               <BadgeDollarSignIcon className="size-4 text-emerald-400" />
             </div>
             <span className="text-2xl font-bold font-mono text-foreground">{costLabel(stats.totalCostUsd)}</span>
@@ -143,16 +138,16 @@ export function LLMObservability({ runs, total, onRefresh }: LLMObservabilityPro
 
       <Card className="border border-border/80 bg-card/60 shadow-xs overflow-hidden">
         <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-border/70 py-2.5 px-4 bg-muted/20">
-          <CardTitle className="text-xs font-semibold uppercase tracking-wider text-foreground">
-            Lịch sử run ({filtered.length})
+          <CardTitle className="text-xs font-semibold uppercase tracking-wider text-foreground font-mono">
+            Diagnostic Inference Runs ({filtered.length})
           </CardTitle>
           <div className="relative w-full max-w-[220px]">
             <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Tìm theo run, dataset, model…"
-              className="h-8 pl-8 text-xs"
+              placeholder="Search run, dataset, model…"
+              className="h-8 pl-8 text-xs font-mono"
             />
           </div>
         </CardHeader>
@@ -161,8 +156,8 @@ export function LLMObservability({ runs, total, onRefresh }: LLMObservabilityPro
             <Empty className="py-10">
               <EmptyHeader>
                 <AlertCircleIcon className="mx-auto size-5 text-muted-foreground" />
-                <EmptyTitle className="text-sm">Chưa có run nào</EmptyTitle>
-                <EmptyDescription className="text-xs">Chạy phân tích trên một dataset để thấy số liệu LLM thật ở đây.</EmptyDescription>
+                <EmptyTitle className="text-sm">No Inference Runs Recorded</EmptyTitle>
+                <EmptyDescription className="text-xs">Execute a diagnostics run on a ROSBag dataset to view inference metrics.</EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : (

@@ -116,7 +116,7 @@ test.describe("auth - signup", () => {
         await page.getByTestId("signup-password").fill("abc123")
         await page.getByTestId("signup-confirm").fill("xyz789")
         await page.getByTestId("signup-submit").click()
-        await expect(page.getByText(/không khớp|do not match/i).first()).toBeVisible()
+        await expect(page.getByText(/passwords do not match|do not match/i).first()).toBeVisible()
     })
 
     test("signup short username/password 422", async ({ page }) => {
@@ -258,8 +258,8 @@ test.describe("auth - logout", () => {
         let token = await page.evaluate(() => localStorage.getItem("auth_token"))
         expect(token).toBeTruthy()
 
-        // Click logout in sidebar (need to open sidebar if collapsed)
-        await page.getByRole("button", { name: /Đăng xuất/ }).click()
+        // Click logout in sidebar
+        await page.getByRole("button", { name: /Sign Out|Log Out/i }).click()
         await expect(page).toHaveURL(/\/login/)
         token = await page.evaluate(() => localStorage.getItem("auth_token"))
         expect(token).toBeFalsy()

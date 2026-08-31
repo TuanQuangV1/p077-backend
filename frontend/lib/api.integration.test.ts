@@ -62,13 +62,13 @@ describe("api integration", () => {
         const fetchMock = vi.fn().mockResolvedValue(errorResponse(500))
         vi.stubGlobal("fetch", fetchMock)
 
-        await expect(fetcher("/api/overview")).rejects.toThrow("Yêu cầu thất bại: 500")
+        await expect(fetcher("/api/overview")).rejects.toThrow("Request failed: 500")
     })
 
     it("throws Request failed for post too", async () => {
         const fetchMock = vi.fn().mockResolvedValue(errorResponse(404))
         vi.stubGlobal("fetch", fetchMock)
 
-        await expect(post("/api/reports", { runId: "run_001" })).rejects.toThrow("Yêu cầu thất bại: 404")
+        await expect(post("/api/reports", { runId: "run_001" })).rejects.toThrow("Request failed: 404")
     })
 })

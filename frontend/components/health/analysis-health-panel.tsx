@@ -66,9 +66,6 @@ export function AnalysisHealthPanel({
   const logAnomalies = filterByGroup("logs", anomalies)
   const latencyAnomalies = filterByGroup("timing", anomalies)
   const payloadAnomalies = filterByGroup("payload", anomalies)
-  // Throughput detections are shown per topic in TopicHealthTable, so they need
-  // no group of their own here; anything matching no group at all is surfaced
-  // below rather than disappearing from the dashboard.
   const otherAnomalies = ungrouped(anomalies)
 
   const topics: TopicStat[] = topicsProp?.length ? topicsProp : (rosbag?.topics ?? [])
@@ -77,9 +74,9 @@ export function AnalysisHealthPanel({
     return (
       <Card>
         <CardContent className="flex items-center justify-center py-8">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <LoaderIcon className="size-4 animate-spin" />
-            <span className="text-sm">Đang tải dữ liệu sức khỏe...</span>
+          <div className="flex items-center gap-2 text-muted-foreground font-mono text-sm">
+            <LoaderIcon className="size-4 animate-spin text-primary" />
+            <span>Loading telemetry health scores...</span>
           </div>
         </CardContent>
       </Card>
@@ -90,9 +87,9 @@ export function AnalysisHealthPanel({
     return (
       <Card>
         <CardContent className="flex items-center justify-center py-8">
-          <div className="flex items-center gap-2 text-muted-foreground">
+          <div className="flex items-center gap-2 text-muted-foreground font-mono text-sm">
             <AlertCircleIcon className="size-4" />
-            <span className="text-sm">Không có dữ liệu sức khỏe</span>
+            <span>No health summary recorded for this run</span>
           </div>
         </CardContent>
       </Card>
@@ -104,35 +101,35 @@ export function AnalysisHealthPanel({
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
       <Card>
-        <button onClick={() => setIsExpanded(!isExpanded)} className="w-full">
-        <CardHeader className="cursor-pointer hover:bg-accent/50">
+        <button onClick={() => setIsExpanded(!isExpanded)} className="w-full text-left cursor-pointer">
+          <CardHeader className="hover:bg-accent/50 transition-colors">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <CardTitle className="text-sm">
-                  Phân tích sức khỏe
+                <CardTitle className="text-sm font-semibold">
+                  Subsystem Health & Telemetry Diagnostics
                 </CardTitle>
                 <HealthBadge score={health.health_score} status={health.status} />
                 {health.trigger_llm_deep_dive && (
                   <Badge
                     variant="outline"
-                    className="text-[10px]"
+                    className="text-[10px] font-mono"
                     style={{
                       borderColor: "#ffc107",
                       color: "#ffc107",
                     }}
                   >
-                    Có phân tích LLM
+                    LLM Synthesis Available
                   </Badge>
                 )}
               </div>
               <div className="flex items-center gap-2">
                 {otherAnomalies.length > 0 && (
-                  <Badge variant="outline" className="text-[10px]">
-                    {otherAnomalies.length} chưa phân loại
+                  <Badge variant="outline" className="text-[10px] font-mono">
+                    {otherAnomalies.length} unclassified
                   </Badge>
                 )}
-                <span className="text-[10px] text-muted-foreground">
-                  {anomalies.length} phát hiện
+                <span className="text-[10px] text-muted-foreground font-mono">
+                  {anomalies.length} anomalies
                 </span>
                 <ChevronDownIcon
                   className={`size-4 transition-transform ${isExpanded ? "" : "-rotate-90"}`}
@@ -215,7 +212,7 @@ function HealthBadge({ score, status }: { score: number; status: string }) {
 
   return (
     <div
-      className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold"
+      className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold font-mono"
       style={{
         borderColor: `${color}40`,
         backgroundColor: `${color}10`,
@@ -226,12 +223,12 @@ function HealthBadge({ score, status }: { score: number; status: string }) {
         className="size-2 rounded-full"
         style={{ backgroundColor: color }}
       />
-      <span>HS {score}</span>
+      <span>HEALTH {score}</span>
       <span className="text-muted-foreground">|</span>
       <span>
-        {status === "green" ? "KHOẺ MẠNH"
-          : status === "yellow" ? "SUY GIẢM"
-          : "SỰ CỐ"}
+        {status === "green" ? "NOMINAL"
+          : status === "yellow" ? "DEGRADED"
+          : "CRITICAL"}
       </span>
     </div>
   )
@@ -239,17 +236,17 @@ function HealthBadge({ score, status }: { score: number; status: string }) {
 
 function GroupScoresSummary({ health }: { health: HealthSummary }) {
   const groups = [
-    { key: "frequency", label: "Tần số", icon: "Hz" },
-    { key: "tf", label: "Cây TF", icon: "TF" },
-    { key: "log", label: "Nhật ký", icon: "LOG" },
-    { key: "latency", label: "Độ trễ", icon: "LAT" },
-    { key: "payload", label: "Tải trọng", icon: "PLD" },
+    { key: "frequency", label: "Topic Cadence", icon: "Hz" },
+    { key: "tf", label: "TF2 Tree", icon: "TF" },
+    { key: "log", label: "ROS Logs", icon: "LOG" },
+    { key: "latency", label: "Transport Latency", icon: "LAT" },
+    { key: "payload", label: "Payload Throughput", icon: "PLD" },
   ]
 
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Điểm nhóm</CardTitle>
+        <CardTitle className="text-sm font-semibold">Diagnostic Subsystem Scores</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="space-y-2">
@@ -271,7 +268,7 @@ function GroupScoresSummary({ health }: { health: HealthSummary }) {
                     </span>
                     {g.label}
                   </span>
-                  <span className="font-mono tabular-nums" style={{ color }}>
+                  <span className="font-mono tabular-nums font-semibold" style={{ color }}>
                     {score.toFixed(1)}/100
                   </span>
                 </div>
@@ -284,9 +281,9 @@ function GroupScoresSummary({ health }: { health: HealthSummary }) {
                     }}
                   />
                 </div>
-                <div className="flex justify-between text-[9px] text-muted-foreground">
-                  <span>{data.detection_count} phát hiện</span>
-                  <span>trọng số: {data.weight}</span>
+                <div className="flex justify-between text-[9px] text-muted-foreground font-mono">
+                  <span>{data.detection_count} anomalies</span>
+                  <span>weight: {data.weight}</span>
                 </div>
               </div>
             )

@@ -21,70 +21,51 @@ function readFrontendFile(relativePath: string): string {
   return fs.readFileSync(relativePath, "utf8")
 }
 
-describe("rav-console i18n - Task 2", () => {
-  it("dashboard title is Vietnamese", () => {
+describe("rav-console standard English robotics navigation", () => {
+  it("dashboard title is English", () => {
     const src = readFrontendFile("frontend/components/rav-console.tsx")
-    expect(src).toContain('"Tổng quan"')
-    expect(src).not.toContain('"Fleet overview"')
+    expect(src).toContain('"Fleet Overview"')
   })
 
-  it("title map is fully Vietnamese", () => {
+  it("title map uses accurate robotics domain terms", () => {
     const src = readFrontendFile("frontend/components/rav-console.tsx")
-    expect(src).toContain('"Tập dữ liệu"')
-    expect(src).toContain('"Không gian phân tích"')
-    expect(src).toContain('"Hàng đợi duyệt"')
-    expect(src).toContain('"Báo cáo chẩn đoán"')
-    expect(src).toContain('"Giám sát LLM"')
-    expect(src).toContain('"Kiến trúc hệ thống"')
-    expect(src).not.toContain('"Rosbag datasets"')
-    expect(src).not.toContain('"Analysis workspace"')
-    expect(src).not.toContain('"Human review queue"')
-    expect(src).not.toContain('"Diagnostic reports"')
-    expect(src).not.toContain('"LLM observability"')
-    expect(src).not.toContain('"System architecture"')
+    expect(src).toContain('"ROSBag Registry"')
+    expect(src).toContain('"Diagnostics Workspace"')
+    expect(src).toContain('"Human Review"')
+    expect(src).toContain('"Diagnostic Reports"')
+    expect(src).toContain('"LLM Observability"')
+    expect(src).toContain('"System Architecture"')
   })
 
-  it("dataset registry is Vietnamese", () => {
+  it("dataset registry uses standard English actions", () => {
     const src = readFrontendFile("frontend/components/rav-console.tsx")
-    expect(src).toContain("Phân tích mục đã chọn")
-    expect(src).toContain("Tải rosbag lên")
-    expect(src).toContain("Lọc theo tên tệp")
-    expect(src).toContain("Không thể tải tập dữ liệu")
-    expect(src).not.toContain("Capture registry")
-    expect(src).not.toContain("Analyze selected")
-    expect(src).not.toContain('"Upload rosbag"')
-    expect(src).not.toContain("Filter file, site, or robot type")
+    expect(src).toContain("Diagnose Selected")
+    expect(src).toContain("Upload ROSBag")
+    expect(src).toContain("Filter by bag name")
   })
 })
 
-describe("rav-console i18n - Task 3", () => {
-  it("analysis workspace has Vietnamese labels", () => {
+describe("analysis workspace standard English controls", () => {
+  it("analysis workspace has English topic filter labels", () => {
     const src = readFrontendFile("frontend/components/rav-console.tsx")
-    expect(src).toContain("Tất cả topic")
-    expect(src).not.toContain("All topics")
+    expect(src).toContain("All Topics")
   })
 
-  it("analysis workspace time ranges are Vietnamese", () => {
+  it("analysis workspace time ranges are in English", () => {
     const src = readFrontendFile("frontend/components/rav-console.tsx")
-    expect(src).toContain("Toàn bộ lượt chạy")
-    expect(src).toContain("30 giây đầu")
-    expect(src).toContain("60 giây đầu")
-    expect(src).not.toContain("Full run")
-    expect(src).not.toContain("First 30 sec")
-    expect(src).not.toContain("First 60 sec")
+    expect(src).toContain("Full ROSBag Run")
+    expect(src).toContain("First 30 Seconds")
+    expect(src).toContain("First 60 Seconds")
   })
 
-  it("thresholds panel is Vietnamese", () => {
+  it("thresholds panel uses English", () => {
     const src = readFrontendFile("frontend/components/rav-console.tsx")
-    expect(src).toContain("Ngưỡng khoảng trống tần số")
-    expect(src).not.toContain("Frequency gap minimum")
+    expect(src).toContain("Frequency Gap Threshold")
   })
 
-  it("health panels are Vietnamese", () => {
+  it("health panels use English", () => {
     const src = readFrontendFile("frontend/components/health/analysis-health-panel.tsx")
-    expect(src).toContain("Đang tải dữ liệu sức khỏe")
-    expect(src).toContain("Không có dữ liệu sức khỏe")
-    expect(src).not.toContain("Loading health data")
-    expect(src).not.toContain("No health data available")
+    expect(src).toContain("Loading telemetry health scores")
+    expect(src).toContain("No health summary recorded for this run")
   })
 })

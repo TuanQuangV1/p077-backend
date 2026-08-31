@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { BotIcon, BrainCircuitIcon, CheckCircleIcon, ChevronDownIcon, ChevronRightIcon, CopyIcon, DownloadIcon, HelpCircleIcon, LoaderIcon, RefreshCwIcon, XCircleIcon } from "lucide-react"
+import { BotIcon, BrainCircuitIcon, CheckCircleIcon, ChevronDownIcon, ChevronRightIcon, CopyIcon, DownloadIcon, HelpCircleIcon, LoaderIcon, RefreshCwIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
@@ -14,19 +14,19 @@ import type { Anomaly, HealthSummary, LLMDeepDiveResult, Severity } from "@/lib/
 /**
  * Deterministic fallback used while the deep-dive endpoint isn't wired to a
  * live LLM: same heuristic the mock server used, computed client-side from
- * data already on hand (no network round trip, no response-shape to drift).
+ * data already on hand.
  */
 function generateFallbackAnalysis(healthScore: number, anomalies: Anomaly[]): LLMDeepDiveResult {
   if (anomalies.length === 0) {
     return {
-      summary: "Không phát hiện bất thường. Hệ thống hoạt động bình thường.",
+      summary: "Zero anomalies detected. Subsystems operating nominally.",
       explanation: [
-        "Tất cả chỉ số telemetry trong ngưỡng bình thường",
-        "Tần số topic ổn định và trong ngưỡng kỳ vọng",
+        "All sensor telemetry streams within nominal QoS tolerances",
+        "Topic publish cadence is stable and matches target Hz",
       ],
       suggestions: [
-        "Tiếp tục theo dõi trong phiên vận hành tiếp theo",
-        "Cân nhắc kiểm tra sức khỏe định kỳ mỗi 24 giờ",
+        "Continue passive monitoring in next mission lifecycle",
+        "Maintain periodic sensor calibration routines",
       ],
       confidence: 0.95,
       priority: "low",
@@ -44,15 +44,15 @@ function generateFallbackAnalysis(healthScore: number, anomalies: Anomaly[]): LL
   const components: string[] = []
 
   if (severityCounts.critical > 0) {
-    explanations.push(`${severityCounts.critical} bất thường nghiêm trọng cần chú ý ngay`)
-    suggestions.push("Cô lập hệ thống bị ảnh hưởng và chẩn đoán khẩn cấp")
-    suggestions.push("Rà soát thay đổi cấu hình hoặc cập nhật phần mềm gần đây")
+    explanations.push(`${severityCounts.critical} critical fault(s) requiring immediate engineer intervention`)
+    suggestions.push("Isolate affected kinematic/localization nodes and inspect core dump logs")
+    suggestions.push("Review recent parameter changes in Nav2 controller / sensor drivers")
     components.push("system_critical")
   }
   if (severityCounts.high > 0) {
-    explanations.push(`${severityCounts.high} bất thường mức cao có thể ảnh hưởng độ tin cậy`)
-    suggestions.push("Lên lịch cửa sổ bảo trì để điều tra")
-    suggestions.push("Theo dõi chặt chẽ nguy cơ leo thang lên nghiêm trọng")
+    explanations.push(`${severityCounts.high} high-severity anomaly(ies) impacting control loop fidelity`)
+    suggestions.push("Schedule maintenance check on sensor bus and DDS QoS profile settings")
+    suggestions.push("Monitor topic drop rates for potential cascade escalation")
     if (!components.includes("system_critical")) components.push("diagnostics")
   }
 
@@ -62,7 +62,7 @@ function generateFallbackAnalysis(healthScore: number, anomalies: Anomaly[]): LL
   }
   const topTopics = [...topicCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
   if (topTopics.length > 0) {
-    explanations.push(`Chủ đề bị ảnh hưởng nhiều nhất: ${topTopics.map(([t]) => t).join(", ")}`)
+    explanations.push(`Primary affected topic streams: ${topTopics.map(([t]) => t).join(", ")}`)
   }
 
   const priority = severityCounts.critical > 0 ? "critical"
@@ -75,7 +75,7 @@ function generateFallbackAnalysis(healthScore: number, anomalies: Anomaly[]): LL
     : 0.6
 
   return {
-    summary: `Điểm sức khỏe ${healthScore}/100: ${severityCounts.critical + severityCounts.high} vấn đề nghiêm trọng/cao, ${severityCounts.medium + severityCounts.low} vấn đề trung bình/thấp`,
+    summary: `Fleet Health Index ${healthScore}/100: ${severityCounts.critical + severityCounts.high} critical/high issue(s), ${severityCounts.medium + severityCounts.low} medium/low observation(s)`,
     explanation: explanations,
     suggestions: [...new Set(suggestions)],
     confidence,
@@ -99,10 +99,10 @@ const PRIORITY_COLORS: Record<string, string> = {
 }
 
 const PRIORITY_LABELS: Record<string, string> = {
-  critical: "NGHIÊM TRỌNG",
-  high: "CAO",
-  medium: "TRUNG BÌNH",
-  low: "THẤP",
+  critical: "CRITICAL",
+  high: "HIGH",
+  medium: "MEDIUM",
+  low: "LOW",
 }
 
 const SEVERITY_COLORS: Record<Severity, string> = {
@@ -130,15 +130,15 @@ function CopyButton({ text }: { text: string }) {
         document.body.removeChild(el)
       }
       setCopied(true)
-      toast.success("Đã sao chép vào clipboard")
+      toast.success("Copied to clipboard")
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      toast.error("Không thể sao chép vào clipboard")
+      toast.error("Failed to copy to clipboard")
     }
   }
 
   return (
-    <Button variant="ghost" size="sm" onClick={copy}>
+    <Button variant="ghost" size="sm" onClick={copy} className="cursor-pointer">
       {copied ? <CheckCircleIcon className="size-3" /> : <CopyIcon className="size-3" />}
     </Button>
   )
@@ -149,7 +149,7 @@ function LoadingSkeleton() {
     <div className="space-y-4 p-4">
       <div className="flex items-center gap-2">
         <LoaderIcon className="size-4 animate-spin text-primary" />
-        <span className="text-sm text-muted-foreground">Đang phân tích dữ liệu sức khỏe...</span>
+        <span className="text-sm text-muted-foreground">Synthesizing telemetry diagnostics...</span>
       </div>
       <div className="space-y-2">
         <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
@@ -164,12 +164,12 @@ function EmptyState({ score }: { score: number }) {
   return (
     <div className="flex flex-col items-center justify-center p-6 text-center">
       <CheckCircleIcon className="size-12 text-green-500 mb-3" />
-      <h3 className="text-lg font-semibold">Hệ thống khỏe mạnh</h3>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Điểm sức khỏe {score}/100 - không phát hiện vấn đề nghiêm trọng.
+      <h3 className="text-lg font-semibold font-sans">System Operational</h3>
+      <p className="mt-1 text-sm text-muted-foreground font-mono">
+        Health Index {score}/100 — no critical faults detected.
       </p>
       <p className="mt-2 text-xs text-muted-foreground">
-        Tiếp tục theo dõi để bảo trì chủ động.
+        Autonomous monitoring active for predictive maintenance.
       </p>
     </div>
   )
@@ -186,10 +186,8 @@ export function LLMDeepDivePanel({
   const [isAutoTriggered, setIsAutoTriggered] = useState(false)
 
   const score = health?.health_score ?? 0
-  const status = health?.status ?? "green"
   const triggerLLM = health?.trigger_llm_deep_dive ?? false
 
-  // Auto-trigger deep-dive when health score drops below threshold
   useEffect(() => {
     if (triggerLLM && activeRunId && !deepDive && !isLoading) {
       setIsAutoTriggered(true)
@@ -225,7 +223,7 @@ export function LLMDeepDivePanel({
     a.click()
     document.body.removeChild(a)
     setTimeout(() => URL.revokeObjectURL(url), 0)
-    toast.success("Đã xuất phân tích sức khỏe")
+    toast.success("Exported diagnostic report JSON")
   }
 
   if (!health) {
@@ -234,7 +232,7 @@ export function LLMDeepDivePanel({
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-sm">
             <BrainCircuitIcon className="size-4" />
-            Phân tích chuyên sâu LLM
+            LLM Deep-Dive RCA Engine
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -250,9 +248,9 @@ export function LLMDeepDivePanel({
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-sm">
             <BrainCircuitIcon className="size-4" />
-            Phân tích chuyên sâu LLM
+            LLM Deep-Dive RCA Engine
             <Badge variant="outline" className="ml-auto text-[10px]">
-              Tự động
+              Autonomous
             </Badge>
           </CardTitle>
         </CardHeader>
@@ -271,10 +269,10 @@ export function LLMDeepDivePanel({
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-sm">
             <BrainCircuitIcon className="size-4" />
-            Phân tích chuyên sâu LLM
+            LLM Deep-Dive RCA Engine
             {isAutoTriggered && triggerLLM && (
-              <Badge variant="outline" className="text-[10px]">
-                Tự động kích hoạt (HS &lt; 70)
+              <Badge variant="outline" className="text-[10px] font-mono">
+                Triggered (Health Index &lt; 70)
               </Badge>
             )}
           </CardTitle>
@@ -284,14 +282,13 @@ export function LLMDeepDivePanel({
                 <HelpCircleIcon className="size-4 text-muted-foreground" />
               </TooltipTrigger>
               <TooltipContent side="left" className="max-w-xs text-xs">
-                LLM phân tích dữ liệu sức khỏe để xác định nguyên nhân gốc và đề xuất khắc phục.
-                Tự động kích hoạt khi điểm sức khỏe dưới 70.
+                LLM agent correlates multiple ROS2 anomaly streams to synthesize root causes and actionable remediations.
               </TooltipContent>
             </Tooltip>
             <Button
               variant="ghost"
               size="sm"
-              className="size-8 p-0"
+              className="size-8 p-0 cursor-pointer"
               onClick={exportJSON}
             >
               <DownloadIcon className="size-4" />
@@ -299,7 +296,7 @@ export function LLMDeepDivePanel({
             <Button
               variant="ghost"
               size="sm"
-              className="size-8 p-0"
+              className="size-8 p-0 cursor-pointer"
               onClick={triggerDeepDive}
               disabled={isLoading}
             >
@@ -316,27 +313,27 @@ export function LLMDeepDivePanel({
           <>
             {/* Executive Summary */}
             <div
-              className="rounded-lg border p-3"
+              className="rounded-lg border p-3 font-sans"
               style={{
                 borderColor: `${priorityColor}30`,
                 backgroundColor: `${priorityColor}05`,
               }}
             >
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Tóm tắt điều hành
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground font-mono">
+                  Executive Diagnostic Summary
                 </h4>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 font-mono">
                   <span
                     className="text-xs font-medium"
                     style={{ color: priorityColor }}
                   >
-                    Độ tin cậy {Math.round(deepDive.confidence * 100)}%
+                    Confidence {Math.round(deepDive.confidence * 100)}%
                   </span>
                   <span className="text-muted-foreground">|</span>
                   <Badge
                     variant="outline"
-                    className="text-[10px]"
+                    className="text-[10px] font-bold uppercase"
                     style={{
                       borderColor: priorityColor,
                       color: priorityColor,
@@ -346,14 +343,14 @@ export function LLMDeepDivePanel({
                   </Badge>
                 </div>
               </div>
-              <p className="mt-2 text-sm">{deepDive.summary}</p>
+              <p className="mt-2 text-sm leading-relaxed">{deepDive.summary}</p>
             </div>
 
             {/* Root Cause Analysis */}
             {deepDive.explanation.length > 0 && (
               <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Phân tích nguyên nhân gốc rễ
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground font-mono">
+                  Root Cause Analysis (RCA)
                 </h4>
                 <ul className="mt-2 space-y-1.5">
                   {deepDive.explanation.map((exp, i) => (
@@ -369,8 +366,8 @@ export function LLMDeepDivePanel({
             {/* Affected Components */}
             {deepDive.affected_components.length > 0 && (
               <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Thành phần bị ảnh hưởng
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground font-mono">
+                  Affected Subsystems
                 </h4>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {deepDive.affected_components.map((comp) => (
@@ -390,22 +387,21 @@ export function LLMDeepDivePanel({
             {deepDive.suggestions.length > 0 && (
               <div>
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Đề xuất hướng khắc phục
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground font-mono">
+                    Recommended Remediation Actions
                   </h4>
                 </div>
                 <div className="mt-2 space-y-2">
                   {deepDive.suggestions.map((suggestion, i) => (
                     <Collapsible key={i}>
-                      <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-lg border border-border bg-card p-2.5 text-left transition-colors hover:bg-accent">
+                      <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-lg border border-border bg-card p-2.5 text-left transition-colors hover:bg-accent cursor-pointer">
                         <CheckCircleIcon className="size-4 shrink-0 text-green-500" />
                         <span className="flex-1 text-sm">{suggestion}</span>
                         <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground transition-transform ui-open:rotate-180" />
                       </CollapsibleTrigger>
                       <CollapsibleContent className="px-3 py-2">
                         <p className="text-xs text-muted-foreground">
-                          Kiểm tra tệp cấu hình liên quan và tham số ROS2.
-                          Tham khảo tài liệu Nav2 cho thực hành tốt nhất.
+                          Inspect corresponding ROS2 parameters, DDS XML configuration, and Nav2 controller settings.
                         </p>
                       </CollapsibleContent>
                     </Collapsible>
@@ -414,24 +410,24 @@ export function LLMDeepDivePanel({
               </div>
             )}
 
-            {/* Phát hiện liên quan */}
+            {/* Associated Detections */}
             {anomalies.length > 0 && (
               <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Phát hiện liên quan
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground font-mono">
+                  Correlated Anomalies
                 </h4>
                 <div className="mt-2 space-y-1">
                   {anomalies.slice(0, 5).map((anomaly) => (
                     <button
                       key={anomaly.id}
                       onClick={() => onSelectAnomaly?.(anomaly.id)}
-                      className="flex w-full items-center gap-2 rounded border border-border bg-card px-2.5 py-1.5 text-left transition-colors hover:bg-accent"
+                      className="flex w-full items-center gap-2 rounded border border-border bg-card px-2.5 py-1.5 text-left transition-colors hover:bg-accent cursor-pointer"
                     >
                       <span
                         className="size-2 shrink-0 rounded-full"
                         style={{ backgroundColor: SEVERITY_COLORS[anomaly.severity] }}
                       />
-                      <span className="flex-1 truncate text-xs">{anomaly.title}</span>
+                      <span className="flex-1 truncate text-xs font-medium">{anomaly.title}</span>
                       <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground" />
                     </button>
                   ))}
@@ -442,11 +438,11 @@ export function LLMDeepDivePanel({
         ) : (
           <div className="flex flex-col items-center justify-center p-6 text-center">
             <BotIcon className="size-12 text-muted-foreground mb-3" />
-            <p className="text-sm text-muted-foreground">
-              Nhấn để phân tích dữ liệu sức khỏe với LLM
+            <p className="text-sm text-muted-foreground font-sans">
+              Click below to synthesize root causes using specialized LLM agents.
             </p>
             <Button
-              className="mt-3"
+              className="mt-3 cursor-pointer"
               size="sm"
               onClick={triggerDeepDive}
               disabled={isLoading}
@@ -454,12 +450,12 @@ export function LLMDeepDivePanel({
               {isLoading ? (
                 <>
                   <LoaderIcon className="mr-2 size-4 animate-spin" />
-                  Đang phân tích...
+                  Synthesizing...
                 </>
               ) : (
                 <>
                   <BrainCircuitIcon className="mr-2 size-4" />
-                  Hỏi LLM
+                  Run LLM Diagnostics
                 </>
               )}
             </Button>

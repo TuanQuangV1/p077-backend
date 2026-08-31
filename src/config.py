@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     model_name: str = "gpt-4.1"
     llm_temperature: float = Field(default=0.2, ge=0.0, le=2.0)
     llm_provider: Literal["openai", "anthropic"] = "openai"
-    llm_language: Literal["vi", "en"] = "vi"
+    llm_language: Literal["vi", "en"] = "en"
     anthropic_api_key: str = ""
     anthropic_model_name: str = "claude-sonnet-4-5"
     anthropic_max_tokens: int = Field(default=1024, ge=1, le=8192)

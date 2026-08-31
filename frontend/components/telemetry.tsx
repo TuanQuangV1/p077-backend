@@ -47,10 +47,10 @@ export function StatTile({
 }
 
 const severityLabel: Record<Severity, string> = {
-  critical: "nghiêm trọng",
-  high: "cao",
-  medium: "trung bình",
-  low: "thấp",
+  critical: "critical",
+  high: "high",
+  medium: "medium",
+  low: "low",
 }
 
 export function SeverityBadge({ severity, className }: { severity: Severity; className?: string }) {
@@ -76,22 +76,22 @@ export function StatusDot({ status }: { status: string }) {
 }
 
 const statusLabel: Record<string, string> = {
-  succeeded: "thành công",
-  failed: "thất bại",
-  running: "đang chạy",
-  queued: "đang chờ",
-  pending: "chờ duyệt",
-  draft: "nháp",
-  analyzed: "đã phân tích",
-  ok: "bình thường",
-  published: "đã xuất bản",
-  analyzing: "đang phân tích",
-  parsing: "đang phân tách",
-  error: "lỗi",
-  oom: "hết bộ nhớ",
-  timeout: "hết thời gian",
-  uploaded: "đã tải lên",
-  not_analyzed: "chưa phân tích",
+  succeeded: "Succeeded",
+  failed: "Failed",
+  running: "Running",
+  queued: "Queued",
+  pending: "Pending Review",
+  draft: "Draft",
+  analyzed: "Analyzed",
+  ok: "Nominal",
+  published: "Published",
+  analyzing: "Analyzing",
+  parsing: "Parsing",
+  error: "Error",
+  oom: "OOM",
+  timeout: "Timed Out",
+  uploaded: "Uploaded",
+  not_analyzed: "Unanalyzed",
 }
 
 export function StatusLabel({ status, className }: { status: string; className?: string }) {

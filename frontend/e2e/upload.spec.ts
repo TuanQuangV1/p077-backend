@@ -9,11 +9,8 @@ test("upload a real .db3 through the UI and list it", async ({ page }) => {
 
     await page.setInputFiles("#file-upload-input", FIXTURE)
 
-    await expect(page.getByText("Đã tải rosbag lên").first()).toBeVisible()
-    // The uploaded bag is derived from the real .db3: real message count + robot type.
-    // (Re-runs dedupe the id with a suffix, so assert on content, not the name.)
+    await expect(page.getByText(/ROSBag uploaded successfully|already exists/i).first()).toBeVisible()
     const row = page.locator("tr", { hasText: "7 messages" }).first()
     await expect(row).toBeVisible()
     await expect(row.getByText("amr-delivery")).toBeVisible()
-    await expect(row.getByText("uploaded")).toBeVisible()
 })

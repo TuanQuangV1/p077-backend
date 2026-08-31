@@ -69,9 +69,9 @@ export function LogStream({
         <Input
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="lọc node hoặc tin nhắn…"
+          placeholder="filter by node or message…"
           className="h-7 max-w-[220px] font-mono text-xs"
-          aria-label="Lọc dòng nhật ký"
+          aria-label="Filter log events"
         />
         <ToggleGroup
           multiple
@@ -81,22 +81,22 @@ export function LogStream({
           className="ml-auto"
         >
           {LEVELS.map((l) => (
-            <ToggleGroupItem key={l} value={l} size="sm" className="h-7 px-2 font-mono text-[10px] uppercase">
+            <ToggleGroupItem key={l} value={l} size="sm" className="h-7 px-2 font-mono text-[10px] uppercase cursor-pointer">
               {l}
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
         <Badge variant="secondary" className="tnum font-mono text-[10px]">
-          {filtered.length} dòng
+          {filtered.length} lines
         </Badge>
       </div>
 
       {filtered.length === 0 ? (
         <Empty className="flex-1">
           <EmptyHeader>
-            <EmptyTitle className="text-sm">Không có dòng nhật ký khớp</EmptyTitle>
+            <EmptyTitle className="text-sm">No matching ROS log lines</EmptyTitle>
             <EmptyDescription className="text-xs">
-              Mở rộng cửa sổ thời gian, xóa bộ lọc, hoặc bật lại mức nghiêm trọng.
+              Expand the temporal window, clear query filters, or re-enable severity toggles.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -110,12 +110,12 @@ export function LogStream({
                 type="button"
                 onClick={() => onSeek(l.tSec)}
                 className={cn(
-                  "flex w-full items-baseline gap-2 px-3 py-[3px] text-left font-mono text-[11px] leading-4 hover:bg-accent/60",
+                  "flex w-full items-baseline gap-2 px-3 py-[3px] text-left font-mono text-[11px] leading-4 hover:bg-accent/60 cursor-pointer transition-colors",
                   i === activeIndex && "bg-primary/10 ring-1 ring-inset ring-primary/40",
                 )}
               >
                 <span className="w-[58px] shrink-0 tabular-nums text-muted-foreground">{clock(l.tSec)}</span>
-                <span className={cn("w-[38px] shrink-0 uppercase", levelText[l.level])}>{l.level}</span>
+                <span className={cn("w-[38px] shrink-0 uppercase font-semibold", levelText[l.level])}>{l.level}</span>
                 <span className="w-[128px] shrink-0 truncate text-muted-foreground">{l.node}</span>
                 <span className="min-w-0 flex-1 text-foreground/90">{l.message}</span>
               </button>

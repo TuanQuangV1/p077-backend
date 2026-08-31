@@ -32,11 +32,11 @@ const SEVERITY_COLORS: Record<Severity, string> = {
 }
 
 const SEVERITY_LABEL: Record<string, string> = {
-  critical: "nghiêm trọng",
-  high: "cao",
-  medium: "trung bình",
-  low: "thấp",
-  none: "không có",
+  critical: "Critical",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+  none: "None",
 }
 
 const BUCKET_SIZE_SEC = 10 // 10 second buckets
@@ -90,7 +90,6 @@ function getBucketColor(
     case "low":
       return "#6c757d"
     default:
-      // Scale from light to dark based on density
       const opacity = Math.min(0.3, density * 0.1)
       return `rgba(107, 114, 128, ${opacity})`
   }
@@ -107,7 +106,6 @@ export function TimelineDensityHeatmap({
 
   const buckets = buildBuckets(anomalies, durationSec)
 
-  // Timeline markers for anomalies
   const anomalyMarkers = anomalies
     .filter((a) => a.severity === "critical" || a.severity === "high")
     .slice(0, 10)
@@ -128,20 +126,20 @@ export function TimelineDensityHeatmap({
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-sm">
-            Dòng thời gian phát hiện
+            Anomaly Temporal Heatmap
           </CardTitle>
           <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
             <span className="flex items-center gap-1">
-              <span className="size-2 rounded-full bg-[#dc3545]" /> Nghiêm trọng
+              <span className="size-2 rounded-full bg-[#dc3545]" /> Critical
             </span>
             <span className="flex items-center gap-1">
-              <span className="size-2 rounded-full bg-[#fd7e14]" /> Cao
+              <span className="size-2 rounded-full bg-[#fd7e14]" /> High
             </span>
             <span className="flex items-center gap-1">
-              <span className="size-2 rounded-full bg-[#ffc107]" /> Trung bình
+              <span className="size-2 rounded-full bg-[#ffc107]" /> Medium
             </span>
             <span className="flex items-center gap-1">
-              <span className="size-2 rounded-full bg-[#6c757d]" /> Thấp
+              <span className="size-2 rounded-full bg-[#6c757d]" /> Low
             </span>
           </div>
         </div>
@@ -163,14 +161,14 @@ export function TimelineDensityHeatmap({
             {buckets.map((bucket, i) => (
               <button
                 key={i}
-                className="flex-1 transition-all hover:brightness-125"
+                className="flex-1 transition-all hover:brightness-125 cursor-pointer"
                 style={{
                   backgroundColor: getBucketColor(bucket.severity, bucket.density),
                 }}
                 onMouseEnter={() => setHoveredBucket(bucket)}
                 onMouseLeave={() => setHoveredBucket(null)}
                 onClick={() => handleBucketClick(bucket)}
-                title={`t=${bucket.start}-${bucket.end}s: ${bucket.density} phát hiện`}
+                title={`t=${bucket.start}-${bucket.end}s: ${bucket.density} anomalies`}
               />
             ))}
           </div>
@@ -179,9 +177,9 @@ export function TimelineDensityHeatmap({
           {hoveredBucket && hoveredBucket.density > 0 && (
             <div className="absolute left-1/2 top-full z-10 mt-1 -translate-x-1/2 whitespace-nowrap rounded border bg-popover px-2 py-1 font-mono text-[10px] shadow-lg">
               t={hoveredBucket.start}-{hoveredBucket.end}s: {hoveredBucket.density}{" "}
-              phát hiện
+              anomalies
               <br />
-              <span style={{ color: getBucketColor(hoveredBucket.severity, 1) }}>
+              <span style={{ color: getBucketColor(hoveredBucket.severity, 1) }} className="font-semibold">
                 {(SEVERITY_LABEL[hoveredBucket.severity] ?? hoveredBucket.severity).toUpperCase()}
               </span>
             </div>
@@ -191,8 +189,8 @@ export function TimelineDensityHeatmap({
         {/* Detection markers */}
         {anomalyMarkers.length > 0 && (
           <div className="space-y-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Phát hiện
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground font-mono">
+              High Severity Fault Markers
             </span>
             <div className="max-h-32 space-y-1 overflow-auto">
               {anomalyMarkers.map((anomaly) => (
@@ -201,7 +199,7 @@ export function TimelineDensityHeatmap({
                   onClick={() => handleAnomalyClick(anomaly)}
                   className={`
                     flex w-full items-center gap-2 rounded border px-2 py-1.5
-                    text-left transition-colors
+                    text-left transition-colors cursor-pointer
                     ${selectedAnomaly?.id === anomaly.id ? "bg-accent" : "hover:bg-accent"}
                   `}
                   style={{
@@ -215,12 +213,12 @@ export function TimelineDensityHeatmap({
                   <span className="font-mono text-[10px] text-muted-foreground">
                     t={relativeSpan(anomaly).start.toFixed(1)}s
                   </span>
-                  <span className="flex-1 truncate text-xs">
+                  <span className="flex-1 truncate text-xs font-medium">
                     {anomaly.title}
                   </span>
                   <Badge
                     variant="outline"
-                    className="text-[9px]"
+                    className="text-[9px] font-mono"
                     style={{
                       borderColor: SEVERITY_COLORS[anomaly.severity],
                       color: SEVERITY_COLORS[anomaly.severity],
@@ -238,8 +236,8 @@ export function TimelineDensityHeatmap({
         {/* No detections */}
         {anomalies.length === 0 && (
           <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
-            <AlertCircleIcon className="size-4" />
-            <span>Không có phát hiện trong khoảng thời gian này</span>
+            <AlertCircleIcon className="size-4 text-emerald-500" />
+            <span>No anomalies detected across this telemetry window</span>
           </div>
         )}
 
@@ -262,7 +260,7 @@ export function TimelineDensityHeatmap({
               </span>
               <Badge
                 variant="outline"
-                className="text-[9px]"
+                className="text-[9px] font-mono"
                 style={{
                   borderColor: SEVERITY_COLORS[selectedAnomaly.severity],
                   color: SEVERITY_COLORS[selectedAnomaly.severity],
@@ -271,7 +269,7 @@ export function TimelineDensityHeatmap({
                 {SEVERITY_LABEL[selectedAnomaly.severity] ?? selectedAnomaly.severity}
               </Badge>
             </div>
-            <p className="mt-1 text-[10px] text-muted-foreground">
+            <p className="mt-1 text-[10px] text-muted-foreground font-mono">
               {selectedAnomaly.metric}
             </p>
           </div>

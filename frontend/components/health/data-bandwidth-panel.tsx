@@ -40,10 +40,10 @@ function TopicBubbleCard({
 
   const statusLabel =
     topic.status === "zero"
-      ? "RỖNG"
+      ? "EMPTY"
       : topic.status === "warning"
-      ? "CẢNH BÁO"
-      : "BÌNH THƯỜNG"
+      ? "WARNING"
+      : "NOMINAL"
 
   // Size based on percentage
   const size = Math.max(60, Math.min(100, topic.percentage * 1.5))
@@ -55,7 +55,7 @@ function TopicBubbleCard({
         flex flex-col items-center justify-center rounded-lg border p-3
         transition-colors
         ${isSelected ? "ring-2 ring-primary" : ""}
-        hover:bg-accent
+        hover:bg-accent cursor-pointer
       `}
       style={{
         borderColor: `${statusColor}40`,
@@ -64,15 +64,15 @@ function TopicBubbleCard({
         minHeight: size,
       }}
     >
-      <span className="truncate max-w-full font-mono text-[10px]">
+      <span className="truncate max-w-full font-mono text-[10px] text-foreground">
         {topic.name.replace("/", "")}
       </span>
-      <span className="text-lg font-bold tabular-nums" style={{ color: statusColor }}>
+      <span className="text-lg font-bold tabular-nums font-mono" style={{ color: statusColor }}>
         {topic.status === "zero" ? "0 B" : formatBytes(topic.avgBytes)}
       </span>
       <Badge
         variant="outline"
-        className="mt-1 text-[9px]"
+        className="mt-1 text-[9px] font-mono uppercase"
         style={{
           borderColor: statusColor,
           color: statusColor,
@@ -81,8 +81,8 @@ function TopicBubbleCard({
         {statusLabel}
       </Badge>
       {topic.zeroCount > 0 && (
-        <span className="mt-0.5 text-[9px] text-muted-foreground">
-          {topic.zeroCount}x rỗng
+        <span className="mt-0.5 text-[9px] text-muted-foreground font-mono">
+          {topic.zeroCount}x zero-byte
         </span>
       )}
     </button>
@@ -136,7 +136,7 @@ function SimpleDoughnut({
       </svg>
       <div className="flex flex-wrap justify-center gap-2">
         {data.map((item, i) => (
-          <div key={i} className="flex items-center gap-1 text-[10px]">
+          <div key={i} className="flex items-center gap-1 text-[10px] font-mono">
             <span
               className="size-2 rounded-full"
               style={{ backgroundColor: item.color }}
@@ -157,8 +157,6 @@ export function DataBandwidthPanel({
 }: DataBandwidthPanelProps) {
   const [viewMode, setViewMode] = useState<"bubbles" | "doughnut">("bubbles")
 
-  // Calculate bandwidth data per topic
-  // Using messageCount as a proxy for bandwidth
   const totalMessages = topics.reduce((a, b) => a + b.messageCount, 0)
 
   const topicBandwidth: TopicBandwidth[] = topics.map((topic) => {
@@ -170,15 +168,14 @@ export function DataBandwidthPanel({
 
     return {
       name: topic.name,
-      avgBytes: Math.round(topic.messageCount * 100), // Mock
-      peakBytes: Math.round(topic.messageCount * 150), // Mock
+      avgBytes: Math.round(topic.messageCount * 100),
+      peakBytes: Math.round(topic.messageCount * 150),
       zeroCount: hasZeroPayload ? Math.round(topic.messageCount * 0.02) : 0,
       percentage,
       status: hasZeroPayload ? "zero" : topic.dropRate > 0.3 ? "warning" : "healthy",
     }
   })
 
-  // Sort by percentage descending
   topicBandwidth.sort((a, b) => b.percentage - a.percentage)
 
   const doughnutData = topicBandwidth.slice(0, 6).map((topic) => ({
@@ -203,24 +200,24 @@ export function DataBandwidthPanel({
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-sm">
             <HardDriveIcon className="size-4" />
-            Băng thông dữ liệu
+            Topic Bandwidth & Payload Throughput
           </CardTitle>
           <div className="flex gap-1">
             <Button
               variant={viewMode === "bubbles" ? "secondary" : "ghost"}
               size="sm"
-              className="h-7 text-[10px]"
+              className="h-7 text-[10px] cursor-pointer"
               onClick={() => setViewMode("bubbles")}
             >
-              Bong bóng
+              Bubbles
             </Button>
             <Button
               variant={viewMode === "doughnut" ? "secondary" : "ghost"}
               size="sm"
-              className="h-7 text-[10px]"
+              className="h-7 text-[10px] cursor-pointer"
               onClick={() => setViewMode("doughnut")}
             >
-              Vành khuyên
+              Donut
             </Button>
           </div>
         </div>
@@ -250,13 +247,13 @@ export function DataBandwidthPanel({
             <div className="flex-1">
               <p className="text-xs font-medium text-red-600 dark:text-red-400">
                 {payloadAnomalies.length > 0
-                  ? `${payloadAnomalies.length} bất thường băng thông`
-                  : `${totalZeroCount} tin nhắn rỗng`}
+                  ? `${payloadAnomalies.length} payload throughput anomalies`
+                  : `${totalZeroCount} zero-byte empty messages`}
               </p>
             </div>
             <Badge
               variant="outline"
-              className="text-[9px]"
+              className="text-[9px] font-mono"
               style={{
                 borderColor: "#dc3545",
                 color: "#dc3545",

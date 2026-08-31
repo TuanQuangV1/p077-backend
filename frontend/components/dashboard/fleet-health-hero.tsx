@@ -2,14 +2,8 @@
 
 import React from "react"
 import {
-  ActivityIcon,
   BotIcon,
-  CheckCircle2Icon,
-  DatabaseIcon,
-  FlameIcon,
   PlayCircleIcon,
-  RadioIcon,
-  ShieldAlertIcon,
   UploadIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -41,10 +35,10 @@ export function FleetHealthHero({
 
   const statusText =
     status === "green"
-      ? "Hệ thống ổn định"
+      ? "Nominal Operations"
       : status === "yellow"
-      ? "Cảnh báo suy giảm"
-      : "Sự cố nghiêm trọng"
+      ? "Degraded Performance"
+      : "Critical Faults"
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-border/80 bg-gradient-to-r from-card/90 via-card/60 to-primary/5 p-5 shadow-lg backdrop-blur-md">
@@ -62,14 +56,14 @@ export function FleetHealthHero({
                 {statusText}
               </Badge>
               <span className="text-xs font-mono text-muted-foreground hidden sm:inline">
-                · ROS2 Doctor + LLM Agent
+                · ROS2 Doctor + LLM Agent Engine
               </span>
             </div>
             <h2 className="text-lg font-bold tracking-tight text-foreground sm:text-xl">
-              Trung tâm Giám sát & Chẩn đoán Robot Toàn diện
+              Autonomous Robotics Diagnostics & Telemetry Hub
             </h2>
             <p className="text-xs text-muted-foreground max-w-xl leading-relaxed">
-              Tự động phân tích bất thường từ luồng tin nhắn Rosbag2 SQLite/MCAP, phát hiện mất gói, sụt giảm tần số và đề xuất khắc phục qua mô hình AI.
+              Automated anomaly triage across ROSBag2 SQLite3/MCAP streams — detects topic frequency drops, timestamp jitter, sensor dropouts, and synthesizes root-cause analyses via specialized LLM agents.
             </p>
           </div>
         </div>
@@ -79,30 +73,30 @@ export function FleetHealthHero({
           <Button
             size="sm"
             onClick={() => navigate("/datasets")}
-            className="bg-primary text-primary-foreground shadow hover:bg-primary/90 font-medium"
+            className="bg-primary text-primary-foreground shadow hover:bg-primary/90 font-medium cursor-pointer"
           >
             <UploadIcon data-icon="inline-start" className="size-4 mr-1.5" />
-            Nạp Dataset
+            Upload ROSBag
           </Button>
 
           <Button
             variant="outline"
             size="sm"
             onClick={() => navigate("/analysis")}
-            className="border-border/80 hover:bg-accent/60"
+            className="border-border/80 hover:bg-accent/60 cursor-pointer"
           >
             <PlayCircleIcon data-icon="inline-start" className="size-4 mr-1.5 text-cyan-400" />
-            Mở Workspace
+            Open Workspace
           </Button>
 
           <Button
             variant="ghost"
             size="sm"
             onClick={() => navigate("/review")}
-            className="text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground cursor-pointer"
           >
             <BotIcon data-icon="inline-start" className="size-4 mr-1.5 text-purple-400" />
-            Hàng đợi AI ({totals.reviewPending ?? totals.anomalies ?? 0})
+            Review Queue ({totals.reviewPending ?? totals.anomalies ?? 0})
           </Button>
         </div>
       </div>

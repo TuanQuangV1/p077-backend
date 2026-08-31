@@ -6,7 +6,7 @@ import { GitBranchIcon, AlertCircleIcon, CheckCircleIcon, HelpCircleIcon } from 
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import type { Anomaly, Severity } from "@/lib/types"
+import type { Anomaly } from "@/lib/types"
 import { relativeSpan } from "@/lib/anomaly-groups"
 
 interface TFTreeStatusProps {
@@ -36,10 +36,10 @@ const NODE_ICONS = {
 }
 
 const SEVERITY_LABEL: Record<string, string> = {
-  critical: "nghiêm trọng",
-  high: "cao",
-  medium: "trung bình",
-  low: "thấp",
+  critical: "Critical",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
 }
 
 function TFNodeComponent({
@@ -72,10 +72,10 @@ function TFNodeComponent({
         }}
       >
         <Icon className="size-5" style={{ color }} />
-        <span className="text-xs font-semibold">{node.label}</span>
+        <span className="text-xs font-semibold font-mono">{node.label}</span>
         {isRoot && (
-          <span className="text-[9px] uppercase tracking-wider text-muted-foreground">
-            gốc
+          <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-mono">
+            root frame
           </span>
         )}
       </button>
@@ -86,7 +86,7 @@ function TFNodeComponent({
           <div className="flex items-center gap-1.5">
             <Badge
               variant="outline"
-              className="text-[9px]"
+              className="text-[9px] font-mono"
               style={{
                 borderColor: color,
                 color,
@@ -95,7 +95,7 @@ function TFNodeComponent({
               {anomaly.kind}
             </Badge>
             <span
-              className="text-[9px] font-medium uppercase"
+              className="text-[9px] font-medium uppercase font-mono"
               style={{ color }}
             >
               {SEVERITY_LABEL[anomaly.severity] ?? anomaly.severity}
@@ -139,7 +139,7 @@ function TFEdge({
       />
       {label && (
         <span
-          className="mb-1 rounded px-1.5 py-0.5 text-[9px] font-medium"
+          className="mb-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold"
           style={{
             backgroundColor: `${color}20`,
             color,
@@ -182,9 +182,9 @@ export function TFTreeStatus({
       status: hasJump ? "jump" : hasGap ? "gap" : "healthy",
       anomalyId: hasJump || hasGap ? tfAnomalies[0]?.id : undefined,
       details: hasJump
-        ? "Khung đã gắn lại"
+        ? "Transform discontinuity / frame re-latch detected"
         : hasGap
-        ? "Phát hiện khoảng trống biến đổi"
+        ? "Transform buffer gap / timeout"
         : undefined,
     },
     {
@@ -203,20 +203,19 @@ export function TFTreeStatus({
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-sm">
             <GitBranchIcon className="size-4" />
-            Trạng thái cây TF
+            TF2 Transform Tree & Coordinate Hierarchy
           </CardTitle>
           <Tooltip>
             <TooltipTrigger
               onClick={() => setShowHelp(!showHelp)}
-              className="rounded p-1 hover:bg-accent"
+              className="rounded p-1 hover:bg-accent cursor-pointer"
             >
               <HelpCircleIcon className="size-4 text-muted-foreground" />
             </TooltipTrigger>
             <TooltipContent side="left" className="max-w-xs text-xs">
-              <p className="font-semibold">Trực quan hóa Cây TF</p>
+              <p className="font-semibold">TF2 Coordinate Hierarchy</p>
               <p className="mt-1 text-muted-foreground">
-                Hiển thị chuỗi chuyển đổi tọa độ. Xanh = bình thường, Đỏ =
-                phát hiện bất thường.
+                Displays kinematic transform chain integrity. Green = nominal transform buffer, Red = transform gap or extrapolation jump.
               </p>
             </TooltipContent>
           </Tooltip>
@@ -226,19 +225,19 @@ export function TFTreeStatus({
         {/* Help panel */}
         {showHelp && (
           <div className="mb-3 rounded border border-border bg-muted/50 p-2 text-[10px]">
-            <p className="font-semibold">Chuỗi chuyển đổi (Transform Chain):</p>
-            <p className="mt-0.5 text-muted-foreground">
+            <p className="font-semibold font-mono">Transform Chain:</p>
+            <p className="mt-0.5 text-muted-foreground font-mono">
               map &rarr; odom &rarr; base_link
             </p>
-            <p className="mt-1 font-semibold">Màu sắc trạng thái:</p>
+            <p className="mt-1 font-semibold">Status Coding:</p>
             <div className="mt-0.5 space-y-0.5 text-muted-foreground">
               <p>
                 <span className="inline-block size-2 rounded-full bg-green-500" />{" "}
-                Xanh = Chuyển đổi bình thường
+                Green = Transform buffer continuous
               </p>
               <p>
                 <span className="inline-block size-2 rounded-full bg-red-500" />{" "}
-                Đỏ = Phát hiện bị đứt đoạn hoặc nhảy giá trị
+                Red = Transform gap or pose extrapolation jump
               </p>
             </div>
           </div>
@@ -255,7 +254,7 @@ export function TFTreeStatus({
             fromLabel={nodes[0].label}
             toLabel={nodes[1].label}
             status={nodes[1].status}
-            label={hasAnyAnomaly ? "KHOẢNG TRỐNG" : undefined}
+            label={hasAnyAnomaly ? "TF GAP" : undefined}
           />
           <TFNodeComponent
             node={nodes[1]}
@@ -278,25 +277,25 @@ export function TFTreeStatus({
         {/* Anomaly Summary */}
         {tfAnomalies.length > 0 && (
           <div className="space-y-1.5 border-t border-border pt-3">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Bất thường
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground font-mono">
+              TF Transform Faults
             </span>
             {tfAnomalies.map((anomaly) => (
               <button
                 key={anomaly.id}
                 onClick={() => onSelectAnomaly?.(anomaly.id)}
-                className="flex w-full items-center gap-2 rounded border border-border bg-card px-2 py-1.5 text-left transition-colors hover:bg-accent"
+                className="flex w-full items-center gap-2 rounded border border-border bg-card px-2 py-1.5 text-left transition-colors hover:bg-accent cursor-pointer"
               >
                 <AlertCircleIcon
                   className="size-3"
                   style={{ color: FRAME_COLORS[anomaly.severity === "critical" ? "jump" : "gap"] }}
                 />
-                <span className="flex-1 truncate text-xs">
+                <span className="flex-1 truncate text-xs font-medium">
                   {anomaly.title}
                 </span>
                 <Badge
                   variant="outline"
-                  className="text-[9px]"
+                  className="text-[9px] font-mono"
                   style={{
                     borderColor:
                       anomaly.severity === "critical"
@@ -317,9 +316,9 @@ export function TFTreeStatus({
 
         {/* No anomalies */}
         {!hasAnyAnomaly && (
-          <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
+          <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground font-mono">
             <CheckCircleIcon className="size-4 text-green-500" />
-            <span>Tất cả biến đổi bình thường</span>
+            <span>All coordinate transforms nominal</span>
           </div>
         )}
       </CardContent>

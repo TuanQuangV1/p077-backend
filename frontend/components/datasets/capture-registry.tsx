@@ -2,25 +2,17 @@
 
 import React, { useState } from "react"
 import {
-  ActivityIcon,
-  CheckIcon,
   ClockIcon,
   DatabaseIcon,
-  FileCodeIcon,
-  FileTextIcon,
   HardDriveIcon,
   LayersIcon,
   PlayIcon,
-  PlusIcon,
-  RefreshCwIcon,
   SearchIcon,
   Trash2Icon,
   UploadCloudIcon,
   UploadIcon,
 } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { SectionCard, StatTile, StatusLabel } from "@/components/telemetry"
@@ -83,14 +75,14 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
     try {
       const saved = await uploadRosbag(file)
       if (saved.duplicateOf) {
-        toast.info("Bag này đã có trong hệ thống — đang mở bản gốc", { description: saved.name })
+        toast.info("ROSBag already exists — opening original artifact", { description: saved.name })
       } else {
-        toast.success("Rosbag uploaded", { description: file.name })
+        toast.success("ROSBag uploaded successfully", { description: file.name })
       }
       onRefresh()
     } catch (err) {
       const _err = err as Error
-      toast.error("Upload failed: " + (_err?.message ?? "unsupported file type"))
+      toast.error("Upload failed: " + (_err?.message ?? "unsupported file format"))
     } finally {
       setUploading(false)
       setFileInputKey((k) => k + 1)
@@ -105,7 +97,7 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
   }
 
   const remove = async (bag: Rosbag) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa tệp "${bag.name}"?`)) return
+    if (!window.confirm(`Are you sure you want to delete "${bag.name}"?`)) return
     setBusy(bag.id)
     try {
       await del(`/api/rosbags/${bag.id}`)
@@ -127,10 +119,10 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
     setBusy(bag.id)
     try {
       const result = await post<{ run: AnalysisRun }>("/api/runs", { rosbag_id: bag.id })
-      toast.success("Analysis completed", { description: result.run.id })
+      toast.success("Diagnostics completed", { description: result.run.id })
       window.location.assign("/analysis")
     } catch {
-      toast.error("Unable to run analysis")
+      toast.error("Unable to start diagnostics run")
     } finally {
       setBusy(null)
     }
@@ -139,15 +131,15 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
   const removeSelected = async () => {
     const targets = filtered.filter((bag) => selected.has(bag.id))
     if (targets.length === 0) return
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa ${targets.length} tệp đã chọn?`)) return
+    if (!window.confirm(`Delete ${targets.length} selected dataset artifacts?`)) return
     setBusy("batch")
     try {
       await Promise.all(targets.map((bag) => del(`/api/rosbags/${bag.id}`)))
-      toast.success(`Đã xóa ${targets.length} tệp`)
+      toast.success(`Deleted ${targets.length} datasets`)
       setSelected(new Set())
       onRefresh()
     } catch {
-      toast.error("Không thể xóa một số tệp đã chọn")
+      toast.error("Failed to delete some selected datasets")
     } finally {
       setBusy(null)
     }
@@ -159,10 +151,10 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
     setBusy("batch")
     try {
       const results = await Promise.all(ids.map((id) => post<{ run: AnalysisRun }>("/api/runs", { rosbag_id: id })))
-      toast.success(`${results.length} analysis run${results.length > 1 ? "s" : ""} queued`)
+      toast.success(`${results.length} diagnostics run${results.length > 1 ? "s" : ""} queued`)
       window.location.assign("/analysis")
     } catch {
-      toast.error("Unable to queue analysis")
+      toast.error("Unable to queue diagnostics")
     } finally {
       setBusy(null)
     }
@@ -173,27 +165,27 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
       {/* 1. Quick Stats Metric Row */}
       <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
-          label="Tổng tập dữ liệu"
+          label="Total Bag Registry"
           value={totalBags}
           hint={`${mcapCount} Foxglove MCAP · ${db3Count} SQLite DB3`}
           icon={<DatabaseIcon className="size-4" />}
         />
         <StatTile
-          label="Dung lượng lưu trữ"
+          label="Storage Footprint"
           value={bytes(totalBytes)}
-          hint="Tổng tệp nhị phân đã nạp"
+          hint="Total indexed binary volume"
           icon={<HardDriveIcon className="size-4" />}
         />
         <StatTile
-          label="Thời lượng dữ liệu ghi"
+          label="Cumulative Duration"
           value={clock(totalDuration, false)}
-          hint="Thời gian cảm biến robot hoạt động"
+          hint="Active robot sensor capture time"
           icon={<ClockIcon className="size-4" />}
         />
         <StatTile
-          label="Tổng số gói tin"
+          label="Total Telemetry Messages"
           value={totalMessages.toLocaleString()}
-          hint="Gói tin ROS 2 đã nạp & giải mã"
+          hint="Decoded ROS2 CDR/Protobuf messages"
           icon={<LayersIcon className="size-4" />}
         />
       </div>
@@ -219,11 +211,11 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
         </div>
         <div className="space-y-1">
           <p className="text-sm font-semibold text-foreground">
-            {uploading ? "Đang tải lên và phân tích tệp..." : "Kéo thả tệp Rosbag vào đây hoặc bấm để chọn tệp"}
+            {uploading ? "Ingesting and indexing ROSBag stream..." : "Drag & drop ROSBag file here or click to browse"}
           </p>
           <p className="text-xs text-muted-foreground">
-            Hỗ trợ định dạng Foxglove <span className="font-mono font-medium text-foreground">.mcap</span>, ROS2 SQLite{" "}
-            <span className="font-mono font-medium text-foreground">.db3</span>, <span className="font-mono">.bag</span> và <span className="font-mono">.zip</span>
+            Supports Foxglove <span className="font-mono font-medium text-foreground">.mcap</span>, ROS2 SQLite3{" "}
+            <span className="font-mono font-medium text-foreground">.db3</span>, <span className="font-mono">.bag</span> and <span className="font-mono">.zip</span> bundles
           </p>
         </div>
         <input
@@ -238,8 +230,8 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
 
       {/* 3. Main Dataset Registry Card */}
       <SectionCard
-        title="Danh mục tệp dữ liệu"
-        description="Quản lý, nạp và khởi chạy chẩn đoán lỗi từ các tệp ghi dữ liệu cảm biến robot"
+        title="ROSBag Capture Registry"
+        description="Ingest, manage, and trigger diagnostics across autonomous robot telemetry recordings"
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -247,29 +239,29 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
               variant="outline"
               disabled={uploading || selected.size === 0}
               onClick={analyzeSelected}
-              className="text-xs"
+              className="text-xs cursor-pointer"
             >
               <PlayIcon data-icon="inline-start" className="size-3.5" />
-              Chẩn đoán đã chọn{selected.size ? ` (${selected.size})` : ""}
+              Diagnose Selected{selected.size ? ` (${selected.size})` : ""}
             </Button>
             <Button
               size="sm"
               variant="outline"
               disabled={uploading || selected.size === 0}
               onClick={removeSelected}
-              className="text-xs text-rose-500 hover:text-rose-500 hover:bg-rose-500/10 border-rose-500/30"
+              className="text-xs text-rose-500 hover:text-rose-500 hover:bg-rose-500/10 border-rose-500/30 cursor-pointer"
             >
               <Trash2Icon data-icon="inline-start" className="size-3.5" />
-              Xóa đã chọn (Delete selected){selected.size ? ` (${selected.size})` : ""}
+              Delete Selected{selected.size ? ` (${selected.size})` : ""}
             </Button>
             <Button
               size="sm"
               disabled={uploading}
               onClick={() => document.getElementById("file-upload-input")?.click()}
-              className="text-xs"
+              className="text-xs cursor-pointer"
             >
               <UploadIcon data-icon="inline-start" className="size-3.5" />
-              {uploading ? "Đang nạp..." : "Nạp Rosbag"}
+              {uploading ? "Ingesting..." : "Upload ROSBag"}
             </Button>
           </div>
         }
@@ -281,7 +273,7 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Tìm kiếm tệp, địa điểm, robot..."
+              placeholder="Search by bag name, site, or robot..."
               className="pl-9 text-xs"
             />
           </div>
@@ -297,7 +289,7 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
                   : "text-muted-foreground hover:text-foreground"
               )}
             >
-              Tất cả ({totalBags})
+              All ({totalBags})
             </button>
             <button
               onClick={() => setFormatFilter("mcap")}
@@ -332,18 +324,18 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
                 <th className="pb-2.5 pt-1 w-8">
                   <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all" />
                 </th>
-                <th className="pb-2.5 pt-1 font-medium">Tập tin Rosbag</th>
-                <th className="pb-2.5 pt-1 font-medium hidden sm:table-cell">Loại robot / Địa điểm</th>
-                <th className="pb-2.5 pt-1 font-medium">Dung lượng / Thời lượng</th>
-                <th className="pb-2.5 pt-1 font-medium">Trạng thái</th>
-                <th className="pb-2.5 pt-1 font-medium text-right pr-2">Thao tác</th>
+                <th className="pb-2.5 pt-1 font-medium">ROSBag Artifact</th>
+                <th className="pb-2.5 pt-1 font-medium hidden sm:table-cell">Platform / Facility</th>
+                <th className="pb-2.5 pt-1 font-medium">Payload / Duration</th>
+                <th className="pb-2.5 pt-1 font-medium">Status</th>
+                <th className="pb-2.5 pt-1 font-medium text-right pr-2">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/40 font-mono">
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-8 text-center text-xs text-muted-foreground font-sans">
-                    Không tìm thấy tập dữ liệu phù hợp với điều kiện lọc.
+                    No ROSBag datasets match the specified query filters.
                   </td>
                 </tr>
               ) : (
@@ -386,7 +378,7 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
                               {bag.name}
                             </span>
                             <span className="text-[11px] text-muted-foreground font-sans">
-                              {bag.messageCount.toLocaleString()} gói tin
+                              {bag.messageCount.toLocaleString()} messages
                             </span>
                           </div>
                         </div>
@@ -428,20 +420,20 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
                             variant="secondary"
                             disabled={busy === bag.id}
                             onClick={() => analyze(bag)}
-                            className="h-7 px-2.5 text-xs text-primary font-medium"
+                            className="h-7 px-2.5 text-xs text-primary font-medium cursor-pointer"
                           >
                             <PlayIcon className="size-3 mr-1" />
-                            Chẩn đoán
+                            Diagnose
                           </Button>
                           <Button
                             size="sm"
                             variant="ghost"
                             disabled={busy === bag.id}
                             onClick={() => remove(bag)}
-                            className="h-7 px-2 text-xs text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10"
+                            className="h-7 px-2 text-xs text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 cursor-pointer"
                           >
                             <Trash2Icon data-icon="inline-start" className="size-3.5" />
-                            Xóa
+                            Delete
                           </Button>
                         </div>
                       </td>

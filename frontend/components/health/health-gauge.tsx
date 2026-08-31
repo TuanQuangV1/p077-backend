@@ -15,9 +15,9 @@ const STATUS_COLORS: Record<HealthStatus, string> = {
 }
 
 const STATUS_LABELS: Record<HealthStatus, string> = {
-  green: "KHOẺ MẠNH",
-  yellow: "SUY GIẢM",
-  red: "SỰ CỐ",
+  green: "NOMINAL",
+  yellow: "DEGRADED",
+  red: "FAULTED",
 }
 
 function GaugeArc({ score, status }: { score: number; status: HealthStatus }) {
@@ -27,12 +27,10 @@ function GaugeArc({ score, status }: { score: number; status: HealthStatus }) {
   const cx = size / 2
   const cy = size / 2
 
-  // Arc spans 270 degrees (from 135 to 405 degrees, leaving bottom-right gap)
   const startAngle = 135
   const endAngle = 405
   const totalAngle = endAngle - startAngle
 
-  // Background arc
   const bgStartRad = (startAngle * Math.PI) / 180
   const bgEndRad = (endAngle * Math.PI) / 180
 
@@ -41,8 +39,6 @@ function GaugeArc({ score, status }: { score: number; status: HealthStatus }) {
     A ${r} ${r} 0 1 1 ${cx + r * Math.cos(bgEndRad)} ${cy + r * Math.sin(bgEndRad)}
   `
 
-  // Value arc — large-arc-flag must reflect the actual sweep angle (> 180deg),
-  // not the raw score, or SVG draws the complementary (wrong) arc.
   const sweepAngle = (score / 100) * totalAngle
   const valueAngle = startAngle + sweepAngle
   const valueRad = (valueAngle * Math.PI) / 180
@@ -56,7 +52,6 @@ function GaugeArc({ score, status }: { score: number; status: HealthStatus }) {
 
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      {/* Background track */}
       <path
         d={bgPath}
         fill="none"
@@ -64,7 +59,6 @@ function GaugeArc({ score, status }: { score: number; status: HealthStatus }) {
         strokeWidth={strokeWidth}
         strokeLinecap="round"
       />
-      {/* Value arc */}
       <path
         d={valuePath}
         fill="none"
@@ -133,13 +127,13 @@ export function HealthGauge({ score, status, size = "md" }: HealthGaugeProps) {
 
   if (size === "sm") {
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 font-mono">
         <GaugeMini score={score} status={status} />
         <div>
           <div className="text-lg font-bold tabular-nums" style={{ color }}>
             {score}
           </div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
             {label}
           </div>
         </div>
@@ -151,7 +145,7 @@ export function HealthGauge({ score, status, size = "md" }: HealthGaugeProps) {
     <div className="flex flex-col items-center">
       <div className="relative">
         <GaugeArc score={score} status={status} />
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <div className="absolute inset-0 flex flex-col items-center justify-center font-mono">
           <span
             className="text-3xl font-bold tabular-nums"
             style={{ color }}
@@ -164,7 +158,7 @@ export function HealthGauge({ score, status, size = "md" }: HealthGaugeProps) {
         </div>
       </div>
       <div
-        className="mt-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wider"
+        className="mt-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wider font-mono"
         style={{
           backgroundColor: `${color}20`,
           color,
@@ -183,7 +177,7 @@ export function HealthBadge({ score, status }: { score: number; status: HealthSt
 
   return (
     <div
-      className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold"
+      className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold font-mono"
       style={{
         borderColor: `${color}40`,
         backgroundColor: `${color}10`,
@@ -194,7 +188,7 @@ export function HealthBadge({ score, status }: { score: number; status: HealthSt
         className="size-2 rounded-full"
         style={{ backgroundColor: color }}
       />
-      <span>HS {score}</span>
+      <span>HEALTH {score}</span>
       <span className="text-muted-foreground">|</span>
       <span>{label}</span>
     </div>
@@ -219,7 +213,6 @@ export function HealthScoreCard({
   messageCount: number
 }) {
   const color = STATUS_COLORS[status]
-  const label = STATUS_LABELS[status]
 
   const severityColor =
     worstSeverity === "critical" ? "#dc3545"
@@ -233,15 +226,15 @@ export function HealthScoreCard({
     : "#6c757d"
 
   return (
-    <div className="grid gap-3 sm:grid-cols-4">
+    <div className="grid gap-3 sm:grid-cols-4 font-mono">
       {/* Health Score */}
       <div
         className="flex flex-col items-center justify-center rounded-lg border p-4"
         style={{ borderColor: `${color}40`, backgroundColor: `${color}05` }}
       >
         <HealthGauge score={score} status={status} size="sm" />
-        <div className="mt-2 text-center text-[10px] text-muted-foreground">
-          Điểm sức khỏe
+        <div className="mt-2 text-center text-[10px] text-muted-foreground font-sans">
+          Health Index Score
         </div>
       </div>
 
@@ -251,10 +244,10 @@ export function HealthScoreCard({
           className="text-2xl font-bold uppercase"
           style={{ color: severityColor }}
         >
-          {worstSeverity ?? "Ổn định"}
+          {worstSeverity ?? "Nominal"}
         </span>
-        <span className="mt-1 text-[10px] text-muted-foreground">
-          Mức nghiêm trọng nhất
+        <span className="mt-1 text-[10px] text-muted-foreground font-sans">
+          Worst Fault Severity
         </span>
       </div>
 
@@ -267,7 +260,7 @@ export function HealthScoreCard({
           {topDropPct > 0 ? `-${topDropPct}%` : "0%"}
         </span>
         <span className="mt-1 truncate max-w-full text-[10px] text-muted-foreground">
-          {topDropTopic ?? "Không giảm"}
+          {topDropTopic ?? "Zero Drop"}
         </span>
       </div>
 
@@ -277,7 +270,7 @@ export function HealthScoreCard({
           {Math.floor(duration / 60)}:{String(Math.floor(duration % 60)).padStart(2, "0")}
         </span>
         <span className="mt-1 text-[10px] text-muted-foreground">
-          {messageCount.toLocaleString()} tin nhắn
+          {messageCount.toLocaleString()} messages
         </span>
       </div>
     </div>
