@@ -186,7 +186,7 @@ export function DashboardOverview({ overview, navigate }: DashboardOverviewProps
                 AI Inference Cost
               </span>
               <span className="font-mono text-[10px] text-muted-foreground font-medium px-1.5 py-0.5 rounded bg-muted/60 border border-border/60">
-                gpt-4.1
+                gpt-4o-mini
               </span>
             </div>
             <div className="flex items-baseline gap-1.5">

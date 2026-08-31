@@ -33,7 +33,7 @@ class Settings(BaseSettings):
 
     # LLM
     openai_api_key: str = ""
-    model_name: str = "gpt-4.1"
+    model_name: str = "gpt-4o-mini"
     llm_temperature: float = Field(default=0.2, ge=0.0, le=2.0)
     llm_provider: Literal["openai", "anthropic"] = "openai"
     llm_language: Literal["vi", "en"] = "en"

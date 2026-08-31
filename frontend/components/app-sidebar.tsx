@@ -109,7 +109,7 @@ export function AppSidebar({ pendingReviews }: { pendingReviews?: number }) {
                     <div className="flex items-center gap-2 rounded-md border border-sidebar-border bg-sidebar-accent/40 px-2.5 py-2">
                         <ActivityIcon className="size-3.5 shrink-0 text-primary" />
                         <div className="min-w-0 flex-1 font-mono text-[11px] leading-4">
-                            <div className="truncate text-sidebar-foreground font-semibold">gpt-4.1</div>
+                            <div className="truncate text-sidebar-foreground font-semibold">gpt-4o-mini</div>
                             <div className="truncate text-muted-foreground text-[10px]">OpenAI Diagnostics LLM</div>
                         </div>
                     </div>
