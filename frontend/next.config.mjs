@@ -1,5 +1,10 @@
 /** @type {import('next').NextConfig} */
-const backendOrigin = process.env.API_PROXY_TARGET ?? "http://127.0.0.1:8000"
+const backendOrigin = (
+    process.env.API_PROXY_TARGET ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    process.env.BACKEND_URL ||
+    "http://127.0.0.1:8000"
+).replace(/\/+$/, "")
 const nextConfig = {
     output: "standalone",
     distDir: ".next",
