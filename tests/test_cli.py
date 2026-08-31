@@ -185,7 +185,8 @@ def test_datasets_list_empty_table(experiments_dir: Path, capsys: pytest.Capture
 
 
 def test_datasets_upload_and_delete(experiments_dir: Path, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
-    source = _make_bag_folder(tmp_path, "upload-src") / "bag.db3"
+    source_base = tmp_path.parent / f"src_{tmp_path.name}"
+    source = _make_bag_folder(source_base, "upload-src") / "bag.db3"
     code, out, _ = _run(capsys, "datasets", "upload", str(source))
     assert code == 0
     assert json.loads(out)["id"] == "bag"

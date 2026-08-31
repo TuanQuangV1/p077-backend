@@ -486,11 +486,8 @@ async def test_create_analysis_records_real_llm_token_usage_when_configured(clie
 
     monkeypatch.setattr(analysis, "is_llm_configured", lambda: True)
     monkeypatch.setattr(analysis, "explain_detection_cluster", fake_cluster)
-    monkeypatch.setattr(
-        analysis,
-        "get_settings",
-        lambda: type("S", (), {"llm_provider": "openai", "model_name": "gpt-4o-mini"})(),
-    )
+    dummy_settings = type("S", (), {"llm_provider": "openai", "model_name": "gpt-4o-mini"})()
+    monkeypatch.setattr(analysis, "get_settings", lambda: dummy_settings)
 
     response = await client.post("/api/v1/analysis", json={"rosbag_id": "E1-1"})
     assert response.status_code == 202

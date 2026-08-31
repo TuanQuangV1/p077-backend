@@ -37,6 +37,7 @@ lines-after-imports = 2
 
 [lint.per-file-ignores]
 "tests/*" = ["ARG", "PLR2004", "PLC0415"]
+"scripts/*" = ["ARG", "PLR2004", "PLC0415", "PLW0603", "PLW2901", "PLR0911", "PTH", "SIM", "RUF046", "PLR1714"]
 "__init__.py" = ["F401"]
 
 [format]

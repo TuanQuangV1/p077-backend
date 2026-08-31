@@ -34,7 +34,7 @@ def detect_tool(data: dict) -> str:
     for arg in sys.argv[1:]:
         if arg.startswith("--tool="):
             return arg.split("=", 1)[1].lower()
-        
+
     tool_env = os.environ.get("AI_TOOL_NAME", "").lower()
     if tool_env:
         return tool_env
@@ -46,13 +46,13 @@ def detect_tool(data: dict) -> str:
     # Heuristics
     if "transcript_path" in data:
         return "codex"
-    
+
     if data.get("hook_event_name", "").startswith(("Before", "After", "Session", "Pre", "Notification")):
         return "gemini"
-    
+
     if "opencode" in data or data.get("source") == "opencode":
         return "opencode"
-    
+
     if data.get("hook_event_name", "")[0:1].islower():
         # camelCase event names → Cursor or Copilot
         if "workspace_roots" in data:
@@ -154,12 +154,7 @@ def normalize(data: dict, tool: str) -> dict | None:
             "tool_args": data.get("toolArgs"),
         })
 
-    elif tool == "kiro":
-        base.update({
-            "prompt": data.get("prompt", "")[:1000],
-        })
-
-    elif tool == "opencode":
+    elif tool == "kiro" or tool == "opencode":
         base.update({
             "prompt": data.get("prompt", "")[:1000],
         })

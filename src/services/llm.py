@@ -222,7 +222,7 @@ def check_llm_health(force: bool = False) -> dict[str, Any]:
     `_LLM_HEALTH_CACHE_TTL_SEC` so polling this from the UI doesn't spend a
     token on every request.
     """
-    global _llm_health_cache, _llm_health_cache_at
+    global _llm_health_cache, _llm_health_cache_at  # noqa: PLW0603 - module-level health cache
     now = time.monotonic()
     if not force and _llm_health_cache is not None and now - _llm_health_cache_at < _LLM_HEALTH_CACHE_TTL_SEC:
         return _llm_health_cache
@@ -514,23 +514,111 @@ def explain_detection_cluster(
     ]
     result = chat_completion(messages)
     content = _sanitized_content(result["message"].get("content") or "")
+    prompt_tokens = result["prompt_tokens"]
+    completion_tokens = result["completion_tokens"]
+    latency_ms = result["latency_ms"]
+
     row_findings = _parse_findings(content, len(rows))
-    # Simultaneity first, then the layer gate: the gate encodes which way data
-    # can physically flow, which outranks a sub-second onset tie. Run the other
-    # way round, simultaneity promotes the actuator straight back to primary —
-    # exactly the case where a controller and the transform it reads died 10-30ms
-    # apart and timing alone cannot say which caused which.
+    violations = _find_causal_violations(rows, row_findings)
+
+    if violations:
+        c_row, p_row = violations[0]
+        retry_prompt = (
+            f"In your reply, index {c_row['index']} ({c_row['topic']}) starts at "
+            f"{float(c_row['start_sec']):.3f}s. The earliest anomaly you marked primary is "
+            f"{p_row['topic']} at {float(p_row['start_sec']):.3f}s. "
+            f"A consequence cannot start before its cause. Re-answer with the correct causal ordering and root cause."
+        )
+        retry_messages = [
+            *messages,
+            {"role": "assistant", "content": content},
+            {"role": "user", "content": retry_prompt},
+        ]
+        retry_result = chat_completion(retry_messages)
+        content = _sanitized_content(retry_result["message"].get("content") or "")
+        row_findings = _parse_findings(content, len(rows))
+        prompt_tokens += retry_result["prompt_tokens"]
+        completion_tokens += retry_result["completion_tokens"]
+        latency_ms += retry_result["latency_ms"]
+
+    still_violated = _find_causal_violations(rows, row_findings)
+
+    # Simultaneity first, then causal order, then the layer gate
     row_findings = _enforce_simultaneity(rows, row_findings)
+    row_findings = _enforce_causal_order(rows, row_findings)
     row_findings = _gate_actuator_primary(rows, row_findings)
+
+    parsed = _parse_explanation(content)
+    if still_violated:
+        c_row, _ = still_violated[0]
+        correction_note = (
+            f"Automated correction: {c_row['topic']} started at "
+            f"{float(c_row['start_sec']):.3f}s, before any primary anomaly, "
+            f"so it has been marked primary."
+        )
+        explanation_text = parsed.get("explanation", "")
+        parsed["explanation"] = f"{explanation_text}\n\n[{correction_note}]" if explanation_text else correction_note
+
     return {
-        **_parse_explanation(content),
+        **parsed,
         "findings": _expand_findings(row_findings, row_positions),
         "usage": {
-            "prompt_tokens": result["prompt_tokens"],
-            "completion_tokens": result["completion_tokens"],
-            "latency_ms": result["latency_ms"],
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "latency_ms": latency_ms,
         },
     }
+
+
+def _find_causal_violations(
+    rows: list[dict[str, Any]],
+    findings: dict[int, dict[str, str]],
+) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """Identify consequence anomalies that started earlier than every primary anomaly."""
+    row_by_index = {int(r["index"]): r for r in rows}
+    primary_rows = [
+        row_by_index[idx]
+        for idx, f in findings.items()
+        if f.get("role") == "primary" and idx in row_by_index
+    ]
+    if not primary_rows:
+        return []
+    earliest_primary = min(primary_rows, key=lambda r: float(r["start_sec"]))
+    earliest_primary_start = float(earliest_primary["start_sec"])
+    violations: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for idx, f in findings.items():
+        if f.get("role") == "consequence" and idx in row_by_index:
+            r = row_by_index[idx]
+            if float(r["start_sec"]) < earliest_primary_start - _SIMULTANEOUS_WINDOW_SEC:
+                violations.append((r, earliest_primary))
+    return violations
+
+
+def _enforce_causal_order(
+    rows: list[dict[str, Any]],
+    findings: dict[int, dict[str, str]],
+) -> dict[int, dict[str, str]]:
+    """Promote a consequence that started before every primary anomaly.
+
+    If a topic failed earlier than all anomalies marked 'primary', it physically
+    cannot be a consequence of them. Promote it to 'primary'.
+    """
+    row_by_index = {int(r["index"]): r for r in rows}
+    primary_starts = [
+        float(row_by_index[idx]["start_sec"])
+        for idx, f in findings.items()
+        if f.get("role") == "primary" and idx in row_by_index
+    ]
+    if not primary_starts:
+        return findings
+    earliest_primary = min(primary_starts)
+    corrected = dict(findings)
+    for idx, f in findings.items():
+        if f.get("role") == "consequence" and idx in row_by_index:
+            start = float(row_by_index[idx]["start_sec"])
+            if start < earliest_primary - _SIMULTANEOUS_WINDOW_SEC:
+                corrected[idx] = {**f, "role": "primary"}
+    return corrected
 
 
 def _shape_cluster_payload(
@@ -625,15 +713,15 @@ def _gate_actuator_primary(
 
     The rule is conditional, not a blanket ban — `/cmd_vel` really is the
     injected fault in some recordings. It only applies while a sensor or
-    transform anomaly overlaps the actuator's own active span; an actuator
-    failing on its own keeps its primary role.
+    transform anomaly overlaps the actuator's own active span and started no
+    later than the actuator; an actuator failing on its own keeps its primary role.
     """
-    upstream_spans = [
-        (float(row["start_sec"]), float(row["end_sec"]))
+    upstream_rows = [
+        row
         for row in rows
         if _topic_layer(str(row["topic"])) <= _TRANSFORM_LAYER
     ]
-    if not upstream_spans:
+    if not upstream_rows:
         return findings
 
     corrected = dict(findings)
@@ -645,8 +733,11 @@ def _gate_actuator_primary(
         if _topic_layer(str(row["topic"])) != _ACTUATOR_LAYER:
             continue
         start, end = float(row["start_sec"]), float(row["end_sec"])
-        if any(start <= up_end and end >= up_start for up_start, up_end in upstream_spans):
-            corrected[index] = {**finding, "role": "consequence"}
+        for up in upstream_rows:
+            up_start, up_end = float(up["start_sec"]), float(up["end_sec"])
+            if start <= up_end and end >= up_start and up_start <= start + _SIMULTANEOUS_WINDOW_SEC:
+                corrected[index] = {**finding, "role": "consequence"}
+                break
     return corrected
 
 

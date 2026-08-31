@@ -9,51 +9,50 @@ After a successful submit, the live log is rotated:
 
 If the POST fails, the pending file is restored so nothing is lost.
 """
+import argparse
+import contextlib
+from datetime import UTC, datetime
 import json
 import os
+from pathlib import Path
 import shutil
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
-import urllib.error
-from datetime import datetime, timezone
-from pathlib import Path
+
 
 def _load_env():
     global SERVER_URL, API_KEY
-    try:
+    with contextlib.suppress(Exception):
         from dotenv import load_dotenv
         load_dotenv()
-    except Exception:
-        pass
 
     root = Path(__file__).resolve().parent.parent
     env_file = root / ".env"
     if env_file.exists():
-        try:
-            with open(env_file, encoding="utf-8", errors="replace") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith("#") or "=" not in line:
-                        continue
-                    k, v = line.split("=", 1)
-                    k = k.strip()
-                    v = v.strip().strip("'\"")
-                    if k and k not in os.environ:
-                        os.environ[k] = v
-        except Exception:
-            pass
+        with contextlib.suppress(Exception), env_file.open(encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k = k.strip()
+                v = v.strip().strip("'\"")
+                if k and k not in os.environ:
+                    os.environ[k] = v
 
     SERVER_URL = os.environ.get("AI_LOG_SERVER", "")
     API_KEY = os.environ.get("AI_LOG_API_KEY", "")
+
 
 _load_env()
 LOG_DIR = Path(os.environ.get("AI_LOG_DIR", ".ai-log"))
 LOG_FILE = LOG_DIR / "session.jsonl"
 ARCHIVE_DIR = LOG_DIR / "archive"
 
-## Tăng BATCH_LIMIT lên 100 để giảm số lượng request và tăng tốc độ đẩy log
+# Tăng BATCH_LIMIT lên 100 để giảm số lượng request và tăng tốc độ đẩy log
 BATCH_LIMIT = 100
 MAX_RETRIES = 4
 
@@ -75,9 +74,9 @@ def _archive(pending: Path) -> None:
     if not pending.exists() or pending.stat().st_size == 0:
         return
     ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     archive_file = ARCHIVE_DIR / f"{today}.jsonl"
-    with open(pending, "rb") as src, open(archive_file, "ab") as dst:
+    with pending.open("rb") as src, archive_file.open("ab") as dst:
         shutil.copyfileobj(src, dst)
 
 
@@ -89,18 +88,16 @@ def _restore_pending(pending: Path) -> None:
     if LOG_FILE.exists():
         # Concat: pending (older) + LOG_FILE (newer) → LOG_FILE
         tmp = LOG_FILE.with_suffix(".merge.jsonl")
-        with open(tmp, "wb") as out:
-            with open(pending, "rb") as a:
+        with tmp.open("wb") as out:
+            with pending.open("rb") as a:
                 shutil.copyfileobj(a, out)
-            with open(LOG_FILE, "rb") as b:
+            with LOG_FILE.open("rb") as b:
                 shutil.copyfileobj(b, out)
-        os.replace(tmp, LOG_FILE)
+        tmp.replace(LOG_FILE)
         pending.unlink()
     else:
         pending.rename(LOG_FILE)
 
-
-import argparse
 
 def _send_batch(server_url: str, entries: list[dict]) -> bool:
     payload = json.dumps({"entries": entries}, ensure_ascii=False).encode("utf-8")
@@ -143,15 +140,13 @@ def _submit_file(server_url: str, file_path: Path, delete_on_success: bool = Fal
         return
 
     entries = []
-    with open(file_path, encoding="utf-8", errors="replace") as f:
+    with file_path.open(encoding="utf-8", errors="replace") as f:
         for line in f:
             stripped = line.strip()
             if not stripped:
                 continue
-            try:
+            with contextlib.suppress(json.JSONDecodeError):
                 entries.append(json.loads(stripped))
-            except json.JSONDecodeError:
-                pass
 
     if not entries:
         return
@@ -179,7 +174,6 @@ def resync_all(server_url: str) -> None:
         print("[ai-log] No logs found in archive or session.", file=sys.stderr)
         return
 
-    total_submitted = 0
     for f in all_files:
         _submit_file(server_url, f, delete_on_success=False)
     print("[ai-log] Resync completed successfully!", file=sys.stderr)
@@ -225,7 +219,7 @@ def main():
 
     entries = []
     leftover_lines = []
-    with open(pending, encoding="utf-8", errors="replace") as f:
+    with pending.open(encoding="utf-8", errors="replace") as f:
         for line in f:
             stripped = line.strip()
             if not stripped:
@@ -233,10 +227,8 @@ def main():
             if len(entries) >= BATCH_LIMIT:
                 leftover_lines.append(line)
                 continue
-            try:
+            with contextlib.suppress(json.JSONDecodeError):
                 entries.append(json.loads(stripped))
-            except json.JSONDecodeError:
-                pass
 
     if not entries:
         _archive(pending)
@@ -253,7 +245,7 @@ def main():
     pending.unlink(missing_ok=True)
 
     if leftover_lines:
-        with open(LOG_FILE, "a", encoding="utf-8") as f:
+        with LOG_FILE.open("a", encoding="utf-8") as f:
             f.writelines(leftover_lines)
         print(f"[ai-log] {len(leftover_lines)} entries deferred to next push.", file=sys.stderr)
 

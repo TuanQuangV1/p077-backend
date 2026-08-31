@@ -4,12 +4,13 @@ import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
+import anyio
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.routes import protected_router, public_router
 from src.config import get_settings
-from src.services import perf
+from src.services import perf, run_store
 
 logger = logging.getLogger(__name__)
 
@@ -86,15 +87,15 @@ async def measure_request(
             logger.info(message, extra={"diagnostics": details})
 
 
+def _ping_db() -> None:
+    run_store.list_runs(None)[:1]
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     # Light liveness check that also verifies DB is reachable; never throws 500 for health probes
     try:
-        import anyio
-
-        from src.services import run_store
-
-        await anyio.to_thread.run_sync(lambda: run_store.list_runs(None)[:1])
+        await anyio.to_thread.run_sync(_ping_db)
     except Exception:
         # DB unreachable still returns 200 but with degraded status so orchestrator can decide
         return {"status": "degraded", "env": settings.app_env}

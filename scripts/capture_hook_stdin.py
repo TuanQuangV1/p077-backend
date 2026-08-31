@@ -1,4 +1,5 @@
-import sys, json, datetime
+import sys
+import datetime
 
 raw = sys.stdin.buffer.read()
 ts = datetime.datetime.now().isoformat()

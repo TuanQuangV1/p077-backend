@@ -33,8 +33,8 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
-from rosbags.highlevel import AnyReader  # noqa: PLC0415 - optional dependency
-from rosbags.rosbag2 import StoragePlugin, Writer  # noqa: PLC0415
+from rosbags.highlevel import AnyReader
+from rosbags.rosbag2 import StoragePlugin, Writer
 from rosbags.typesys import Stores, get_typestore
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

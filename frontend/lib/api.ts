@@ -143,26 +143,16 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
     if (!res.ok) {
         let detail = `Request failed: ${res.status}`
         try {
-            // Try text first, fallback to json detail
-            if (typeof (res as unknown as { text?: () => Promise<string> }).text === "function") {
-                const t = await (res as unknown as { text: () => Promise<string> }).text().catch(() => "")
-                if (t) detail = t
-                else {
-                    const j = (await (res as unknown as { json: () => Promise<unknown> }).json().catch(() => null)) as { detail?: string } | null
-                    if (j?.detail) detail = j.detail
+            const text = await res.text()
+            if (text) {
+                try {
+                    const parsed = JSON.parse(text) as { detail?: string }
+                    detail = parsed.detail ?? text
+                } catch {
+                    detail = text
                 }
-            } else {
-                const j = (await (res as unknown as { json: () => Promise<unknown> }).json().catch(() => null)) as { detail?: string } | null
-                if (j?.detail) detail = j.detail
             }
         } catch {}
-        // If body is JSON detail, surface it
-        if (detail.startsWith("{")) {
-            try {
-                const j = JSON.parse(detail) as { detail?: string }
-                if (j.detail) detail = j.detail
-            } catch {}
-        }
         throw new Error(detail.includes("Request failed") ? detail : `Request failed: ${res.status} - ${detail}`)
     }
     return res.json() as Promise<T>

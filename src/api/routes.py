@@ -6,11 +6,12 @@ survives restarts and tests stay isolated. Optional API-token auth and
 in-memory rate limiting protect the public endpoints.
 """
 
+import asyncio
 import datetime
 import functools
+import json
 import logging
 import os
-import json
 import time
 from collections import Counter, defaultdict
 from collections.abc import Iterator
@@ -18,12 +19,9 @@ from itertools import chain
 from pathlib import Path
 from typing import Any
 
-import jwt
-
-from src.services import auth as auth_service
-
 import anyio
 import httpx
+import jwt
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -77,11 +75,14 @@ from src.models.schemas import (
     SignupResponse,
     VerifyResponse,
 )
+from src.services import auth as auth_service
 from src.services import run_store
 from src.services.analysis import (
-    _kind_labels,
     _anomaly_summaries,
     _build_ai_results,
+    _configured_model,
+    _kind_labels,
+    _pending_run_from_dataset,
     run_analysis,
     select_run_root_cause,
 )
@@ -806,12 +807,10 @@ async def dashboard_overview(owner: str = Depends(get_current_user)) -> Dashboar
         ``DashboardOverviewResponse`` containing all overview data.
     """
     # Parallelize independent IO: datasets (FS), runs (DB), review_items (DB)
-    import asyncio as _asyncio
-
     datasets_task = anyio.to_thread.run_sync(_load_datasets, owner)
     runs_task = anyio.to_thread.run_sync(run_store.list_runs, owner)
     review_task = anyio.to_thread.run_sync(run_store.list_review_items, None, owner)
-    datasets, runs, review_items = await _asyncio.gather(datasets_task, runs_task, review_task)
+    datasets, runs, review_items = await asyncio.gather(datasets_task, runs_task, review_task)
     anomalies_by_run = await anyio.to_thread.run_sync(
         run_store.get_runs_anomalies, [run["id"] for run in runs]
     )
@@ -913,14 +912,12 @@ async def create_analysis(
     if not match:
         raise HTTPException(status_code=404, detail="dataset not found")
 
-    # In production the analysis can take 40-800s (detect + LLM) – never block the
+    # In production the analysis can take 40-800s (detect + LLM) - never block the
     # HTTP worker that the frontend proxy waits on. Queue a placeholder run and
     # finish in BackgroundTasks. In test/dev keep the old synchronous contract so
     # existing tests that assert ``status == succeeded`` immediately still pass.
     settings = get_settings()
     if settings.app_env == "production":
-        from src.services.analysis import _configured_model, _pending_run_from_dataset
-
         resolved_model = request.model or _configured_model()
         ds_dict = {"id": match.id, "name": match.name, "robotType": match.robotType}
         pending = _pending_run_from_dataset(ds_dict, resolved_model)

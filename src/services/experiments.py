@@ -210,7 +210,7 @@ def _bag_files(folder: Path) -> list[Path]:
     That made ``data/admin/bags`` (a container with 49 nested datasets) appear
     as one giant dataset and exhausted file descriptors under load
     (ENOMEM on scandir). Direct ``glob`` plus a single-level shard check is
-    sufficient – real datasets are flat (bag in folder root) or one-level
+    sufficient - real datasets are flat (bag in folder root) or one-level
     sharded, never deeply nested. Deep containers like ``bags`` are skipped
     by the caller via ``_is_dataset_folder``.
     """
