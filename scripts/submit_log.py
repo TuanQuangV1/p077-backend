@@ -20,14 +20,35 @@ import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
+def _load_env():
+    global SERVER_URL, API_KEY
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except Exception:
+        pass
 
-SERVER_URL = os.environ.get("AI_LOG_SERVER", "")
-API_KEY = os.environ.get("AI_LOG_API_KEY", "")
+    root = Path(__file__).resolve().parent.parent
+    env_file = root / ".env"
+    if env_file.exists():
+        try:
+            with open(env_file, encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k, v = line.split("=", 1)
+                    k = k.strip()
+                    v = v.strip().strip("'\"")
+                    if k and k not in os.environ:
+                        os.environ[k] = v
+        except Exception:
+            pass
+
+    SERVER_URL = os.environ.get("AI_LOG_SERVER", "")
+    API_KEY = os.environ.get("AI_LOG_API_KEY", "")
+
+_load_env()
 LOG_DIR = Path(os.environ.get("AI_LOG_DIR", ".ai-log"))
 LOG_FILE = LOG_DIR / "session.jsonl"
 ARCHIVE_DIR = LOG_DIR / "archive"
@@ -165,6 +186,7 @@ def resync_all(server_url: str) -> None:
 
 
 def main():
+    _load_env()
     parser = argparse.ArgumentParser(description="Submit AI logs to grading server / Phoenix.")
     parser.add_argument("--resync-all", action="store_true", help="Resync all history from .ai-log/archive/*.jsonl")
     parser.add_argument("--file", type=str, help="Submit a specific .jsonl file directly")

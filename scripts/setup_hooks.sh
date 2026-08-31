@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Install git pre-push hook for AI log submission (POSIX / Git Bash).
+# Install git hooks for AI log submission (POSIX / Git Bash).
+# Installs both post-commit (runs on git commit) and pre-push (runs on git push).
 # Run once after cloning: bash scripts/setup_hooks.sh
 set -e
 
-HOOK_FILE=".git/hooks/pre-push"
+POST_COMMIT_FILE=".git/hooks/post-commit"
+PRE_PUSH_FILE=".git/hooks/pre-push"
 
-cat > "$HOOK_FILE" <<'EOF'
-#!/bin/sh
-# Pre-push: sweep recent Antigravity / Gemini prompts, then submit AI logs.
+HOOK_BODY='#!/bin/sh
+# AI Log Hook: sweep recent Antigravity / Gemini prompts, then submit AI logs.
 
 PY=""
 if [ -x ".venv/Scripts/python.exe" ]; then
@@ -32,10 +33,16 @@ if [ -n "$PY" ]; then
 fi
 
 exit 0
-EOF
+'
 
-chmod +x "$HOOK_FILE"
+echo "$HOOK_BODY" > "$POST_COMMIT_FILE"
+echo "$HOOK_BODY" > "$PRE_PUSH_FILE"
+
+chmod +x "$POST_COMMIT_FILE" 2>/dev/null || true
+chmod +x "$PRE_PUSH_FILE" 2>/dev/null || true
 chmod +x scripts/_pyrun.sh 2>/dev/null || true
+
+echo "[ai-log] Git post-commit hook installed."
 echo "[ai-log] Git pre-push hook installed."
 
 mkdir -p .ai-log

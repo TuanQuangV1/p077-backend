@@ -1,14 +1,16 @@
-# Install git pre-push hook for AI log submission (Windows PowerShell).
+# Install git hooks for AI log submission (Windows PowerShell).
+# Installs both post-commit (runs on git commit) and pre-push (runs on git push).
 # Run once after cloning: powershell -ExecutionPolicy Bypass -File scripts\setup_hooks.ps1
 
 $ErrorActionPreference = 'Stop'
 
-$HookFile = '.git/hooks/pre-push'
+$PostCommitFile = '.git/hooks/post-commit'
+$PrePushFile = '.git/hooks/pre-push'
 
 # Git on Windows runs hooks via Git Bash, so the hook body must be bash.
 $HookBody = @'
 #!/bin/sh
-# Pre-push: sweep recent Antigravity / Gemini prompts, then submit AI logs.
+# AI Log Hook: sweep recent Antigravity / Gemini prompts, then submit AI logs.
 
 PY=""
 if [ -x ".venv/Scripts/python.exe" ]; then
@@ -35,7 +37,10 @@ fi
 exit 0
 '@
 
-Set-Content -Path $HookFile -Value $HookBody -Encoding UTF8 -NoNewline
+$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText((Join-Path (Get-Location) $PostCommitFile), $HookBody.Replace("`r`n", "`n"), $Utf8NoBom)
+[System.IO.File]::WriteAllText((Join-Path (Get-Location) $PrePushFile), $HookBody.Replace("`r`n", "`n"), $Utf8NoBom)
+Write-Host "[ai-log] Git post-commit hook installed."
 Write-Host "[ai-log] Git pre-push hook installed."
 
 if (-not (Test-Path .ai-log)) { New-Item -ItemType Directory -Path .ai-log | Out-Null }
