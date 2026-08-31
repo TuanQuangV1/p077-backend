@@ -1,0 +1,17 @@
+# Set default behavior to automatically normalize line endings
+* text=auto
+
+# Explicitly declare text files you want to always be normalized and converted
+# to native line endings on checkout.
+*.py text
+*.ts text
+*.tsx text
+*.json text
+*.yaml text
+*.yml text
+*.md text
+
+# Shell scripts and Docker files MUST ALWAYS use LF line endings
+*.sh text eol=lf
+docker-entrypoint.sh text eol=lf
+Dockerfile* text eol=lf
