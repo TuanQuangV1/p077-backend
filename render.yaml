@@ -19,3 +19,9 @@ services:
         value: gpt-4o-mini
       - key: LOG_LEVEL
         value: INFO
+      - key: AUTH_USERNAME
+        value: admin
+      - key: AUTH_PASSWORD
+        value: test-pass
+      - key: JWT_SECRET
+        value: dev-insecure-jwt-secret-change-me-32-chars-minimum-length

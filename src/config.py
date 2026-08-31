@@ -20,11 +20,11 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     cors_origins: str = "http://localhost:3000"
 
-    # Auth (JWT)  # noqa: ERA001
+    # Auth (JWT)
     auth_username: str = "admin"
-    auth_password: str = ""
+    auth_password: str = "test-pass"
     auth_password_hash: str = ""
-    jwt_secret: str = ""
+    jwt_secret: str = "dev-insecure-jwt-secret-change-me-32-chars-minimum-length"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = Field(default=60, ge=1, le=1440)
 
