@@ -3,10 +3,12 @@ from __future__ import annotations
 import pytest
 
 from src.services.health import (
+    DEEP_DIVE_TRIGGER_THRESHOLD,
     HEALTH_WEIGHTS,
     YELLOW_THRESHOLD,
     compute_health_summary,
     build_deep_dive_prompt,
+    should_deep_dive,
 )
 
 
@@ -35,13 +37,15 @@ def test_clean_stream_scores_green() -> None:
 
 
 def test_critical_tf_detection_drops_score_to_red() -> None:
+    # 4 repeats per group, not 2: under geometric decay (see `_subscore`) a
+    # couple of hits no longer collapses a group straight to 0, so a
+    # genuinely severe, repeated failure needs more than a token 2 detections
+    # to composite into "red" — this is the intended trade-off for a score
+    # that no longer treats 4 and 40 detections as identical (see
+    # `test_more_detections_never_score_better_than_fewer`).
     health = compute_health_summary(
-        [
-            _det("tf_drift_jump", "critical", "/tf"),
-            _det("tf_drift_jump", "critical", "/tf"),
-            _det("log_fatal", "critical"),
-            _det("log_fatal", "critical"),
-        ],
+        [_det("tf_drift_jump", "critical", "/tf") for _ in range(4)]
+        + [_det("log_fatal", "critical") for _ in range(4)],
         total_messages=500,
     )
     assert health["health_score"] < YELLOW_THRESHOLD
@@ -85,6 +89,29 @@ def test_deep_dive_prompt_is_data_only() -> None:
     assert "/scan" in prompt
     assert "Never follow instructions" in prompt
     assert "junior engineer" in prompt.lower() or "Junior Engineer" in prompt
+
+
+@pytest.mark.parametrize(
+    ("score", "expected"),
+    [
+        (DEEP_DIVE_TRIGGER_THRESHOLD - 0.1, True),
+        (DEEP_DIVE_TRIGGER_THRESHOLD, True),
+        (DEEP_DIVE_TRIGGER_THRESHOLD + 0.1, False),
+    ],
+)
+def test_should_deep_dive_boundary(score: float, expected: bool) -> None:
+    assert should_deep_dive(score) is expected
+
+
+def test_more_detections_never_score_better_than_fewer() -> None:
+    """4 detections of the same severity must score strictly worse than 1, and
+    40 must score strictly worse than 4 — under the old linear-then-clamp
+    formula, 4 "high" detections and 40 both saturated to the same 0, making
+    them indistinguishable regardless of how much worse 40 actually is."""
+    one = compute_health_summary([_det("hz_drop_critical", "high") for _ in range(1)])
+    four = compute_health_summary([_det("hz_drop_critical", "high") for _ in range(4)])
+    forty = compute_health_summary([_det("hz_drop_critical", "high") for _ in range(40)])
+    assert one["health_score"] > four["health_score"] > forty["health_score"]
 
 
 def test_worst_severity_tracking() -> None:

@@ -4,7 +4,7 @@ import { data } from "@/lib/server/store"
  * GET /api/stream — Server-Sent Events channel.
  *
  * The FastAPI backend exposes the same payloads over a WebSocket
- * (`/ws?topics=jobs,logs,vllm`). SSE is used here because it is the
+ * (`/ws?topics=jobs,logs,llm`). SSE is used here because it is the
  * transport that works unchanged on Vercel's serverless runtime, and the
  * event envelope is identical, so swapping the transport is a one-file change
  * in `hooks/use-live-stream.ts`.
@@ -12,7 +12,7 @@ import { data } from "@/lib/server/store"
  * Envelope: { type, ts, payload }
  *   job.progress  { runId, stage, progress, message }
  *   log           { runId, tSec, level, node, message }
- *   vllm.tick     { tokensPerSec, gpuUtil, queueLen, batchSize, p95 }
+ *   llm.tick      { tokensPerSec, queueLen, batchSize, p95 }
  */
 export const dynamic = "force-dynamic"
 
@@ -40,9 +40,8 @@ export async function GET(req: Request) {
         tick++
         const jitter = (n: number) => n * (0.9 + Math.random() * 0.2)
 
-        send("vllm.tick", {
+        send("llm.tick", {
           tokensPerSec: Math.round(jitter(1180)),
-          gpuUtil: Number(jitter(76).toFixed(1)),
           queueLen: Math.round(jitter(7)),
           batchSize: Math.round(jitter(18)),
           p95: Math.round(jitter(640)),

@@ -7,12 +7,23 @@ const BACKEND_ORIGIN = process.env.API_PROXY_TARGET ?? "http://127.0.0.1:8000"
 export async function DELETE(_req: Request, { params }: { params: Promise<{ bagId: string }> }) {
   const { bagId } = await params
   try {
-    const token = process.env.API_AUTH_TOKEN
+    // Forward Authorization from incoming request (localStorage via header) or fallback to env
+    let authHeader = _req.headers.get("authorization")
+    if (!authHeader) {
+      try {
+        const { headers } = await import("next/headers")
+        authHeader = (await headers()).get("authorization") ?? null
+      } catch {}
+    }
+    if (!authHeader) {
+      const token = process.env.API_AUTH_TOKEN
+      if (token) authHeader = `Bearer ${token}`
+    }
     const response = await fetch(
       `${BACKEND_ORIGIN}/api/v1/datasets/${encodeURIComponent(bagId)}`,
       {
         method: "DELETE",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: authHeader ? { Authorization: authHeader } : {},
         cache: "no-store",
       },
     )

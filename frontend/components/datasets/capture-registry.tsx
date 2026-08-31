@@ -81,8 +81,12 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
     if (!file) return
     setUploading(true)
     try {
-      await uploadRosbag(file)
-      toast.success("Rosbag uploaded", { description: file.name })
+      const saved = await uploadRosbag(file)
+      if (saved.duplicateOf) {
+        toast.info("Bag này đã có trong hệ thống — đang mở bản gốc", { description: saved.name })
+      } else {
+        toast.success("Rosbag uploaded", { description: file.name })
+      }
       onRefresh()
     } catch (err) {
       const _err = err as Error
@@ -127,6 +131,23 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
       window.location.assign("/analysis")
     } catch {
       toast.error("Unable to run analysis")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const removeSelected = async () => {
+    const targets = filtered.filter((bag) => selected.has(bag.id))
+    if (targets.length === 0) return
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa ${targets.length} tệp đã chọn?`)) return
+    setBusy("batch")
+    try {
+      await Promise.all(targets.map((bag) => del(`/api/rosbags/${bag.id}`)))
+      toast.success(`Đã xóa ${targets.length} tệp`)
+      setSelected(new Set())
+      onRefresh()
+    } catch {
+      toast.error("Không thể xóa một số tệp đã chọn")
     } finally {
       setBusy(null)
     }
@@ -230,6 +251,16 @@ export function CaptureRegistry({ bags = [], onRefresh }: CaptureRegistryProps) 
             >
               <PlayIcon data-icon="inline-start" className="size-3.5" />
               Chẩn đoán đã chọn{selected.size ? ` (${selected.size})` : ""}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={uploading || selected.size === 0}
+              onClick={removeSelected}
+              className="text-xs text-rose-500 hover:text-rose-500 hover:bg-rose-500/10 border-rose-500/30"
+            >
+              <Trash2Icon data-icon="inline-start" className="size-3.5" />
+              Xóa đã chọn (Delete selected){selected.size ? ` (${selected.size})` : ""}
             </Button>
             <Button
               size="sm"

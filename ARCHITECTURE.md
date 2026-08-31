@@ -35,7 +35,7 @@ graph TB
 
     subgraph API[FastAPI]
         ROUTES[routes.py<br/>/api/v1/* + /health]
-        AUTH[_require_auth<br/>no-op when token unset]
+        AUTH[_require_auth<br/>100% JWT · dev bypass when JWT_SECRET empty<br/>prod 503 fail-closed]
         RATE[Sliding-window rate limit<br/>120 req/min per IP]
     end
 
@@ -70,7 +70,7 @@ graph LR
     end
     subgraph API[API Layer]
         ROUTES[FastAPI routes.py]
-        AUTH[Optional token auth]
+        AUTH[100% JWT auth<br/>public: /auth/login|signup|verify, /health]
         RATE[Rate limiter]
     end
     subgraph Services
@@ -110,7 +110,7 @@ Orchestration is a straight function call chain (`analysis.py:run_analysis`), no
 
 | Boundary | Mechanism |
 |---|---|
-| API authentication | Optional `API_AUTH_TOKEN` → `Authorization: Bearer` (no-op when unset) |
+| API authentication | 100% JWT (`JWT_SECRET` + `AUTH_USERNAME/PASSWORD` → `Authorization: Bearer <JWT>`); dev/test bypass khi `JWT_SECRET=""`, prod `503` fail-closed |
 | Rate limiting | In-memory sliding window, 120 req/min per IP |
 | Zip-slip | Uploaded zip contents are validated for `../` traversal |
 | Path traversal | Diagnostics file paths, dataset IDs checked for `..` |

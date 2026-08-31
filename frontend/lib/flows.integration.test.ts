@@ -39,7 +39,7 @@ function sampleRun(): AnalysisRun {
         finishedAt: "2026-07-31T09:01:00Z",
         anomalyCount: 1,
         worstSeverity: "critical",
-        model: "vllm/qwen2.5-coder-32b",
+        model: "openai/gpt-4.1",
         totalLatencyMs: 3400,
         promptTokens: 1580,
         completionTokens: 644,
@@ -135,7 +135,7 @@ describe("flow: analysis detail", () => {
             latencyMs: 1600,
             promptTokens: 900,
             completionTokens: 220,
-            vllmRequestId: "vllm_req_001",
+            llmRequestId: "llm_req_001",
         }]
         vi.stubGlobal("fetch", routeFetch({
             [`${BASE}/analysis/run_001`]: () => ({ anomalies, aiResults }),

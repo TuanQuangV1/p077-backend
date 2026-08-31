@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+**/__pycache__/
 *.py[cod]
 *.so
 *.egg-info/
@@ -29,11 +30,16 @@ secrets/
 .DS_Store
 Thumbs.db
 
-# Data (allow pre-seeded runs.db and demo datasets)
+# Data — hide entire data/ except pre-seeded runs.db (kept for Render/history)
+data/*
 !data/runs.db
-!data/*/*.mcap
-!data/*/*.db3
 eval/**/runtime/*.db
+
+# Runtime-tunable detection thresholds: mutated by POST /api/v1/analysis/thresholds,
+# so a tracked copy pins whatever a developer last tuned it to and silently
+# overrides the code-level defaults in diagnostics_config.py for everyone who
+# pulls it — including test isolation that monkeypatches those defaults.
+data/diagnostics/thresholds.json
 
 
 # Logs
@@ -42,6 +48,8 @@ eval/**/runtime/*.db
 # parent directory is excluded. Build-cache logs live under .next/, ignored separately.
 /logs/
 *.log
+frontend/*.log
+.e2e-*.log
 
 # Test coverage
 htmlcov/
@@ -62,6 +70,7 @@ out/
 *.pyo
 
 # AI logs — tracked structure, ignored content
+.ai-log/
 .ai-log/*.jsonl
 .ai-log/archive/
 
@@ -87,25 +96,4 @@ terraform/gcp/.terraform/
 
 nginx/certs/
 .opencode/plans/
-*.exe
-crash.*.log
-*.tfvars
-!*.tfvars.example
-override.tf
-override.tf.json
-*_override.tf
-*_override.tf.json
-terraform.exe
-
-# Playwright & E2E Test Reports
-playwright-report/
-test-results/
-blob-report/
-
-# AI IDE & Local Assistant Folders
-.claude/
-.cursor/
-.codex/
-.opencode/
-.gemini/
-
+.superpowers/

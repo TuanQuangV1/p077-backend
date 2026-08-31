@@ -53,8 +53,8 @@ describe("resolveApiUrl", () => {
         expect(resolveApiUrl("/api/stream")).toBe("/api/stream")
     })
 
-    it("passes through vllm routes", () => {
-        expect(resolveApiUrl("/api/vllm/metrics?windowMin=60")).toBe("/api/vllm/metrics?windowMin=60")
+    it("passes through llm routes", () => {
+        expect(resolveApiUrl("/api/llm/metrics?windowMin=60")).toBe("/api/llm/metrics?windowMin=60")
     })
 
     it("passes through direct backend v1 paths", () => {

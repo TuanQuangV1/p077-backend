@@ -220,7 +220,7 @@ class IterativeDebugger:
             latencyMs=0,
             promptTokens=0,
             completionTokens=0,
-            vllmRequestId=f"vllm_req_{self.anomaly_id}",
+            llmRequestId=f"llm_req_{self.anomaly_id}",
         )
 
     def _canned_result(self) -> AIResultSummary:
@@ -241,7 +241,7 @@ class IterativeDebugger:
             latencyMs=0,
             promptTokens=0,
             completionTokens=0,
-            vllmRequestId="vllm_req_fallback",
+            llmRequestId="llm_req_fallback",
         )
 
     def _compute_worst_severity(self, detections: list[dict[str, Any]]) -> str:

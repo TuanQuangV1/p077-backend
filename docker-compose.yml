@@ -13,6 +13,8 @@ services:
       APP_HOST: 0.0.0.0
       APP_PORT: 8000
       CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      RUN_DB_WAL: 1
+      EXPERIMENTS_CACHE_TTL_SEC: 120
     volumes:
       - ./data:/app/data
     restart: unless-stopped

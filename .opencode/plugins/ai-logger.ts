@@ -15,16 +15,22 @@ function scriptPath(projectDir: string, name: string): string {
 
 function sendLog(projectDir: string, eventPayload: any) {
     try {
-        const launcher = isWin
-            ? scriptPath(projectDir, '_pyrun.cmd')
-            : 'bash';
-        const args = isWin
-            ? [scriptPath(projectDir, 'log_hook.py'), '--tool=opencode']
-            : [scriptPath(projectDir, '_pyrun.sh'), scriptPath(projectDir, 'log_hook.py'), '--tool=opencode'];
+        // Node >= 20.12 refuses to spawn .cmd/.bat files with shell:false
+        // (CVE-2024-27980 hardening), so on Windows route through cmd.exe
+        // with /s (strip outer quotes) and quoted arguments.
+        let launcher: string;
+        let args: string[];
+        if (isWin) {
+            launcher = 'cmd.exe';
+            args = ['/d', '/s', '/c', scriptPath(projectDir, '_pyrun.cmd'), scriptPath(projectDir, 'log_hook.py'), '--tool=opencode'];
+        } else {
+            launcher = 'bash';
+            args = [scriptPath(projectDir, '_pyrun.sh'), scriptPath(projectDir, 'log_hook.py'), '--tool=opencode'];
+        }
         const projectCwd = projectDir;
         writeDebugLog(projectDir, 'sendLog.call', { projectDir, cwd: projectCwd, launcher, args });
         // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
-        const child = spawn(launcher, args, { cwd: projectCwd, stdio: ['pipe', 'ignore', 'ignore'], shell: false });
+        const child = spawn(launcher, args, { cwd: projectCwd, stdio: ['pipe', 'ignore', 'ignore'], shell: false, windowsVerbatimArguments: true });
         child.stdin.write(JSON.stringify(eventPayload));
         child.stdin.end();
         child.on('error', (err) => {

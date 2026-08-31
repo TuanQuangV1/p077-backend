@@ -26,28 +26,70 @@ const STATUS_COLORS: Record<string, string> = {
   warning: "#ffc107",
 }
 
+// Topics that must never appear in the Hz health table — they are
+// event-driven / latched and have no stable publish cadence. Keeping
+// them here produced false Nghiêm trọng (e.g. /tf_static 0/0) and
+// polluted the sensor view. Covered by dedicated panels (logs, TF tree).
+const HZ_EXCLUDED_TOPIC_NAMES = new Set<string>([
+  "/tf_static",
+  "/diagnostics",
+  "/rosout",
+  "/plan",
+  "/local_costmap/costmap",
+])
+
+const HZ_EXCLUDED_MESSAGE_TYPES = new Set<string>([
+  "diagnostic_msgs/msg/DiagnosticArray",
+  "rcl_interfaces/msg/Log",
+  "nav_msgs/msg/Path",
+  "nav_msgs/msg/OccupancyGrid",
+])
+
+// Severity rank for sorting: critical/silent first, then warning, then healthy.
+// Within the same rank, the larger drop comes first.
+const STATUS_RANK: Record<string, number> = {
+  critical: 3,
+  silent: 3,
+  warning: 2,
+  healthy: 1,
+}
+
+/** Sensor-health relevance — mirrors `src/services/diagnostics.py:cadence_topics` + latched rule. */
+function isHzRelevant(topic: TopicStat): boolean {
+  if (HZ_EXCLUDED_TOPIC_NAMES.has(topic.name)) return false
+  if (HZ_EXCLUDED_MESSAGE_TYPES.has(topic.messageType)) {
+    // OccupancyGrid is only excluded for the local costmap; a global costmap
+    // on the same type is still relevant. Guard by exact name.
+    if (topic.messageType === "nav_msgs/msg/OccupancyGrid" && topic.name !== "/local_costmap/costmap") {
+      // fall through — keep it
+    } else {
+      return false
+    }
+  }
+  // geometry_msgs/msg/PoseWithCovarianceStamped (/amcl_pose) is event-driven:
+  // only surface it when the drop is actually severe (>=50%). Otherwise it
+  // is intentionally hidden to avoid healthy-bag false positives.
+  if (topic.messageType === "geometry_msgs/msg/PoseWithCovarianceStamped" || topic.name === "/amcl_pose") {
+    return topic.dropRate >= 0.5
+  }
+  return true
+}
+
 function getTopicStatus(topic: TopicStat): { status: "critical" | "warning" | "healthy" | "silent"; label: string } {
-  const dropPct = (topic.dropRate ?? 0) * 100
-  const actualHz = topic.hz ?? 0
-  const expectedHz = topic.expectedHz ?? 0
+  const dropPct = topic.dropRate * 100
+  const actualHz = topic.hz
+  const expectedHz = topic.expectedHz
 
-  // Static / latched topics (expectedHz === 0, e.g. /tf_static) are normal in ROS2
-  if (topic.name.includes("static") || (expectedHz === 0 && actualHz === 0)) {
-    return { status: "healthy", label: "ỔN ĐỊNH" }
-  }
-
-  // Active topic that died / silent node
   if (actualHz === 0 && expectedHz > 0) {
-    return { status: "silent", label: "MẤT TÍN HIỆU" }
+    return { status: "silent", label: "IM LẶNG" }
   }
-
-  if (dropPct >= 50) {
+  if (actualHz === 0 || dropPct >= 50) {
     return { status: "critical", label: "NGHIÊM TRỌNG" }
   }
-  if (dropPct >= 30 || (expectedHz > 0 && actualHz < expectedHz * 0.7)) {
+  if (dropPct >= 30 || actualHz < expectedHz * 0.7) {
     return { status: "warning", label: "CẢNH BÁO" }
   }
-  return { status: "healthy", label: "ỔN ĐỊNH" }
+  return { status: "healthy", label: "BÌNH THƯỜNG" }
 }
 
 function getTopicDetections(topicName: string, anomalies: Anomaly[]): Anomaly[] {
@@ -66,7 +108,10 @@ export function TopicHealthTable({
   const [filter, setFilter] = useState<FilterType>("all")
   const [expandedTopic, setExpandedTopic] = useState<string | null>(null)
 
-  const filteredTopics = topics.filter((topic) => {
+  // 1. Drop every topic that has no meaningful Hz (latched / event-driven).
+  const relevantTopics = topics.filter(isHzRelevant)
+
+  const filteredTopics = relevantTopics.filter((topic) => {
     const { status } = getTopicStatus(topic)
     if (filter === "all") return true
     if (filter === "critical") return status === "critical"
@@ -76,12 +121,21 @@ export function TopicHealthTable({
     return true
   })
 
+  // 2. Nghiêm trọng phải lên đầu — sort by severity rank, then by drop.
+  const sortedTopics = [...filteredTopics].sort((a, b) => {
+    const rankA = STATUS_RANK[getTopicStatus(a).status] ?? 0
+    const rankB = STATUS_RANK[getTopicStatus(b).status] ?? 0
+    if (rankB !== rankA) return rankB - rankA
+    if (b.dropRate !== a.dropRate) return b.dropRate - a.dropRate
+    return a.name.localeCompare(b.name)
+  })
+
   const counts = {
-    all: topics.length,
-    critical: topics.filter((t) => getTopicStatus(t).status === "critical").length,
-    warning: topics.filter((t) => getTopicStatus(t).status === "warning").length,
-    healthy: topics.filter((t) => getTopicStatus(t).status === "healthy").length,
-    silent: topics.filter((t) => getTopicStatus(t).status === "silent").length,
+    all: relevantTopics.length,
+    critical: relevantTopics.filter((t) => getTopicStatus(t).status === "critical").length,
+    warning: relevantTopics.filter((t) => getTopicStatus(t).status === "warning").length,
+    healthy: relevantTopics.filter((t) => getTopicStatus(t).status === "healthy").length,
+    silent: relevantTopics.filter((t) => getTopicStatus(t).status === "silent").length,
   }
 
   return (
@@ -90,7 +144,7 @@ export function TopicHealthTable({
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-sm">
             <SignalIcon className="size-4" />
-            Sức khỏe Topic cảm biến
+            Sức khỏe cảm biến
           </CardTitle>
           <div className="flex items-center gap-1">
             {(["all", "critical", "warning", "healthy", "silent"] as FilterType[]).map(
@@ -116,7 +170,7 @@ export function TopicHealthTable({
             <thead className="sticky top-0 bg-background">
               <tr className="border-b border-border">
                 <th className="px-3 py-2 font-mono text-[10px] uppercase text-muted-foreground">
-                  Topic
+                  Chủ đề (Topic)
                 </th>
                 <th className="px-2 py-2 text-right font-mono text-[10px] uppercase text-muted-foreground">
                   Hz Kỳ vọng
@@ -133,7 +187,7 @@ export function TopicHealthTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filteredTopics.map((topic) => {
+              {sortedTopics.map((topic) => {
                 const { status, label } = getTopicStatus(topic)
                 const dropPct = Math.round(topic.dropRate * 100)
                 const color = STATUS_COLORS[status]
@@ -218,7 +272,7 @@ export function TopicHealthTable({
                             {topicDetections.length > 0 ? (
                               <div className="space-y-1">
                                 <span className="text-[10px] font-semibold uppercase text-muted-foreground">
-                                  Sự cố phát hiện ({topicDetections.length})
+                                  Phát hiện
                                 </span>
                                 {topicDetections.map((det) => (
                                   <button
@@ -251,7 +305,7 @@ export function TopicHealthTable({
                               </div>
                             ) : (
                               <p className="text-[10px] text-muted-foreground">
-                                Không phát hiện sự cố nào trên topic này
+                                Không có phát hiện cho chủ đề này
                               </p>
                             )}
                           </div>
@@ -263,32 +317,32 @@ export function TopicHealthTable({
               })}
             </tbody>
           </table>
-          {filteredTopics.length === 0 && (
+          {sortedTopics.length === 0 && (
             <p className="p-4 text-center text-sm text-muted-foreground">
-              Không có topic nào phù hợp với bộ lọc đã chọn
+              Không có chủ đề nào khớp bộ lọc
             </p>
           )}
         </div>
         <div className="border-t border-border px-3 py-2 text-[10px] text-muted-foreground">
-          Tổng cộng: {filteredTopics.length} topics
+          Tổng kết: {sortedTopics.length} chủ đề
           {counts.critical > 0 && (
-            <span className="ml-2 font-semibold" style={{ color: STATUS_COLORS.critical }}>
+            <span className="ml-2" style={{ color: STATUS_COLORS.critical }}>
               | {counts.critical} Nghiêm trọng
             </span>
           )}
           {counts.warning > 0 && (
-            <span className="ml-2 font-semibold" style={{ color: STATUS_COLORS.medium }}>
+            <span className="ml-2" style={{ color: STATUS_COLORS.medium }}>
               | {counts.warning} Cảnh báo
             </span>
           )}
           {counts.healthy > 0 && (
-            <span className="ml-2 font-semibold" style={{ color: STATUS_COLORS.healthy }}>
-              | {counts.healthy} Đạt chuẩn
+            <span className="ml-2" style={{ color: STATUS_COLORS.healthy }}>
+              | {counts.healthy} Bình thường
             </span>
           )}
           {counts.silent > 0 && (
-            <span className="ml-2 font-semibold" style={{ color: STATUS_COLORS.silent }}>
-              | {counts.silent} Mất tín hiệu
+            <span className="ml-2" style={{ color: STATUS_COLORS.silent }}>
+              | {counts.silent} Im lặng
             </span>
           )}
         </div>

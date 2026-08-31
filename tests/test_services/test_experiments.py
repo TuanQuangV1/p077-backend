@@ -14,6 +14,7 @@ import pytest
 from rosbags.rosbag2 import StoragePlugin, Writer
 from rosbags.typesys import Stores, get_typestore
 
+from src.services import experiments
 from src.services.experiments import (
     _extract_zip_safely,
     _load_item,
@@ -77,7 +78,9 @@ def test_experiment_bag_path_returns_first_bag(experiments_dir) -> None:
     path = experiment_bag_path("E1-1")
     assert path is not None
     assert path.name == "a.mcap"
-    assert path.parent == experiments_dir / "E1-1"
+    # Per-owner migration: legacy flat E1-1 is moved to admin/E1-1
+    assert path.parent.name == "E1-1"
+    assert path.parent.parent in (experiments_dir, experiments_dir / "admin")
 
 
 def test_experiment_bag_path_none_for_missing_dataset(experiments_dir) -> None:
@@ -114,7 +117,8 @@ def test_delete_experiment_false_for_missing(experiments_dir) -> None:
 def test_delete_experiment_rejects_traversal_ids(experiments_dir, dataset_id) -> None:
     _make_bag(experiments_dir / "evil")
     assert delete_experiment(dataset_id) is False
-    assert (experiments_dir / "evil").exists()
+    # Per-owner: evil is migrated to admin/evil, so check both locations
+    assert (experiments_dir / "evil").exists() or (experiments_dir / "admin" / "evil").exists()
 
 
 def _make_lying_zip(data: bytes) -> bytes:
@@ -167,7 +171,10 @@ def test_upload_creates_timestamp_index(experiments_dir) -> None:
 
     item = save_uploaded_rosbag("trip_01.db3", payload)
 
-    stored = experiments_dir / item["id"] / "trip_01.db3"
+    # Per-owner: stored under admin/<id>
+    stored = experiments_dir / "admin" / item["id"] / "trip_01.db3"
+    if not stored.exists():
+        stored = experiments_dir / item["id"] / "trip_01.db3"
     conn = sqlite3.connect(stored)
     try:
         indexes = {
@@ -195,6 +202,48 @@ def test_upload_index_failure_does_not_block_upload(experiments_dir, caplog) -> 
     assert "experiments.index_skip" in caplog.text
 
 
+def test_upload_duplicate_content_returns_original_and_skips_new_folder(experiments_dir) -> None:
+    first_payload = io.BytesIO()
+    _make_valid_db3(first_payload)
+    original = save_uploaded_rosbag("first.db3", first_payload)
+
+    second_payload = io.BytesIO()
+    _make_valid_db3(second_payload)
+    result = save_uploaded_rosbag("second.db3", second_payload)
+
+    assert result["id"] == original["id"]
+    assert result["duplicateOf"] == original["id"]
+    # Per-owner storage: datasets live under admin/
+    assert not (experiments_dir / "admin" / "second").exists()
+    assert not (experiments_dir / "second").exists()
+    # Only the original folder exists
+    admin_dir = experiments_dir / "admin"
+    assert {p.name for p in admin_dir.iterdir()} == {original["id"]}
+
+
+def test_upload_distinct_content_does_not_collide(experiments_dir) -> None:
+    first_payload = io.BytesIO()
+    _make_valid_db3(first_payload)
+    first = save_uploaded_rosbag("a.db3", first_payload)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "bag.db3"
+        conn = sqlite3.connect(path)
+        conn.execute("CREATE TABLE topics(id INTEGER PRIMARY KEY, name TEXT, type TEXT)")
+        conn.execute("CREATE TABLE messages(id INTEGER PRIMARY KEY, topic_id INTEGER, timestamp INTEGER, data BLOB)")
+        conn.execute("INSERT INTO topics VALUES (1, '/scan', 'sensor_msgs/msg/LaserScan')")
+        conn.execute("INSERT INTO messages(topic_id, timestamp) VALUES (1, 9999999999)")
+        conn.commit()
+        conn.close()
+        second_payload = io.BytesIO(path.read_bytes())
+    second = save_uploaded_rosbag("b.db3", second_payload)
+
+    assert second.get("duplicateOf") is None
+    assert first["id"] != second["id"]
+    admin_dir = experiments_dir / "admin"
+    assert {p.name for p in admin_dir.iterdir()} == {first["id"], second["id"]}
+
+
 def test_datasets_derived_from_mcap_without_metadata(experiments_dir) -> None:
     folder = experiments_dir / "mcap-run"
     _write_mcap(folder, stamps_ns=[1_000_000_000, 2_000_000_000])
@@ -219,9 +268,15 @@ def test_upload_flat_mcap_skips_metadata_fabrication(experiments_dir) -> None:
 
     assert item["status"] == "uploaded"
     assert item["messageCount"] == 2
-    stored = experiments_dir / item["id"] / "bag.mcap"
+    # Per-owner: check admin subdir
+    stored = experiments_dir / "admin" / item["id"] / "bag.mcap"
+    if not stored.exists():
+        stored = experiments_dir / item["id"] / "bag.mcap"
     assert stored.exists()
-    assert not (experiments_dir / item["id"] / "metadata.yaml").exists()
+    meta_path = experiments_dir / "admin" / item["id"] / "metadata.yaml"
+    if not meta_path.exists():
+        meta_path = experiments_dir / item["id"] / "metadata.yaml"
+    assert not meta_path.exists()
 
 
 class _FailingReader(io.BytesIO):
@@ -286,3 +341,13 @@ def test_extract_zip_safe_accepts_within_limit(experiments_dir) -> None:
     _extract_zip_safely(archive, target)
 
     assert (target / "bag" / "meta.yaml").exists()
+
+
+def test_mcap_metadata_failure_logs_warning(tmp_path, caplog) -> None:
+    bad = tmp_path / "bad.mcap"
+    bad.write_bytes(b"NOT-A-REAL-MCAP-FILE")
+
+    with caplog.at_level(logging.WARNING, logger="src.services.experiments"):
+        result = experiments._read_bagfile_info_from_mcap(tmp_path)
+    assert result is None
+    assert any("Failed to derive metadata from MCAP" in r.message for r in caplog.records)

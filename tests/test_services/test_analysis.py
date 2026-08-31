@@ -49,7 +49,7 @@ def _ai_result(prompt_tokens: int, completion_tokens: int) -> AIResultSummary:
         latencyMs=0,
         promptTokens=prompt_tokens,
         completionTokens=completion_tokens,
-        vllmRequestId="vllm_req_001",
+        llmRequestId="llm_req_001",
     )
 
 
@@ -162,8 +162,8 @@ def test_build_ai_results_maps_cluster_findings_onto_their_own_anomaly(monkeypat
     assert [r.anomalyId for r in results] == ["anomaly_001", "anomaly_002"]
     assert all(r.rootCause.startswith("/scan stopped publishing") for r in results)
     assert all(r.suggestedFix == ["Restart the /scan driver."] for r in results)
-    assert results[0].evidence[0].detail.startswith("consequence:")
-    assert results[1].evidence[0].detail.startswith("primary:")
+    assert results[0].evidence[0].detail.startswith("hệ quả:")
+    assert results[1].evidence[0].detail.startswith("nguyên phát:")
 
 
 def test_build_ai_results_attaches_every_cluster_findings_evidence_item(monkeypatch) -> None:
@@ -192,10 +192,10 @@ def test_build_ai_results_attaches_every_cluster_findings_evidence_item(monkeypa
     # results[0] is /cmd_vel (offset 2, consequence); results[1] is /scan (offset 1, primary).
     assert len(results[0].evidence) == 2
     assert len(results[1].evidence) == 2
-    assert results[0].evidence[0].detail.startswith("consequence:")
-    assert results[0].evidence[1].detail.startswith("primary:")
-    assert results[1].evidence[0].detail.startswith("primary:")
-    assert results[1].evidence[1].detail.startswith("consequence:")
+    assert results[0].evidence[0].detail.startswith("hệ quả:")
+    assert results[0].evidence[1].detail.startswith("nguyên phát:")
+    assert results[1].evidence[0].detail.startswith("nguyên phát:")
+    assert results[1].evidence[1].detail.startswith("hệ quả:")
 
 
 def test_build_ai_results_single_detection_cluster_keeps_one_evidence_item(monkeypatch) -> None:
@@ -284,8 +284,7 @@ def test_build_ai_results_returns_one_result_per_detection(monkeypatch, configur
 def test_finalize_run_llm_usage_sums_and_prices_ai_result_tokens(monkeypatch) -> None:
     class SettingsStub:
         llm_provider = "openai"
-        model_name = "gpt-4o-mini"
-        vllm_model_name = "unused"
+        model_name = "gpt-4.1"
 
     monkeypatch.setattr(analysis, "get_settings", SettingsStub)
 
@@ -296,15 +295,14 @@ def test_finalize_run_llm_usage_sums_and_prices_ai_result_tokens(monkeypatch) ->
 
     assert finalized.promptTokens == 1_000_000
     assert finalized.completionTokens == 1_000_000
-    assert finalized.costUsd == pytest.approx(0.15 + 0.60)
+    assert finalized.costUsd == pytest.approx(2.00 + 8.00)
     assert finalized.totalLatencyMs >= 0
 
 
-def test_finalize_run_llm_usage_zero_cost_for_unpriced_vllm_model(monkeypatch) -> None:
+def test_finalize_run_llm_usage_zero_cost_for_unpriced_model(monkeypatch) -> None:
     class SettingsStub:
-        llm_provider = "vllm"
-        model_name = "unused"
-        vllm_model_name = "qwen2.5-coder-32b"
+        llm_provider = "openai"
+        model_name = "unknown-model-xyz"
 
     monkeypatch.setattr(analysis, "get_settings", SettingsStub)
 
@@ -332,7 +330,7 @@ def _ai_result_for(anomaly_id: str, root_cause: str) -> AIResultSummary:
         latencyMs=0,
         promptTokens=0,
         completionTokens=0,
-        vllmRequestId="vllm_req_001",
+        llmRequestId="llm_req_001",
     )
 
 
@@ -419,4 +417,4 @@ def test_build_ai_results_does_not_call_the_llm_for_cascade_fragments(monkeypatc
 
     assert calls == [2]  # only the real incident reached the LLM
     assert results[2].model == "cascade-fragment"
-    assert "downstream consequence" in results[2].rootCause
+    assert "đình trệ" in results[2].rootCause

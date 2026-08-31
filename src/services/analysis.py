@@ -1,8 +1,8 @@
 """Shared analysis pipeline used by both the API and the CLI.
 
 Both interfaces execute the exact same flow: locate the dataset bag, run the
-rule-based diagnostics, build AI explanations (real LLM when a vLLM backend is
-configured, deterministic canned text otherwise), persist the run, detections,
+rule-based diagnostics, build AI explanations (real LLM when configured,
+deterministic canned text otherwise), persist the run, detections,
 AI results and review queue in SQLite, then return the assembled payload.
 """
 
@@ -37,7 +37,27 @@ logger = logging.getLogger(__name__)
 
 _SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1}
 
-_KIND_TITLES = {
+_KIND_TITLES_VI = {
+    "frequency_gap": "Khoảng trống phát hành trên {topic}",
+    "message_drop_burst": "Cụm mất gói tin trên {topic}",
+    "timestamp_jitter": "Jitter dấu thời gian trên {topic}",
+    "silent_node": "Node im lặng {node}",
+    "clock_drift": "Trôi đồng hồ trên {topic}",
+    "hz_drop": "Sụt tần suất phát trên {topic}",
+    "hz_drop_critical": "Sụt tần suất nghiêm trọng trên {topic}",
+    "header_latency": "Trễ header trên {topic}",
+    "log_fatal": "Log fatal trên {topic}",
+    "log_error_burst": "Cụm lỗi log trên {topic}",
+    "log_warn_storm": "Bão cảnh báo log trên {topic}",
+    "payload_zero_byte": "Payload rỗng trên {topic}",
+    "payload_nan": "Nhiễu NaN trên {topic}",
+    "payload_out_of_range": "Giá trị ngoài ngưỡng trên {topic}",
+    "tf_missing_gap": "Khoảng trống TF trên {topic}",
+    "tf_drift_jump": "Nhảy khung TF trên {topic}",
+    "tf_conflict": "Xung đột phát hành TF trên {topic}",
+}
+
+_KIND_TITLES_EN = {
     "frequency_gap": "Publish gap on {topic}",
     "message_drop_burst": "Message drop burst on {topic}",
     "timestamp_jitter": "Timestamp jitter on {topic}",
@@ -57,7 +77,33 @@ _KIND_TITLES = {
     "tf_conflict": "TF conflicting publishers on {topic}",
 }
 
-_KIND_LABELS = {
+def _kind_titles() -> dict[str, str]:
+    return _KIND_TITLES_VI if getattr(get_settings(), "llm_language", "vi") == "vi" else _KIND_TITLES_EN
+
+# legacy alias for tests that import _KIND_TITLES
+_KIND_TITLES = _KIND_TITLES_EN
+
+_KIND_LABELS_VI = {
+    "frequency_gap": "Sụt tần suất",
+    "message_drop_burst": "Mất gói theo cụm",
+    "timestamp_jitter": "Jitter timestamp",
+    "silent_node": "Node im lặng",
+    "clock_drift": "Trôi đồng hồ",
+    "hz_drop": "Sụt tần suất",
+    "hz_drop_critical": "Sụt tần suất nghiêm trọng",
+    "header_latency": "Trễ header",
+    "log_fatal": "Log fatal",
+    "log_error_burst": "Cụm lỗi log",
+    "log_warn_storm": "Bão cảnh báo",
+    "payload_zero_byte": "Payload rỗng",
+    "payload_nan": "Nhiễu NaN",
+    "payload_out_of_range": "Giá trị ngoài ngưỡng",
+    "tf_missing_gap": "Khoảng trống TF",
+    "tf_drift_jump": "Nhảy TF",
+    "tf_conflict": "Xung đột TF",
+}
+
+_KIND_LABELS_EN = {
     "frequency_gap": "Topic rate drop",
     "message_drop_burst": "Message drop burst",
     "timestamp_jitter": "Timestamp jitter",
@@ -77,6 +123,12 @@ _KIND_LABELS = {
     "tf_conflict": "TF conflicting publishers",
 }
 
+def _kind_labels() -> dict[str, str]:
+    return _KIND_LABELS_VI if getattr(get_settings(), "llm_language", "vi") == "vi" else _KIND_LABELS_EN
+
+# legacy alias
+_KIND_LABELS = _KIND_LABELS_EN
+
 # Grace period allowed between a running incident's end and the next detection's
 # start before they count as separate incidents. Zero: since clustering keys on
 # span overlap (see `_cluster_detections`), propagation delay is already covered
@@ -90,18 +142,11 @@ _CLUSTER_SLACK_SEC = 0.0
 
 
 def _configured_model() -> str:
-    """Return the model name of the provider actually in use.
-
-    Runs used to be stamped with a hard-coded vLLM model name regardless of the
-    configured provider, so cost and model-comparison figures described a model
-    that never ran.
-    """
+    """Return the model name of the provider actually in use."""
     settings = get_settings()
-    if settings.llm_provider == "openai":
-        return settings.model_name
     if settings.llm_provider == "anthropic":
         return settings.anthropic_model_name
-    return settings.vllm_model_name
+    return settings.model_name
 
 
 def _pending_run_from_dataset(ds: Mapping[str, Any], model: str) -> AnalysisRun:
@@ -189,11 +234,13 @@ def _succeeded_run(
 def _anomaly_summaries(run_id: str, detections: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Convert raw detection dicts into the AnomalySummary response shape."""
     summaries = []
+    kind_titles = _kind_titles()
     for index, detection in enumerate(detections, start=1):
         kind = detection.get("kind", "unknown")
         topic = detection.get("topic", "/unknown")
         evidence = detection.get("evidence", {})
-        title = _KIND_TITLES.get(kind, "Anomaly on {topic}").format(
+        title_template = kind_titles.get(kind, "Anomaly on {topic}" if getattr(get_settings(), "llm_language", "vi") != "vi" else "Bất thường trên {topic}")
+        title = title_template.format(
             topic=topic,
             node=evidence.get("node", "unknown"),
         )
@@ -246,6 +293,43 @@ def _canned_explanation(detection: dict[str, Any]) -> dict[str, Any]:
     """Build a deterministic explanation for one detection, used when the LLM is unavailable."""
     kind = detection.get("kind", "unknown")
     topic = detection.get("topic", "/unknown")
+    is_vi = getattr(get_settings(), "llm_language", "vi") == "vi"
+    if is_vi:
+        canned = {
+            "frequency_gap": (
+                f"Phát hiện khoảng trống phát hành thường xuyên trên {topic}.",
+                "Luồng phát của node bị nghẽn hoặc bộ đệm truyền dẫn làm gián đoạn việc xuất bản.",
+            ),
+            "message_drop_burst": (
+                f"Phát hiện cụm mất gói tin trên {topic}.",
+                "Một khoảng trống dài giữa hai bản tin cho thấy gói tin bị rơi hoặc bị gộp.",
+            ),
+            "timestamp_jitter": (
+                f"Phát hiện jitter dấu thời gian trên {topic}.",
+                "Nhịp phát hành dao động vượt ngưỡng so với tần suất danh định.",
+            ),
+            "silent_node": (
+                f"Phát hiện node im lặng trên topic {topic}.",
+                "Node đã ngừng phát hành trong toàn bộ cửa sổ quan sát.",
+            ),
+            "clock_drift": (
+                f"Phát hiện trôi đồng hồ trên {topic}.",
+                "Dấu thời gian trong header lệch so với thời gian ghi của bag.",
+            ),
+            "unknown": (
+                f"Phát hiện mẫu bất thường trên {topic}.",
+                "Tín hiệu thô lệch khỏi nhịp kỳ vọng.",
+            ),
+        }
+        issue, root_cause = canned.get(kind, canned["unknown"])
+        return {
+            "root_cause": root_cause,
+            "recommended_actions": [
+                "Kiểm tra node nguồn xem có tắc nghẽn luồng phát hoặc chết thread không.",
+                "Kiểm tra đường truyền/mạng và bộ ghi xem có hiện tượng chập chờn hoặc mất gói theo cụm không.",
+            ],
+            "explanation": f"{issue} {root_cause}",
+        }
     canned = {
         "frequency_gap": (
             f"Frequent publish gap detected on {topic}.",
@@ -297,10 +381,16 @@ def _canned_ai_results(run_id: str, detections: list[dict[str, Any]]) -> list[AI
     ]
 
 
+_ROLE_LABEL_VI = {"primary": "nguyên phát", "consequence": "hệ quả"}
+
+
 def _finding_detail(explanation: dict[str, Any], finding: dict[str, str] | None) -> str:
     detail = str(explanation.get("explanation", ""))
     if finding and finding.get("detail"):
-        detail = f"{finding['role']}: {finding['detail']}"
+        role = str(finding.get("role", ""))
+        if getattr(get_settings(), "llm_language", "vi") == "vi":
+            role = _ROLE_LABEL_VI.get(role, role)
+        detail = f"{role}: {finding['detail']}"
     return detail
 
 
@@ -341,7 +431,7 @@ def _ai_result_from_explanation(
         latencyMs=latency_ms,
         promptTokens=prompt_tokens,
         completionTokens=completion_tokens,
-        vllmRequestId=f"vllm_req_{index:03d}",
+        llmRequestId=f"llm_req_{index:03d}",
     )
 
 
@@ -409,6 +499,20 @@ def _cascade_fragment_clusters(
 
 def _cascade_fragment_explanation(detection: dict[str, Any]) -> dict[str, Any]:
     topic = detection.get("topic", "/unknown")
+    if getattr(get_settings(), "llm_language", "vi") == "vi":
+        return {
+            "root_cause": (
+                f"{topic} đình trệ do hệ quả của sự cố phía trước; lỗi gốc được báo cáo "
+                "ở sự cố khác trong cùng lượt chạy."
+            ),
+            "explanation": (
+                f"Cửa sổ này chỉ chứa hoạt động của {topic}, không có bằng chứng về nguyên nhân "
+                "gây đình trệ. Hãy xem xét cùng với sự cố chính của lượt chạy."
+            ),
+            "recommended_actions": [
+                "Xem xét sự đình trệ này cùng với sự cố chính thay vì đánh giá riêng lẻ.",
+            ],
+        }
     return {
         "root_cause": (
             f"{topic} stalled as a downstream consequence; the originating fault is reported "
@@ -444,6 +548,7 @@ def _build_ai_results(
     results: dict[int, AIResultSummary] = {}
     clusters = _cluster_detections(detections)
     cascade_only = _cascade_fragment_clusters(detections, clusters)
+    is_vi = getattr(get_settings(), "llm_language", "vi") == "vi"
     for cluster_index, cluster in enumerate(clusters):
         if cluster_index in cascade_only:
             for position in cluster:
@@ -453,7 +558,7 @@ def _build_ai_results(
                     detections[position],
                     _cascade_fragment_explanation(detections[position]),
                     model="cascade-fragment",
-                    finding={"role": "consequence", "detail": "Downstream stall from the incident reported separately."},
+                    finding={"role": "consequence", "detail": "Đình trệ hệ quả từ sự cố được báo cáo riêng." if is_vi else "Downstream stall from the incident reported separately."},
                 )
             continue
         try:
@@ -599,7 +704,7 @@ def _finalize_run_llm_usage(
     )
 
 
-def run_analysis(dataset_id: str, model: str | None = None) -> dict[str, Any]:
+def run_analysis(dataset_id: str, model: str | None = None, owner: str = "admin") -> dict[str, Any]:
     """Run the full analysis pipeline for a dataset and persist its results.
 
     Locates the dataset bag files, streams them through the rule-based
@@ -607,8 +712,9 @@ def run_analysis(dataset_id: str, model: str | None = None) -> dict[str, Any]:
     AI results and review items via :mod:`src.services.run_store`.
 
     Args:
-        dataset_id: ID of the dataset (folder name under ``data/``) to analyze.
+        dataset_id: ID of the dataset (folder name under ``data/<owner>/``) to analyze.
         model: Optional model label recorded on the run.
+        owner: Owner username (from JWT sub).
 
     Returns:
         Dict with ``run`` (``AnalysisRun``), ``detections`` (raw detection
@@ -616,9 +722,9 @@ def run_analysis(dataset_id: str, model: str | None = None) -> dict[str, Any]:
         (the Health Summary JSON).
 
     Raises:
-        ValueError: No dataset with the given id exists.
+        ValueError: No dataset with the given id exists for this owner.
     """
-    ds = next((d for d in list_experiments() if d["id"] == dataset_id), None)
+    ds = next((d for d in list_experiments(owner) if d["id"] == dataset_id), None)
     if ds is None:
         raise ValueError(f"dataset not found: {dataset_id}")
 
@@ -626,7 +732,7 @@ def run_analysis(dataset_id: str, model: str | None = None) -> dict[str, Any]:
     started = time.perf_counter()
     resolved_model = model or _configured_model()
 
-    bag_files = experiment_bag_files(dataset_id)
+    bag_files = experiment_bag_files(dataset_id, owner)
     if not bag_files:
         run = _pending_run_from_dataset(ds, resolved_model)
         detections: list[dict[str, Any]] = []
@@ -666,7 +772,7 @@ def run_analysis(dataset_id: str, model: str | None = None) -> dict[str, Any]:
         run = _finalize_run_llm_usage(run, ai_results, started)
     with perf.timed_phase("analysis.persist", {"id": run.id}):
         report_health = compute_health_summary(detections, total_messages=total_messages)
-        run_store.save_run(run.model_dump())
+        run_store.save_run(run.model_dump(), owner)
         run_store.save_run_anomalies(run.id, detections)
         run_store.save_run_ai_results(run.id, [result.model_dump() for result in ai_results])
         _persist_review_items(run, ai_results)

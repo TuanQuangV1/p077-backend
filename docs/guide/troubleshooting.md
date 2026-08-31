@@ -307,10 +307,51 @@ app.add_middleware(
 
 ---
 
+## Auth / JWT
+
+### `401 {"detail":"invalid or missing JWT token"}`
+
+**Nguyên nhân:** `JWT_SECRET` đã được set (strict mode) nên mọi `/api/v1/*` (trừ `/auth/login|signup|verify`) yêu cầu `Authorization: Bearer <JWT>`.
+
+**Cách sửa:**
+```bash
+# 1. Lấy token
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"test-pass"}'
+# → {"access_token":"eyJ..."}
+
+# 2. Gọi API kèm token
+curl http://localhost:8000/api/v1/datasets \
+  -H "Authorization: Bearer eyJ..."
+
+# Dev bypass: nếu muốn open không cần token, để JWT_SECRET="" và APP_ENV != production
+```
+
+### `503 {"detail":"JWT_SECRET not configured"}` hoặc `LLM endpoints require JWT_SECRET...`
+
+**Nguyên nhân:** `APP_ENV=production` nhưng `JWT_SECRET` rỗng — fail-closed. `docker-compose.yml` hardcode `APP_ENV=production` nên `.env` phải có `JWT_SECRET` ≥32 ký tự.
+
+**Cách sửa:**
+```bash
+# .env
+JWT_SECRET=dev-insecure-jwt-secret-change-me-32-chars-minimum-length
+AUTH_USERNAME=admin
+AUTH_PASSWORD=test-pass
+```
+
+### Tests fail `401` dù trước đó pass
+
+**Nguyên nhân:** Đã chuyển sang strict JWT (`tests/conftest.py` tự set `JWT_SECRET`). `client` tự inject JWT, `unauth_client` mới trả 401.
+
+**Cách sửa:** Dùng `client` cho test thường, `unauth_client` cho test expect 401/503. Xem `docs/guide/testing/writing-tests.md`.
+
+---
+
 ## Lỗi không xác định?
 
 1. **Đọc error message kỹ** — Python traceback thường chỉ rõ file và dòng gây lỗi
 2. **Google lỗi** — Copy paste error message vào Google, thường có giải pháp trên StackOverflow
-3. **Check `.env`** — 80% lỗi production do biến môi trường thiếu hoặc sai
+3. **Check `.env`** — 80% lỗi production do biến môi trường thiếu hoặc sai (đặc biệt `JWT_SECRET`, `AUTH_*`)
 4. **Chạy `make check`** — Lint + format + typecheck + test trong một lệnh
 5. **Xóa và tạo lại** — `rm -rf .venv && python3.11 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"`

@@ -112,7 +112,18 @@ def save_diagnostics_thresholds(
     path.parent.mkdir(parents=True, exist_ok=True)
     merged = merge_diagnostics_thresholds(thresholds=thresholds, file_path=path)
 
+    # Persist only the delta from the code-level defaults, not the full
+    # resolved set. Writing every key (even ones nobody touched) pins them on
+    # disk permanently — a value baked in at save time silently overrides any
+    # future change to `DEFAULT_DIAGNOSTICS_THRESHOLDS` in code, including a
+    # test's own monkeypatch of it (see `tests/conftest.py::_isolate_state`,
+    # which zeroes `pre_roll_grace_sec` for tests — moot if the file on disk
+    # still says 8.0). An unmodified key stays absent, so it always tracks
+    # whatever the code default is.
+    defaults = default_diagnostics_thresholds()
+    delta = {key: value for key, value in merged.items() if value != defaults.get(key)}
+
     with path.open("w", encoding="utf-8") as handle:
-        json.dump(merged, handle, indent=2)
+        json.dump(delta, handle, indent=2)
 
     return merged

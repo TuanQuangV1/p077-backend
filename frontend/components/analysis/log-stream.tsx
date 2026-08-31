@@ -69,9 +69,9 @@ export function LogStream({
         <Input
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="grep node or message…"
+          placeholder="lọc node hoặc tin nhắn…"
           className="h-7 max-w-[220px] font-mono text-xs"
-          aria-label="Filter log lines"
+          aria-label="Lọc dòng nhật ký"
         />
         <ToggleGroup
           multiple
@@ -87,16 +87,16 @@ export function LogStream({
           ))}
         </ToggleGroup>
         <Badge variant="secondary" className="tnum font-mono text-[10px]">
-          {filtered.length} lines
+          {filtered.length} dòng
         </Badge>
       </div>
 
       {filtered.length === 0 ? (
         <Empty className="flex-1">
           <EmptyHeader>
-            <EmptyTitle className="text-sm">No log lines match</EmptyTitle>
+            <EmptyTitle className="text-sm">Không có dòng nhật ký khớp</EmptyTitle>
             <EmptyDescription className="text-xs">
-              Widen the time window, clear the grep, or re-enable a severity level.
+              Mở rộng cửa sổ thời gian, xóa bộ lọc, hoặc bật lại mức nghiêm trọng.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>

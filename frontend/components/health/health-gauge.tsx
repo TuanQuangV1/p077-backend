@@ -201,134 +201,84 @@ export function HealthBadge({ score, status }: { score: number; status: HealthSt
   )
 }
 
-export interface HealthScoreCardProps {
-  metrics: {
-    formattedAvgRateHz: string
-    rateSubtext: string
-    formattedTotalSize: string
-    sizeValue: string
-    sizeUnit: string
-    bandwidthValue: string
-    bandwidthUnit: string
-    bandwidthSubtext: string
-    sensorAvailabilityPct: number
-    availabilityStatus: "healthy" | "degraded" | "critical"
-    availabilitySubtext: string
-    formattedDuration: string
-    durationSubtext: string
-    formattedMessages: string
-    messagesSubtext: string
-    totalTopics: number
-    healthyTopicsCount: number
-  }
-}
+export function HealthScoreCard({
+  score,
+  status,
+  worstSeverity,
+  topDropPct,
+  topDropTopic,
+  duration,
+  messageCount,
+}: {
+  score: number
+  status: HealthStatus
+  worstSeverity: string | null
+  topDropPct: number
+  topDropTopic: string | null
+  duration: number
+  messageCount: number
+}) {
+  const color = STATUS_COLORS[status]
+  const label = STATUS_LABELS[status]
 
-export function HealthScoreCard({ metrics }: HealthScoreCardProps) {
-  const {
-    formattedAvgRateHz,
-    rateSubtext,
-    sizeValue,
-    sizeUnit,
-    bandwidthSubtext,
-    sensorAvailabilityPct,
-    availabilityStatus,
-    availabilitySubtext,
-    formattedDuration,
-    durationSubtext,
-    formattedMessages,
-    messagesSubtext,
-    totalTopics,
-  } = metrics
+  const severityColor =
+    worstSeverity === "critical" ? "#dc3545"
+    : worstSeverity === "high" ? "#fd7e14"
+    : worstSeverity === "medium" ? "#ffc107"
+    : "#6c757d"
 
-  const availabilityColor =
-    availabilityStatus === "healthy"
-      ? "#28a745"
-      : availabilityStatus === "degraded"
-      ? "#ffc107"
-      : "#dc3545"
+  const dropColor =
+    topDropPct > 50 ? "#dc3545"
+    : topDropPct > 30 ? "#ffc107"
+    : "#6c757d"
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
-      {/* Card 1: System Message Rate */}
-      <div className="flex flex-col items-center justify-center rounded-xl border border-border/70 bg-card/60 p-4 text-center transition-colors hover:border-border hover:bg-card/80">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Tốc độ xử lý
-        </span>
-        <div className="my-1.5 flex items-baseline justify-center gap-1">
-          <span className="font-mono text-2xl font-bold tracking-tight text-foreground">
-            {formattedAvgRateHz}
-          </span>
-          <span className="text-xs font-medium text-cyan-400/90">Hz (msg/s)</span>
-        </div>
-        <div className="truncate max-w-full text-[11px] text-muted-foreground">
-          {rateSubtext}
+    <div className="grid gap-3 sm:grid-cols-4">
+      {/* Health Score */}
+      <div
+        className="flex flex-col items-center justify-center rounded-lg border p-4"
+        style={{ borderColor: `${color}40`, backgroundColor: `${color}05` }}
+      >
+        <HealthGauge score={score} status={status} size="sm" />
+        <div className="mt-2 text-center text-[10px] text-muted-foreground">
+          Điểm sức khỏe
         </div>
       </div>
 
-      {/* Card 2: Data Volume & Bandwidth */}
-      <div className="flex flex-col items-center justify-center rounded-xl border border-border/70 bg-card/60 p-4 text-center transition-colors hover:border-border hover:bg-card/80">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Dung lượng & Tải
+      {/* Worst Severity */}
+      <div className="flex flex-col items-center justify-center rounded-lg border p-4">
+        <span
+          className="text-2xl font-bold uppercase"
+          style={{ color: severityColor }}
+        >
+          {worstSeverity ?? "Ổn định"}
         </span>
-        <div className="my-1.5 flex items-baseline justify-center gap-1">
-          <span className="font-mono text-2xl font-bold tracking-tight text-foreground">
-            {sizeValue}
-          </span>
-          <span className="text-xs font-medium text-indigo-400/90">{sizeUnit}</span>
-        </div>
-        <div className="truncate max-w-full text-[11px] text-muted-foreground">
-          {bandwidthSubtext}
-        </div>
+        <span className="mt-1 text-[10px] text-muted-foreground">
+          Mức nghiêm trọng nhất
+        </span>
       </div>
 
-      {/* Card 3: Sensor Availability */}
-      <div className="flex flex-col items-center justify-center rounded-xl border border-border/70 bg-card/60 p-4 text-center transition-colors hover:border-border hover:bg-card/80">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Độ sẵn sàng cảm biến
+      {/* Top Drop */}
+      <div className="flex flex-col items-center justify-center rounded-lg border p-4">
+        <span
+          className="text-2xl font-bold tabular-nums"
+          style={{ color: dropColor }}
+        >
+          {topDropPct > 0 ? `-${topDropPct}%` : "0%"}
         </span>
-        <div className="my-1.5 flex items-baseline justify-center">
-          <span
-            className="font-mono text-2xl font-bold tracking-tight"
-            style={{ color: availabilityColor }}
-          >
-            {sensorAvailabilityPct}%
-          </span>
-        </div>
-        <div className="truncate max-w-full text-[11px] text-muted-foreground">
-          {availabilitySubtext}
-        </div>
+        <span className="mt-1 truncate max-w-full text-[10px] text-muted-foreground">
+          {topDropTopic ?? "Không giảm"}
+        </span>
       </div>
 
-      {/* Card 4: Recording Duration */}
-      <div className="flex flex-col items-center justify-center rounded-xl border border-border/70 bg-card/60 p-4 text-center transition-colors hover:border-border hover:bg-card/80">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Thời lượng ghi
+      {/* Duration */}
+      <div className="flex flex-col items-center justify-center rounded-lg border p-4">
+        <span className="text-2xl font-bold tabular-nums">
+          {Math.floor(duration / 60)}:{String(Math.floor(duration % 60)).padStart(2, "0")}
         </span>
-        <div className="my-1.5 flex items-baseline justify-center gap-1">
-          <span className="font-mono text-2xl font-bold tracking-tight text-foreground">
-            {formattedDuration}
-          </span>
-          <span className="text-xs font-medium text-violet-400/90">phút</span>
-        </div>
-        <div className="truncate max-w-full text-[11px] text-muted-foreground">
-          {durationSubtext}
-        </div>
-      </div>
-
-      {/* Card 5: Total Records / Messages */}
-      <div className="flex flex-col items-center justify-center rounded-xl border border-border/70 bg-card/60 p-4 text-center transition-colors hover:border-border hover:bg-card/80">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Tổng số bản ghi
+        <span className="mt-1 text-[10px] text-muted-foreground">
+          {messageCount.toLocaleString()} tin nhắn
         </span>
-        <div className="my-1.5 flex items-baseline justify-center gap-1">
-          <span className="font-mono text-2xl font-bold tracking-tight text-foreground">
-            {formattedMessages}
-          </span>
-          <span className="text-xs font-medium text-violet-400/90">msg</span>
-        </div>
-        <div className="truncate max-w-full text-[11px] text-muted-foreground">
-          {totalTopics} topics đang giám sát
-        </div>
       </div>
     </div>
   )

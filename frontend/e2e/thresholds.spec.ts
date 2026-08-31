@@ -16,7 +16,7 @@ test("loads, edits, and saves diagnostics thresholds", async ({ page }) => {
     await gap.fill("0.05")
     await page.getByTestId("save-thresholds").click()
 
-    await expect(page.getByText("Thresholds updated")).toBeVisible()
+    await expect(page.getByText("Đã cập nhật ngưỡng")).toBeVisible()
     await expect(gap).toHaveValue("0.05")
 
     await gap.fill("0.08")

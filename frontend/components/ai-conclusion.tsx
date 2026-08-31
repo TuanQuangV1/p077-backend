@@ -30,11 +30,24 @@ export function setReviewer(name: string): void {
     if (typeof window !== "undefined") window.localStorage.setItem(REVIEWER_KEY, name)
 }
 
-/** "2026-08-12T05:04:23Z" -> "12 Aug 12:04" for the reviewed-at badge. */
+/** "2026-08-12T05:04:23Z" -> "12 thg 8 12:04" for the reviewed-at badge. */
 function reviewedStamp(iso: string): string {
     const d = new Date(iso)
     if (Number.isNaN(d.getTime())) return ""
-    return d.toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })
+    return d.toLocaleString("vi-VN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })
+}
+
+const REVIEW_STATUS_LABEL: Record<string, string> = {
+    pending: "chờ duyệt",
+    approved: "đã duyệt",
+    rejected: "từ chối",
+    edited: "đã sửa",
+}
+
+const VERDICT_TOAST_LABEL: Record<string, string> = {
+    approved: "Đã duyệt",
+    rejected: "Đã từ chối",
+    edited: "Đã sửa",
 }
 
 /**
@@ -48,14 +61,12 @@ export function AIConclusion({
   onSeek,
   onReviewed,
   compact = false,
-  className,
 }: {
   result: AIResult
   anomaly?: Anomaly
   onSeek?: (t: number) => void
   onReviewed?: (result: AIResult) => void
   compact?: boolean
-  className?: string
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(result.rootCause)
@@ -70,7 +81,7 @@ export function AIConclusion({
       const suffix = result.id.replace(/^ai_/, "")
       const reviewId = `review_${result.runId}_${suffix}`
       const combinedNotes = verdict === "edited"
-        ? `Corrected root cause: ${draft}${notes ? ` — ${notes}` : ""}`
+        ? `Nguyên nhân đã sửa: ${draft}${notes ? ` — ${notes}` : ""}`
         : notes || undefined
       const reviewer = getReviewer()
       const saved = await post<{ reviewer: string }>(`/api/review/${reviewId}/decision`, {
@@ -78,7 +89,7 @@ export function AIConclusion({
         reviewer,
         notes: combinedNotes,
       })
-      toast.success("Đã ghi nhận đánh giá", { description: result.issue })
+      toast.success(`Đã ghi nhận: ${VERDICT_TOAST_LABEL[verdict] ?? verdict}`, { description: result.issue })
       setEditing(false)
       onReviewed?.({
         ...result,
@@ -89,28 +100,22 @@ export function AIConclusion({
         reviewedAt: new Date().toISOString(),
       })
     } catch {
-      toast.error("Không thể lưu đánh giá")
+      toast.error("Không thể ghi nhận quyết định")
     } finally {
       setBusy(false)
     }
   }
 
   const reviewed = result.reviewStatus !== "pending"
-  const reviewStatusVi: Record<string, string> = {
-    approved: "đã phê duyệt",
-    rejected: "đã từ chối",
-    edited: "đã chỉnh sửa",
-    pending: "chờ duyệt",
-  }
 
   return (
-    <Card className={cn("gap-3 py-4", compact && "border-border/70", className)}>
+    <Card className={cn("gap-3 py-4", compact && "border-border/70")}>
       <CardHeader className="gap-2 px-4">
         <div className="flex flex-wrap items-center gap-2">
           {anomaly ? <SeverityBadge severity={anomaly.severity} /> : null}
           <Badge variant="outline" className="gap-1 font-mono text-[10px]">
             <SparklesIcon className="size-3" />
-            {result.model.replace("vllm/", "")}
+            {result.model.split("/").pop() ?? result.model}
           </Badge>
           {reviewed ? (
             <Badge
@@ -122,7 +127,7 @@ export function AIConclusion({
                 result.reviewStatus === "edited" && "border-primary/40 bg-primary/10 text-primary",
               )}
             >
-              {reviewStatusVi[result.reviewStatus] ?? result.reviewStatus}
+              {REVIEW_STATUS_LABEL[result.reviewStatus] ?? result.reviewStatus}
               {result.reviewedAt ? ` · ${reviewedStamp(result.reviewedAt)}` : ""}
               {result.reviewer ? ` · ${result.reviewer}` : ""}
             </Badge>
@@ -142,7 +147,7 @@ export function AIConclusion({
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between gap-3">
             <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              Độ tin cậy của AI
+              Độ tin cậy AI
             </span>
             <span className="font-mono text-xs tabular-nums">{(result.confidence * 100).toFixed(0)}%</span>
           </div>
@@ -239,52 +244,34 @@ export function AIConclusion({
         ) : null}
       </CardContent>
 
-      <CardFooter className="flex flex-wrap items-center justify-between gap-3 border-t border-border/70 bg-muted/10 px-4 py-3">
+      <CardFooter className="flex flex-wrap items-center gap-2 px-4">
         {editing ? (
-          <div className="flex items-center gap-2">
-            <Button size="sm" onClick={() => submit("edited")} disabled={busy} className="cursor-pointer gap-1.5">
-              <CheckIcon className="size-3.5" />
-              <span>Lưu chỉnh sửa</span>
+          <>
+            <Button size="sm" onClick={() => submit("edited")} disabled={busy}>
+              <CheckIcon data-icon="inline-start" />
+              Lưu chỉnh sửa
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={busy} className="cursor-pointer">
+            <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={busy}>
               Hủy
             </Button>
-          </div>
+          </>
         ) : (
           <>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => submit("approved")}
-                disabled={busy}
-                className="gap-1.5 border-emerald-500/40 bg-emerald-500/10 text-xs font-semibold text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300 transition-colors cursor-pointer"
-              >
-                <CheckIcon className="size-3.5 text-emerald-400" />
-                <span>Phê duyệt</span>
+            <ButtonGroup>
+              <Button size="sm" variant="outline" onClick={() => submit("approved")} disabled={busy}>
+                <CheckIcon data-icon="inline-start" className="text-ok" />
+                Phê duyệt
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => submit("rejected")}
-                disabled={busy}
-                className="gap-1.5 border-rose-500/40 bg-rose-500/10 text-xs font-semibold text-rose-400 hover:bg-rose-500/20 hover:text-rose-300 transition-colors cursor-pointer"
-              >
-                <XIcon className="size-3.5 text-rose-400" />
-                <span>Từ chối</span>
+              <Button size="sm" variant="outline" onClick={() => submit("rejected")} disabled={busy}>
+                <XIcon data-icon="inline-start" className="text-critical" />
+                Từ chối
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setEditing(true)}
-                disabled={busy}
-                className="gap-1.5 border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
-              >
-                <PencilIcon className="size-3.5" />
-                <span>Chỉnh sửa</span>
+              <Button size="sm" variant="outline" onClick={() => setEditing(true)} disabled={busy}>
+                <PencilIcon data-icon="inline-start" />
+                Sửa đổi
               </Button>
-            </div>
-            <span className="ml-auto font-mono text-[10px] text-muted-foreground">{result.vllmRequestId}</span>
+            </ButtonGroup>
+            <span className="ml-auto font-mono text-[10px] text-muted-foreground">{result.llmRequestId}</span>
           </>
         )}
       </CardFooter>

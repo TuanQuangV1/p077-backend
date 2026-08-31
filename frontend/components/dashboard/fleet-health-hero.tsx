@@ -62,7 +62,7 @@ export function FleetHealthHero({
                 {statusText}
               </Badge>
               <span className="text-xs font-mono text-muted-foreground hidden sm:inline">
-                · ROS2 Doctor + VLLM Engine
+                · ROS2 Doctor + LLM Agent
               </span>
             </div>
             <h2 className="text-lg font-bold tracking-tight text-foreground sm:text-xl">

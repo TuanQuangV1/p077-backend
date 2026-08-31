@@ -52,17 +52,38 @@ fi
 
 chown 1000:1000 /opt/app/data 2>/dev/null || true
 
-log "installing docker from download.docker.com (Debian 12 has no docker-compose-plugin)..."
-apt-get update -y
-apt-get install -y curl ca-certificates gnupg
+log "installing docker from download.docker.com (Debian stock repos have no docker-compose-plugin)..."
+export DEBIAN_FRONTEND
+apt_retry() {
+  for attempt in 1 2 3; do
+    if "$@"; then return 0; fi
+    log "attempt $attempt of '$*' failed; retrying in 10s..."
+    sleep 10
+  done
+  return 1
+}
+
+apt_retry apt-get update -y
+apt_retry apt-get install -y curl ca-certificates gnupg
 
 install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" \
+# Codename comes from the OS itself so a future Debian upgrade (trixie...)
+# does not silently point the repo at bookworm.
+. /etc/os-release
+curl_retry() {
+  for attempt in 1 2 3; do
+    if curl -fsSL --retry 3 --retry-delay 5 "$1" -o "$2"; then return 0; fi
+    log "attempt $attempt of downloading $1 failed; retrying in 10s..."
+    sleep 10
+  done
+  return 1
+}
+curl_retry https://download.docker.com/linux/debian/gpg /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $${VERSION_CODENAME} stable" \
   > /etc/apt/sources.list.d/docker.list
 
-apt-get update -y
-apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+apt_retry apt-get update -y
+apt_retry apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 systemctl enable --now docker
 
 log "docker versions:"

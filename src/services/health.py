@@ -64,16 +64,44 @@ _SEVERITY_PENALTY: dict[str, float] = {
 # Color zones: green >= GREEN_THRESHOLD, yellow >= YELLOW_THRESHOLD, else red.
 GREEN_THRESHOLD = 80.0
 YELLOW_THRESHOLD = 60.0
-# LLM deep-dive is triggered when the composite score drops below this.
+# LLM deep-dive is triggered when the composite score reaches or drops below
+# this. `<=` (not `<`): a saturated subscore lands runs exactly on 70.0 (see
+# `_subscore`'s cap at 0), and that's precisely the boundary case that most
+# needs a deep-dive, not one to wave through.
 DEEP_DIVE_TRIGGER_THRESHOLD = 70.0
 
 
+def should_deep_dive(score: float, threshold: float = DEEP_DIVE_TRIGGER_THRESHOLD) -> bool:
+    """Whether a health score warrants an LLM deep-dive.
+
+    The single source of truth for this comparison — `compute_health_summary`
+    and `GET /analysis/{run_id}/deep-dive` used to each write their own `<=`
+    vs `<` check and disagreed at exactly `DEEP_DIVE_TRIGGER_THRESHOLD`
+    (70.0), the single most common score in this system (57% of runs with any
+    detection land there, since `_subscore` saturates at 0). One endpoint said
+    "trigger" and the other said "not triggered" for the same run.
+    """
+    return score <= threshold
+
+
 def _subscore(severities: list[str]) -> float:
-    """Score one indicator group from its detection severities."""
+    """Score one indicator group from its detection severities.
+
+    Each detection multiplies the running score by ``1 - penalty/100`` rather
+    than subtracting the penalty outright, so a single detection still costs
+    exactly its full penalty (`100 * (1 - penalty/100) == 100 - penalty`,
+    matching the old linear formula) but the score decays geometrically
+    instead of hitting a hard floor. Four "high" detections (penalty 30) used
+    to clamp to 0 exactly like forty of them — indistinguishable, and the
+    single most common score in the system (57% of runs with any detection)
+    was this saturated floor composited across groups. Geometric decay never
+    reaches exactly 0, so a group with more detections always scores strictly
+    lower than the same group with fewer, however severe either already is.
+    """
     score = 100.0
     for severity in severities:
-        score -= _SEVERITY_PENALTY.get(severity, 5.0)
-    return max(0.0, round(score, 1))
+        score *= 1.0 - _SEVERITY_PENALTY.get(severity, 5.0) / 100.0
+    return round(score, 1)
 
 
 def _color_zone(score: float) -> str:
@@ -124,7 +152,7 @@ def compute_health_summary(
             "yellow_min": YELLOW_THRESHOLD,
             "red_max": 0.0,
         },
-        "trigger_llm_deep_dive": score <= DEEP_DIVE_TRIGGER_THRESHOLD,
+        "trigger_llm_deep_dive": should_deep_dive(score),
         "summary": {
             "total_messages": total_messages,
             "total_detections": len(detections),

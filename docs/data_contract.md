@@ -17,6 +17,10 @@ Output of `GET /api/v1/datasets` and the upload endpoint. Backed by
   "recordedAt": "1970-01-01T00:00:00+00:00",
   "uploadedAt": "1970-01-01T00:00:00+00:00",
   "status": "uploaded",
+  "analysisStatus": "not_analyzed",
+  "analysisAnomalyCount": null,
+  "worstSeverity": null,
+  "lastRunId": null,
   "messageCount": 2,
   "topics": [
     {
@@ -42,6 +46,8 @@ The dataset items are produced by `_read_bagfile_info()` in
 | `.db3` | no | `_read_bagfile_info_from_db3` (sqlite scan of `topics` + `messages`) | derived counts, min/max `timestamp` for duration |
 | `.mcap` | no | `_read_bagfile_info_from_mcap` (`rosbags.highlevel.AnyReader` walk) | derived counts, min/max observed `timestamp` for duration |
 | `.bag` | any | none | folder is skipped (returns `None`) |
+
+The `analysisStatus` family is enriched at read time from the latest `runs` row for that `id` (`not_analyzed` when no run exists, otherwise `succeeded`/`failed`/`running`/`queued` with `analysisAnomalyCount`/`worstSeverity`/`lastRunId`). The raw `status` field remains `"uploaded"` for backward compatibility.
 
 A flat `.db3` or `.mcap` upload **never** gets a fabricated `metadata.yaml` —
 the same dict shape is produced either way, so downstream consumers

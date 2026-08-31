@@ -20,20 +20,29 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     cors_origins: str = "http://localhost:3000"
 
-    # Security
+    # Auth (JWT)  # noqa: ERA001
+    auth_username: str = "admin"
+    auth_password: str = ""
+    auth_password_hash: str = ""
+    jwt_secret: str = ""
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = Field(default=60, ge=1, le=1440)
+
+    # Legacy (deprecated) - kept for backwards compat env parsing
     api_auth_token: str = ""
 
     # LLM
     openai_api_key: str = ""
-    model_name: str = "gpt-4o-mini"
+    model_name: str = "gpt-4.1"
     llm_temperature: float = Field(default=0.2, ge=0.0, le=2.0)
-    llm_provider: Literal["openai", "vllm", "anthropic"] = "openai"
-    vllm_base_url: str = ""
-    vllm_api_key: str = "EMPTY"
-    vllm_model_name: str = "qwen2.5-coder-32b"
+    llm_provider: Literal["openai", "anthropic"] = "openai"
+    llm_language: Literal["vi", "en"] = "vi"
     anthropic_api_key: str = ""
     anthropic_model_name: str = "claude-sonnet-4-5"
     anthropic_max_tokens: int = Field(default=1024, ge=1, le=8192)
+    # Output cap applied to every completion request (OpenAI/Anthropic). Without it
+    # a single /chat call can bill thousands of output tokens (LLM10).
+    llm_max_tokens: int = Field(default=1024, ge=1, le=8192)
 
     # HILT (human-in-the-loop) iterative debug triggers
     hilt_max_iterations: int = 5

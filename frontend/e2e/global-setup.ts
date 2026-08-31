@@ -1,4 +1,6 @@
 import { request } from "@playwright/test"
+import * as fs from "fs"
+import * as path from "path"
 
 /**
  * Seeds persisted analysis runs before the suite starts.
@@ -11,6 +13,15 @@ import { request } from "@playwright/test"
  */
 const API = "http://localhost:8000"
 const SEED_DATASETS = ["h01", "f02"]
+
+async function loginAsAdmin(api: Awaited<ReturnType<typeof request.newContext>>): Promise<string> {
+    const res = await api.post("/api/v1/auth/login", {
+        data: { username: "admin", password: "test-pass" },
+    })
+    if (!res.ok()) throw new Error(`admin login failed: ${res.status()} ${await res.text()}`)
+    const body = (await res.json()) as { access_token: string }
+    return body.access_token
+}
 
 async function waitForRun(api: Awaited<ReturnType<typeof request.newContext>>, runId: string): Promise<void> {
     const deadline = Date.now() + 120_000
@@ -26,9 +37,15 @@ async function waitForRun(api: Awaited<ReturnType<typeof request.newContext>>, r
 }
 
 export default async function globalSetup(): Promise<void> {
-    const api = await request.newContext({ baseURL: API })
+    const api = await request.newContext({ baseURL: API, timeout: 120_000 })
+    let adminToken = ""
     try {
-        const listRes = await api.get("/api/v1/datasets")
+        // Login to get JWT for per-user isolation (admin owns seeded datasets)
+        const token = await loginAsAdmin(api)
+        adminToken = token
+        const authHeaders = { Authorization: `Bearer ${token}` }
+
+        const listRes = await api.get("/api/v1/datasets", { headers: authHeaders })
         if (!listRes.ok()) throw new Error(`datasets endpoint failed: ${listRes.status()}`)
         const { items } = (await listRes.json()) as { items: Array<{ id: string }> }
         const present = new Set(items.map((item) => item.id))
@@ -46,13 +63,52 @@ export default async function globalSetup(): Promise<void> {
         }
 
         for (const datasetId of SEED_DATASETS) {
-            const res = await api.post("/api/v1/analysis", { data: { rosbag_id: datasetId } })
+            const res = await api.post("/api/v1/analysis", {
+                headers: authHeaders,
+                data: { rosbag_id: datasetId },
+            })
             if (!res.ok()) {
                 throw new Error(`analysis for ${datasetId} failed: ${res.status()} ${await res.text()}`)
             }
             const body = (await res.json()) as { run: { id: string; status: string } }
-            if (body.run.status !== "succeeded") await waitForRun(api, body.run.id)
+            if (body.run.status !== "succeeded") {
+                // waitForRun needs auth headers too
+                const waitApi = await request.newContext({ baseURL: API, extraHTTPHeaders: authHeaders, timeout: 120_000 })
+                try {
+                    await waitForRun(waitApi, body.run.id)
+                } finally {
+                    await waitApi.dispose()
+                }
+            }
             console.log(`seeded analysis run ${body.run.id} (${body.run.status})`)
+        }
+
+        // Save storageState for authenticated e2e tests (admin) — cần cả cookie cho proxy middleware và localStorage cho lib/api
+        if (adminToken) {
+            const storagePath = path.join(__dirname, ".auth", "admin.json")
+            await fs.promises.mkdir(path.dirname(storagePath), { recursive: true })
+            const storage = {
+                cookies: [
+                    {
+                        name: "auth_token",
+                        value: adminToken,
+                        domain: "localhost",
+                        path: "/",
+                        expires: -1,
+                        httpOnly: false,
+                        secure: false,
+                        sameSite: "Lax",
+                    },
+                ],
+                origins: [
+                    {
+                        origin: "http://localhost:3000",
+                        localStorage: [{ name: "auth_token", value: adminToken }],
+                    },
+                ],
+            }
+            await fs.promises.writeFile(storagePath, JSON.stringify(storage, null, 2))
+            console.log(`saved admin storageState to ${storagePath}`)
         }
     } finally {
         await api.dispose()

@@ -105,6 +105,13 @@ export interface Rosbag {
   topics: TopicStat[]
   site: string
   rosVersion: string
+  // Enriched at read time from the latest AnalysisRun for this rosbag.
+  // `status` is always "uploaded" (upload persistence), whereas
+  // analysisStatus reflects the diagnosis lifecycle.
+  analysisStatus?: string | null
+  analysisAnomalyCount?: number | null
+  worstSeverity?: Severity | null
+  lastRunId?: string | null
 }
 
 export interface AnalysisRun {
@@ -176,7 +183,7 @@ export interface AIResult {
   latencyMs: number
   promptTokens: number
   completionTokens: number
-  vllmRequestId: string
+  llmRequestId: string
   reviewer?: string | null
   reviewerNote?: string | null
   reviewedAt?: string | null
@@ -216,12 +223,9 @@ export interface Feedback {
   createdAt: string
 }
 
-export interface VllmPoint {
+export interface LlmPoint {
   t: string
-  gpuUtil: number
-  vramUsedGb: number
   tokensPerSec: number
-  batchSize: number
   queueLen: number
   p50: number
   p95: number
@@ -231,9 +235,9 @@ export interface VllmPoint {
   tokensOut: number
 }
 
-export type VllmRequestStatus = "ok" | "timeout" | "oom" | "error"
+export type LlmRequestStatus = "ok" | "timeout" | "error"
 
-export interface VllmRequest {
+export interface LlmRequest {
   id: string
   ts: string
   runId: string | null
@@ -247,7 +251,7 @@ export interface VllmRequest {
   prefillMs: number
   decodeMs: number
   detokenizeMs: number
-  status: VllmRequestStatus
+  status: LlmRequestStatus
   model: string
   costUsd: number
   error?: string
@@ -305,7 +309,7 @@ export interface SimulationData {
 }
 
 export interface StreamEvent {
-  type: "job.progress" | "log" | "vllm.tick"
+  type: "job.progress" | "log" | "llm.tick"
   ts: string
   payload: Record<string, unknown>
 }

@@ -19,23 +19,53 @@ cd C2-App-XXX
 # Tạo virtual environment
 python3 -m venv .venv
 source .venv/bin/activate  # macOS/Linux
+# Windows PowerShell:
+# python -m venv .venv; .\.venv\Scripts\Activate.ps1
 
 # Cài dependencies
-pip install -r requirements.txt
+pip install -e ".[dev]"
 
 # Tạo .env từ template
 cp .env.example .env
-# → Mở .env và điền API keys
+# → Mở .env và điền API keys + JWT auth
+```
+
+> **Auth (bắt buộc cho prod, dev có bypass):**
+> ```env
+> JWT_SECRET=dev-insecure-jwt-secret-change-me-32-chars-minimum-length
+> AUTH_USERNAME=admin
+> AUTH_PASSWORD=test-pass
+> # hoặc AUTH_PASSWORD_HASH=$2b$12$...
+> JWT_EXPIRE_MINUTES=60
+> ```
+> * `JWT_SECRET` ≥32 ký tự. Dev/Test có thể để rỗng để bypass open (`APP_ENV != production` → không cần token). **Production thiếu `JWT_SECRET` → `503` fail-closed.**
+> * Mọi `/api/v1/*` (trừ `/auth/login`, `/auth/signup`, `/auth/verify`, `/health`) yêu cầu `Authorization: Bearer <JWT>`.
+> * `docker compose up` hardcode `APP_ENV=production` (`docker-compose.yml:12`) nên phải có `JWT_SECRET` trong `.env` mới chạy được.
+
+```bash
+# Lấy token thủ công (dev):
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"test-pass"}'
+# → copy access_token rồi:
+curl http://localhost:8000/api/v1/datasets \
+  -H "Authorization: Bearer <token>"
 ```
 
 ### Bước 3: Verify Setup
 
 ```bash
 # Chạy server
-uvicorn src.main:app --reload
+uvicorn src.main:app --reload --port 8000
 
 # Mở browser: http://localhost:8000/docs
-# → Phải thấy Swagger UI
+# → Phải thấy Swagger UI (nếu JWT bật, click Authorize và dán Bearer token từ /auth/login)
+```
+
+**Verify auth:**
+```bash
+curl http://localhost:8000/api/v1/datasets
+# Dev không JWT: 200 (bypass) | Prod hoặc dev có JWT: 401 {"detail":"invalid or missing JWT token"}
 ```
 
 ### Bước 4: Git Setup

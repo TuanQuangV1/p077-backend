@@ -8,4 +8,5 @@
 /blob-report/
 .env*.local
 *.tsbuildinfo
+/e2e/.auth/
 .vercel

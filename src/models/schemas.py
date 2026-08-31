@@ -1,6 +1,6 @@
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 
 class ChatRequest(BaseModel):
@@ -25,6 +25,17 @@ class DatasetItem(BaseModel):
     topics: list[dict[str, object]] = Field(default_factory=list)
     site: str
     rosVersion: str
+    # Derived analysis state — not persisted with the bag, enriched at read time
+    # from the latest run for this dataset (if any). Lets the registry replace
+    # the always-"uploaded" upload status with a useful per-dataset diagnosis state.
+    analysisStatus: str | None = Field(
+        default=None,
+        description="Latest analysis run status for this dataset (e.g. not_analyzed, succeeded, failed, running, queued)",
+    )
+    analysisAnomalyCount: int | None = Field(default=None, description="Anomaly count of the latest run")
+    worstSeverity: str | None = Field(default=None, description="Worst severity of the latest run")
+    lastRunId: str | None = Field(default=None, description="ID of the latest run for this dataset")
+    duplicateOf: str | None = None
 
 
 class DatasetListResponse(BaseModel):
@@ -76,6 +87,8 @@ class EvidenceItem(BaseModel):
 
 
 class AIResultSummary(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     id: str
     runId: str
     anomalyId: str
@@ -90,10 +103,34 @@ class AIResultSummary(BaseModel):
     latencyMs: int
     promptTokens: int
     completionTokens: int
-    vllmRequestId: str
+    llmRequestId: str = Field(
+        default="",
+        validation_alias=AliasChoices("llmRequestId", "vllmRequestId", "requestId"),
+    )
     reviewer: str | None = None
     reviewerNote: str | None = None
     reviewedAt: str | None = None
+
+    @field_validator("llmRequestId", mode="before")
+    @classmethod
+    def _coerce_llm_request_id(cls, v: Any) -> str:
+        if v is None or v == "":
+            return ""
+        return str(v)
+
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:  # type: ignore[override]
+        data = super().model_dump(**kwargs)
+        # Keep both legacy keys for forward compat (frontend may read any of them)
+        if self.llmRequestId:
+            if "vllmRequestId" not in data:
+                data["vllmRequestId"] = self.llmRequestId
+            if "requestId" not in data:
+                data["requestId"] = self.llmRequestId
+        return data
+
+    @property
+    def requestId(self) -> str:  # compat for code that accesses .requestId
+        return self.llmRequestId
 
 
 class RunRootCause(BaseModel):
@@ -210,6 +247,11 @@ class OverviewTopIssue(BaseModel):
     kind: str | None = None
 
 
+class RunListResponse(BaseModel):
+    items: list[AnalysisRun]
+    total: int
+
+
 class DashboardOverviewResponse(BaseModel):
     totals: OverviewTotals
     topIssues: list[OverviewTopIssue]
@@ -318,3 +360,39 @@ class HiltFixResponse(BaseModel):
 
 class HiltTriggerReason(BaseModel):
     reason: str
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=64, description="Tên đăng nhập")
+    password: str = Field(..., min_length=1, max_length=128, description="Mật khẩu")
+
+
+class LoginResponse(BaseModel):
+    access_token: str = Field(..., description="JWT access token")
+    token_type: str = Field(default="Bearer", description="Token type")
+    expires_in: int = Field(..., description="Thời gian hết hạn tính bằng giây")
+    username: str = Field(..., description="Tên user đã xác thực")
+
+
+class VerifyResponse(BaseModel):
+    valid: bool = Field(..., description="Token có hợp lệ không")
+    username: str | None = Field(default=None, description="Username từ token nếu valid")
+    expires_at: str | None = Field(default=None, description="Thời gian hết hạn ISO8601")
+
+
+class LogoutResponse(BaseModel):
+    ok: bool = Field(..., description="Logout thành công")
+    message: str = Field(..., description="Thông báo")
+
+
+class SignupRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=64, description="Tên đăng nhập")
+    password: str = Field(..., min_length=6, max_length=128, description="Mật khẩu")
+    confirm_password: str = Field(..., min_length=6, max_length=128, description="Xác nhận mật khẩu")
+
+
+class SignupResponse(BaseModel):
+    access_token: str = Field(..., description="JWT access token")
+    token_type: str = Field(default="Bearer", description="Token type")
+    expires_in: int = Field(..., description="Thời gian hết hạn tính bằng giây")
+    username: str = Field(..., description="Tên user vừa tạo")

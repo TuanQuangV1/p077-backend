@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api.routes import router
+from src.api.routes import protected_router, public_router
 from src.config import get_settings
 from src.services import perf
 
@@ -43,7 +43,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(router, prefix="/api/v1")
+app.include_router(public_router, prefix="/api/v1")
+app.include_router(protected_router, prefix="/api/v1")
 
 
 @app.middleware("http")
@@ -87,4 +88,14 @@ async def measure_request(
 
 @app.get("/health")
 async def health() -> dict[str, str]:
+    # Light liveness check that also verifies DB is reachable; never throws 500 for health probes
+    try:
+        import anyio
+
+        from src.services import run_store
+
+        await anyio.to_thread.run_sync(lambda: run_store.list_runs(None)[:1])
+    except Exception:
+        # DB unreachable still returns 200 but with degraded status so orchestrator can decide
+        return {"status": "degraded", "env": settings.app_env}
     return {"status": "ok", "env": settings.app_env}

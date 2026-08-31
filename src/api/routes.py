@@ -6,21 +6,27 @@ survives restarts and tests stay isolated. Optional API-token auth and
 in-memory rate limiting protect the public endpoints.
 """
 
+import datetime
 import functools
-import hmac
 import logging
 import os
 import json
+import time
 from collections import Counter, defaultdict
 from collections.abc import Iterator
 from itertools import chain
 from pathlib import Path
 from typing import Any
 
+import jwt
+
+from src.services import auth as auth_service
+
 import anyio
 import httpx
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Body,
     Depends,
     File,
@@ -28,6 +34,7 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    Response,
     UploadFile,
     status,
 )
@@ -57,15 +64,22 @@ from src.models.schemas import (
     HiltFixRequest,
     HiltFixResponse,
     HiltSummary,
+    LoginRequest,
+    LoginResponse,
+    LogoutResponse,
     ReviewItem,
     ReviewListResponse,
     ReviewStatsResponse,
     ReviewStatsRun,
+    RunListResponse,
     RunRootCause,
+    SignupRequest,
+    SignupResponse,
+    VerifyResponse,
 )
 from src.services import run_store
 from src.services.analysis import (
-    _KIND_LABELS,
+    _kind_labels,
     _anomaly_summaries,
     _build_ai_results,
     run_analysis,
@@ -74,7 +88,12 @@ from src.services.analysis import (
 from src.services.bag_stream import iter_bag_messages
 from src.services.diagnostics import detect_anomalies, parse_mcap_file
 from src.services.diagnostics_config import get_diagnostics_thresholds, save_diagnostics_thresholds
-from src.services.health import DEEP_DIVE_TRIGGER_THRESHOLD, build_deep_dive_prompt, compute_health_summary
+from src.services.health import (
+    DEEP_DIVE_TRIGGER_THRESHOLD,
+    build_deep_dive_prompt,
+    compute_health_summary,
+    should_deep_dive,
+)
 from src.services.iterative_debug import IterativeDebugger
 from src.services.rate_limit import SlidingWindowRateLimiter
 from src.services.window_export import iter_window_jsonl_lines
@@ -85,50 +104,361 @@ from src.services.experiments import (
     list_experiments,
     save_uploaded_rosbag,
 )
+from src.services.leak_guard import response_is_safe
 from src.services.llm import (
     CHAT_SYSTEM_PROMPT,
     chat_completion,
+    check_llm_health,
     explain_diagnostics,
     is_llm_configured,
 )
 
 logger = logging.getLogger(__name__)
 
+_BLOCKED_RESPONSE_TEXT = (
+    "Response blocked by security filter: the model output failed the "
+    "prompt-injection leak check. Please rephrase your request."
+)
+
 _RATE_LIMIT_MAX_REQUESTS = int(os.environ.get("RATE_LIMIT_MAX_REQUESTS", "120"))
 _RATE_LIMIT_WINDOW_SEC = float(os.environ.get("RATE_LIMIT_WINDOW_SEC", "60"))
 
 _rate_limiter = SlidingWindowRateLimiter(_RATE_LIMIT_MAX_REQUESTS, _RATE_LIMIT_WINDOW_SEC)
 
+# Stricter rate limiter for login (brute-force protection)
+_LOGIN_RATE_LIMIT_MAX = int(os.environ.get("LOGIN_RATE_LIMIT_MAX", "5"))
+_LOGIN_RATE_LIMIT_WINDOW_SEC = float(os.environ.get("LOGIN_RATE_LIMIT_WINDOW_SEC", "60"))
+_login_rate_limiter = SlidingWindowRateLimiter(_LOGIN_RATE_LIMIT_MAX, _LOGIN_RATE_LIMIT_WINDOW_SEC)
+
+
+def _extract_bearer_token(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    if not authorization.startswith("Bearer "):
+        return None
+    token = authorization[7:].strip()
+    return token if token else None
+
+
+def get_current_user(authorization: str | None = Header(default=None)) -> str:
+    """Return current username from JWT, or 'admin' when auth bypassed in non-prod."""
+    settings = get_settings()
+    jwt_secret = getattr(settings, "jwt_secret", "")
+    app_env = getattr(settings, "app_env", "development")
+    if not jwt_secret:
+        if app_env != "production":
+            return "admin"
+        raise HTTPException(status_code=503, detail="JWT_SECRET not configured")
+
+    token = _extract_bearer_token(authorization)
+    if not token:
+        raise HTTPException(status_code=401, detail="invalid or missing JWT token")
+    try:
+        payload = auth_service.decode_token(token)
+        sub = payload.get("sub")
+        if not sub or not isinstance(sub, str):
+            raise HTTPException(status_code=401, detail="invalid JWT token: missing sub")
+        return sub
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="JWT token expired") from None
+    except jwt.InvalidTokenError as exc:
+        raise HTTPException(status_code=401, detail=f"invalid JWT token: {exc}") from exc
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=401, detail="invalid JWT token") from None
+
 
 def _require_auth(authorization: str | None = Header(default=None)) -> None:
-    """Reject requests unless they carry the configured API token.
+    """100% JWT auth — no static API_AUTH_TOKEN fallback.
 
-    No-op when ``API_AUTH_TOKEN`` is unset (development default), which keeps
-    the frontend and local tooling working without extra headers.
+    Validates ``Authorization: Bearer <JWT>`` via :mod:`src.services.auth`.
+    Raises 401 if missing/invalid/expired/revoked.
+    In non-production, when JWT_SECRET is not configured, auth is bypassed
+    (open) to keep local dev and existing tests working without token.
+    In production, missing secret fails closed with 503.
     """
-    token = get_settings().api_auth_token
-    if not token:
-        return
-    if authorization is None or not hmac.compare_digest(authorization, f"Bearer {token}"):
-        raise HTTPException(status_code=401, detail="invalid or missing API token")
+    # Delegate to get_current_user for validation; discard username
+    get_current_user(authorization)
+
+
+def _require_llm_auth(authorization: str | None = Header(default=None)) -> None:
+    """Mandatory JWT auth for LLM endpoints.
+
+    In production, if JWT_SECRET is not configured (empty and fallback is
+    insecure), fail closed with 503 instead of allowing anonymous LLM usage.
+    """
+    settings = get_settings()
+    jwt_secret = getattr(settings, "jwt_secret", "")
+    app_env = getattr(settings, "app_env", "development")
+    # Fail closed in production when JWT secret is not properly configured
+    if app_env == "production" and not jwt_secret:
+        raise HTTPException(
+            status_code=503,
+            detail="LLM endpoints require JWT_SECRET to be configured",
+        )
+    # Delegate to standard JWT check
+    _require_auth(authorization)
+
+
+def _check_login_rate_limit(request: Request) -> None:
+    """Rate limit for login keyed by client IP + username attempt."""
+    # Reuse same IP extraction logic as _check_rate_limit but with login limiter
+    client_host = request.client.host if request.client else None
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if _TRUST_PROXY:
+        key_candidate: str | None = None
+        if forwarded_for:
+            parts = [p.strip() for p in forwarded_for.split(",") if p.strip()]
+            if parts:
+                key_candidate = parts[-_TRUST_PROXY_HOPS] if len(parts) >= _TRUST_PROXY_HOPS else parts[0]
+                if key_candidate:
+                    key_candidate = key_candidate.strip()
+                    if ":" in key_candidate and key_candidate.count(":") == 1 and "." in key_candidate:
+                        key_candidate = key_candidate.split(":")[0]
+                    if not key_candidate:
+                        key_candidate = None
+        if not key_candidate:
+            x_real = request.headers.get("x-real-ip")
+            if x_real and x_real.strip():
+                key_candidate = x_real.strip().split(":")[0]
+        key = key_candidate or client_host or "unknown"
+    else:
+        key = client_host or "unknown"
+    # Differentiate by endpoint to avoid cross-polluting with general limiter
+    key = f"login:{key}"
+    if not _login_rate_limiter.allow(key):
+        raise HTTPException(status_code=429, detail="rate limit exceeded")
+
+
+# Whether the deployment sits behind a trusted reverse proxy (nginx) whose
+# X-Forwarded-For header can be believed. Only set TRUST_PROXY=1 in
+# environments where the proxy is trusted; otherwise a client could spoof
+# unlimited fresh rate-limit buckets.
+_TRUST_PROXY_RAW = os.environ.get("TRUST_PROXY", "").strip()
+_TRUST_PROXY = _TRUST_PROXY_RAW.lower() in ("1", "true", "yes") or (
+    _TRUST_PROXY_RAW.isdigit() and int(_TRUST_PROXY_RAW) >= 1
+)
+
+# How many trusted proxy hops to peel from the right of X-Forwarded-For.
+# With `TRUST_PROXY_HOPS=1` (default) the last entry is trusted (single nginx
+# using ``$proxy_add_x_forwarded_for``). With an extra load balancer in front
+# of nginx set ``TRUST_PROXY_HOPS=2`` — otherwise the last entry is an
+# internal IP and all external clients collapse into one rate-limit bucket.
+_TRUST_PROXY_HOPS_RAW = os.environ.get("TRUST_PROXY_HOPS", "").strip()
+# Allow TRUST_PROXY="2" as shorthand for hops=2 when HOPS not set explicitly.
+if not _TRUST_PROXY_HOPS_RAW and _TRUST_PROXY_RAW.isdigit():
+    _TRUST_PROXY_HOPS_RAW = _TRUST_PROXY_RAW
+if not _TRUST_PROXY_HOPS_RAW:
+    _TRUST_PROXY_HOPS_RAW = "1"
+try:
+    _TRUST_PROXY_HOPS = int(_TRUST_PROXY_HOPS_RAW)
+except ValueError:
+    _TRUST_PROXY_HOPS = 1
+_TRUST_PROXY_HOPS = max(_TRUST_PROXY_HOPS, 1)
 
 
 def _check_rate_limit(request: Request) -> None:
     """Sliding-window in-memory rate limit keyed by client IP.
 
-    When the direct client address is unavailable (e.g. behind a proxy that
-    strips headers), each forwarded IP from ``X-Forwarded-For`` is used so that
-    anonymous traffic does not share a single "unknown" bucket that could be
-    exhausted by a single abusive client.
+    The forwarded header is only honoured when ``TRUST_PROXY`` is enabled,
+    because any client that can reach the backend directly (or through an
+    appending proxy chain) may inject its own ``X-Forwarded-For`` values and
+    rotate them per request to evade the limit entirely. Untrusted callers are
+    keyed by their direct socket address.
+
+    ``TRUST_PROXY_HOPS`` controls how many entries to peel from the right of
+    ``X-Forwarded-For``. Nginx uses ``$proxy_add_x_forwarded_for`` which
+    *appends* the real peer address. With one trusted proxy the last entry is
+    the client; with an L4 LB + nginx the last entry is the LB's internal IP
+    and the client is at ``-2``. Operators must set hops to the number of
+    trusted proxies, otherwise all external traffic collapses into one bucket.
     """
+
     client_host = request.client.host if request.client else None
     forwarded_for = request.headers.get("x-forwarded-for")
-    key = forwarded_for.split(",")[0].strip() or client_host or "unknown" if forwarded_for else client_host or "unknown"
+    if _TRUST_PROXY:
+        key_candidate: str | None = None
+        if forwarded_for:
+            parts = [p.strip() for p in forwarded_for.split(",") if p.strip()]
+            if parts:
+                # Peel HOPS entries from the right: HOPS=1 -> last, HOPS=2 -> second last.
+                if len(parts) >= _TRUST_PROXY_HOPS:  # noqa: SIM108
+                    key_candidate = parts[-_TRUST_PROXY_HOPS]
+                else:
+                    # Header shorter than trusted chain — fall back to first entry
+                    # rather than an internal hop that would group all traffic.
+                    key_candidate = parts[0]
+                if key_candidate:
+                    key_candidate = key_candidate.strip()
+                    # Strip port if present (e.g. "1.2.3.4:1234") and zone id
+                    if ":" in key_candidate and key_candidate.count(":") == 1 and "." in key_candidate:
+                        key_candidate = key_candidate.split(":")[0]
+                    if not key_candidate:
+                        key_candidate = None
+        # Fallback to X-Real-IP when XFF missing or produced no usable candidate
+        if not key_candidate:
+            x_real = request.headers.get("x-real-ip")
+            if x_real and x_real.strip():
+                key_candidate = x_real.strip().split(":")[0]
+        key = key_candidate or client_host or "unknown"
+    else:
+        key = client_host or "unknown"
     if not _rate_limiter.allow(key):
         raise HTTPException(status_code=429, detail="rate limit exceeded")
 
 
-router = APIRouter(dependencies=[Depends(_require_auth)])
+# Public router — no auth (for login/verify)
+public_router = APIRouter()
+
+# Protected router — 100% JWT
+protected_router = APIRouter(dependencies=[Depends(_require_auth)])
+
+# Backwards-compat alias: some tests import `router` directly
+router = protected_router
+
+
+# ── Auth endpoints ───────────────────────────────────────────────
+@public_router.post("/auth/login", response_model=LoginResponse)
+async def login(
+    payload: LoginRequest,
+    _rate_limited: None = Depends(_check_login_rate_limit),
+) -> LoginResponse:
+    """Authenticate with username/password and receive a JWT.
+
+    Rate-limited to 5 req/min per IP to mitigate brute-force.
+    """
+    settings = get_settings()
+    # In production require JWT_SECRET to be configured properly
+    if settings.app_env == "production" and not settings.jwt_secret:
+        raise HTTPException(status_code=503, detail="JWT_SECRET not configured")
+
+    # In dev/test if no password configured at all, allow login with default admin/admin?
+    # Instead we rely on verify_credentials which handles empty password case per env.
+    if not auth_service.verify_credentials(payload.username, payload.password):
+        logger.warning(
+            "auth.login_failed",
+            extra={
+                "diagnostics": {
+                    "event": "auth.login_failed",
+                    "level": "warning",
+                    "details": {"username": payload.username},
+                }
+            },
+        )
+        raise HTTPException(status_code=401, detail="invalid credentials")
+
+    token, _jti, expires_in = auth_service.create_access_token(payload.username)
+    logger.info(
+        "auth.login_success",
+        extra={
+            "diagnostics": {
+                "event": "auth.login_success",
+                "level": "info",
+                "details": {"username": payload.username},
+            }
+        },
+    )
+    return LoginResponse(
+        access_token=token,
+        token_type="Bearer",
+        expires_in=expires_in,
+        username=payload.username,
+    )
+
+
+@public_router.post("/auth/signup", response_model=SignupResponse, status_code=status.HTTP_201_CREATED)
+async def signup(
+    payload: SignupRequest,
+    _rate_limited: None = Depends(_check_login_rate_limit),
+) -> SignupResponse:
+    """Fake signup — tạo user in-memory (không DB) và trả JWT.
+
+    - `username` 3-64 ký tự, `password` >=6
+    - `confirm_password` phải khớp `password`
+    - Trả 409 nếu username đã tồn tại (kể cả admin env)
+    - Rate-limit 5 req/min/IP như login
+    """
+    settings = get_settings()
+    if settings.app_env == "production" and not settings.jwt_secret:
+        raise HTTPException(status_code=503, detail="JWT_SECRET not configured")
+
+    if payload.password != payload.confirm_password:
+        raise HTTPException(status_code=400, detail="passwords do not match")
+
+    # Simple username validation: alphanumeric + _ - .
+    if not payload.username.replace("_", "").replace("-", "").replace(".", "").isalnum():
+        raise HTTPException(status_code=400, detail="username must be alphanumeric with _ - . allowed")
+
+    if not auth_service.register_user(payload.username, payload.password):
+        raise HTTPException(status_code=409, detail="username already exists")
+
+    token, _jti, expires_in = auth_service.create_access_token(payload.username)
+    logger.info(
+        "auth.signup_success",
+        extra={
+            "diagnostics": {
+                "event": "auth.signup_success",
+                "level": "info",
+                "details": {"username": payload.username},
+            }
+        },
+    )
+    return SignupResponse(
+        access_token=token,
+        token_type="Bearer",
+        expires_in=expires_in,
+        username=payload.username,
+    )
+
+
+@public_router.post("/auth/verify", response_model=VerifyResponse)
+async def verify_token(authorization: str | None = Header(default=None)) -> VerifyResponse:
+    """Verify a JWT and return validity.
+
+    Does NOT raise 401 for invalid tokens — returns ``valid:false`` instead,
+    making it easy for the frontend to check localStorage tokens without
+    treating expiration as an error.
+    """
+    token = _extract_bearer_token(authorization)
+    if not token:
+        return VerifyResponse(valid=False, username=None, expires_at=None)
+    try:
+        payload = auth_service.decode_token(token)
+        exp = payload.get("exp")
+        expires_at = None
+        if exp:
+            try:
+                expires_at = datetime.datetime.fromtimestamp(float(exp), tz=datetime.UTC).isoformat()
+            except Exception:
+                expires_at = None
+        return VerifyResponse(valid=True, username=str(payload.get("sub")), expires_at=expires_at)
+    except Exception:
+        return VerifyResponse(valid=False, username=None, expires_at=None)
+
+
+@protected_router.post("/auth/logout", response_model=LogoutResponse)
+async def logout(authorization: str | None = Header(default=None)) -> LogoutResponse:
+    """Revoke the current JWT (blacklist by jti until exp).
+
+    Requires a valid JWT (protected). After logout, ``verify`` will return
+    ``valid:false`` for that token.
+    """
+    token = _extract_bearer_token(authorization)
+    if not token:
+        raise HTTPException(status_code=401, detail="invalid or missing JWT token")
+    try:
+        payload = auth_service.decode_token(token)
+        jti = payload.get("jti")
+        exp = payload.get("exp")
+        if jti and exp:
+            auth_service.blacklist_token(str(jti), float(exp))
+        elif jti:
+            # Fallback exp = now + remaining TTL
+            auth_service.blacklist_token(str(jti), time.time() + 3600)
+    except jwt.InvalidTokenError as exc:
+        raise HTTPException(status_code=401, detail=f"invalid JWT token: {exc}") from exc
+    return LogoutResponse(ok=True, message="Logged out successfully")
 
 
 def _resolve_diagnostics_file_path(file_path: str) -> Path:
@@ -162,25 +492,60 @@ def _resolve_diagnostics_file_path(file_path: str) -> Path:
     return resolved
 
 
-def _load_datasets() -> list[DatasetItem]:
+def _enrich_analysis_fields(
+    _exps: list[dict[str, Any]], owner: str | None
+) -> dict[str, dict[str, Any]]:
+    """Build rosbagId -> latest run map for analysisStatus enrichment."""
+    try:
+        runs = run_store.list_runs(owner)  # type: ignore[arg-type]
+    except Exception:
+        return {}
+    latest: dict[str, dict[str, Any]] = {}
+    for run in runs:
+        rid = str(run.get("rosbagId", ""))
+        if rid and rid not in latest:
+            latest[rid] = run
+    return latest
+
+
+def _load_datasets(owner: str | None = None) -> list[DatasetItem]:
     """Scan data/ subfolders for rosbag datasets (cached by :func:`list_experiments`)."""
-    return [
-        DatasetItem(
-            id=exp["id"],
-            name=exp["name"],
-            robotType=exp["robotType"],
-            sizeBytes=exp["sizeBytes"],
-            durationSec=exp["durationSec"],
-            recordedAt=exp["recordedAt"],
-            uploadedAt=exp["uploadedAt"],
-            status=exp["status"],
-            messageCount=exp["messageCount"],
-            topics=exp["topics"],
-            site=exp["site"],
-            rosVersion=exp["rosVersion"],
+    exps = list_experiments(owner)
+    latest_by_bag = _enrich_analysis_fields(exps, owner)
+    items: list[DatasetItem] = []
+    for exp in exps:
+        run = latest_by_bag.get(exp["id"])
+        if run is not None:
+            analysis_status = str(run.get("status", "succeeded"))
+            anomaly_count = run.get("anomalyCount")
+            worst = run.get("worstSeverity")
+            last_run_id = run.get("id")
+        else:
+            analysis_status = "not_analyzed"
+            anomaly_count = None
+            worst = None
+            last_run_id = None
+        items.append(
+            DatasetItem(
+                id=exp["id"],
+                name=exp["name"],
+                robotType=exp["robotType"],
+                sizeBytes=exp["sizeBytes"],
+                durationSec=exp["durationSec"],
+                recordedAt=exp["recordedAt"],
+                uploadedAt=exp["uploadedAt"],
+                status=exp["status"],
+                messageCount=exp["messageCount"],
+                topics=exp["topics"],
+                site=exp["site"],
+                rosVersion=exp["rosVersion"],
+                analysisStatus=analysis_status,
+                analysisAnomalyCount=anomaly_count,
+                worstSeverity=worst,
+                lastRunId=last_run_id,
+            )
         )
-        for exp in list_experiments()
-    ]
+    return items
 
 
 def _p95(values: list[int]) -> int:
@@ -195,10 +560,11 @@ def _p95(values: list[int]) -> int:
 async def chat(
     request: ChatRequest,
     _rate_limited: None = Depends(_check_rate_limit),
+    _llm_auth: None = Depends(_require_llm_auth),
 ) -> ChatResponse:
-    """Chat with the LLM through an OpenAI-compatible endpoint (httpx, manual tool-calling).
+    """Chat with the LLM through an OpenAI/Anthropic endpoint (httpx, manual tool-calling).
 
-    Sends the message directly to vLLM/OpenAI. When the LLM is not configured,
+    Sends the message directly to the configured LLM provider. When the LLM is not configured,
     returns a guidance response instead of an error.
 
     Args:
@@ -213,9 +579,9 @@ async def chat(
     if not is_llm_configured():
         return ChatResponse(
             response=(
-                "LLM chưa được cấu hình. Cấu hình llm_provider='vllm' kèm "
-                "vllm_base_url/vllm_api_key hoặc llm_provider='openai' kèm "
-                "openai_api_key để bật chat thật."
+                "LLM chưa được cấu hình. Cấu hình llm_provider='openai' kèm "
+                "openai_api_key, hoặc llm_provider='anthropic' kèm "
+                "anthropic_api_key, để bật chat thật."
             ),
             analysis="",
         )
@@ -227,7 +593,20 @@ async def chat(
                 {"role": "user", "content": request.message},
             ],
         )
-        return ChatResponse(response=result["message"].get("content", ""), analysis="")
+        content = result["message"].get("content", "")
+        if not response_is_safe(content):
+            logger.warning(
+                "chat.response_blocked",
+                extra={
+                    "diagnostics": {
+                        "event": "chat.response_blocked",
+                        "level": "warning",
+                        "details": {"reason": "prompt_injection_leak_check"},
+                    }
+                },
+            )
+            content = _BLOCKED_RESPONSE_TEXT
+        return ChatResponse(response=content, analysis="")
     except Exception as e:
         logger.warning(
             "chat.upstream_failed",
@@ -252,21 +631,40 @@ async def agent_status() -> dict[str, str]:
     return {"status": "ready", "agent": "RAV-13 Diagnostics API v1.0"}
 
 
+@router.get("/llm/health")
+async def llm_health(refresh: bool = Query(default=False)) -> dict[str, Any]:
+    """Prove the configured LLM actually answers, not just that a key is set.
+
+    `is_llm_configured()` only checks the config shape (key present, model id
+    well-formed); this calls the provider with a minimal prompt so a reachable-
+    but-broken setup (wrong model id, revoked key, upstream outage) shows up
+    before an analysis run silently falls back to canned text. Cached 60s
+    server-side (see `check_llm_health`) so polling this from the UI is cheap;
+    pass `refresh=true` to force a fresh call.
+
+    Returns:
+        Dict with ``provider``, ``model``, ``ok``, ``latencyMs``, ``error``.
+    """
+    return await anyio.to_thread.run_sync(check_llm_health, refresh)
+
+
 @router.get("/datasets", response_model=DatasetListResponse)
 async def datasets(
     limit: int | None = Query(default=None, ge=1),
     offset: int | None = Query(default=None, ge=0),
+    owner: str = Depends(get_current_user),
 ) -> DatasetListResponse:
-    """List uploaded rosbag datasets, scanned from data/.
+    """List uploaded rosbag datasets, scanned from data/<owner>/.
 
     Args:
         limit: Maximum number of items to return (pagination).
         offset: Starting position for pagination.
+        owner: Current user (from JWT).
 
     Returns:
         ``DatasetListResponse`` with the dataset list and the total count.
     """
-    items = await anyio.to_thread.run_sync(_load_datasets)
+    items = await anyio.to_thread.run_sync(_load_datasets, owner)
     total = len(items)
     if offset is not None:
         items = items[offset:]
@@ -278,20 +676,29 @@ async def datasets(
 @router.post("/datasets/upload", response_model=DatasetItem, status_code=status.HTTP_201_CREATED)
 async def upload_dataset(
     request: Request,
+    response: Response,
     file: UploadFile = File(...),
     _rate_limited: None = Depends(_check_rate_limit),
+    owner: str = Depends(get_current_user),
 ) -> DatasetItem:
     """Upload a new rosbag (.db3/.mcap/.bag) or rosbag2 zip file.
 
     Stores the file under ``data/<id>/`` and generates minimal ``metadata.yaml``
-    if missing, then returns the matching ``DatasetItem``.
+    if missing, then returns the matching ``DatasetItem``. When the uploaded
+    bag's content (SHA-256 of the primary bag file) matches an existing
+    dataset, the new folder is discarded and the *existing* dataset's item is
+    returned instead, with ``duplicateOf`` set to its id and a 200 status
+    (rather than 201) so callers can tell a duplicate from a fresh upload.
 
     Args:
         request: Original request (used to check ``Content-Length``).
+        response: Injected response, used to downgrade the status to 200 on a
+            detected duplicate.
         file: Uploaded multipart file.
 
     Returns:
-        ``DatasetItem`` describing the just-stored rosbag.
+        ``DatasetItem`` describing the just-stored rosbag, or the pre-existing
+        one it duplicates.
 
     Raises:
         HTTPException 400: Unsupported format or unsafe zip content.
@@ -301,26 +708,46 @@ async def upload_dataset(
     if content_length and content_length.isdigit() and int(content_length) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="upload exceeds size limit")
     try:
-        item = await anyio.to_thread.run_sync(save_uploaded_rosbag, file.filename or "", file.file)
+        item = await anyio.to_thread.run_sync(save_uploaded_rosbag, file.filename or "", file.file, owner)
     except ValueError as e:
         if "size limit" in str(e):
             raise HTTPException(status_code=413, detail=str(e)) from e
         raise HTTPException(status_code=400, detail=str(e)) from e
+    if item.get("duplicateOf"):
+        response.status_code = status.HTTP_200_OK
+        logger.info(
+            "datasets.upload_deduplicated",
+            extra={
+                "diagnostics": {
+                    "event": "datasets.upload_deduplicated",
+                    "level": "info",
+                    "details": {"existingId": item["id"]},
+                }
+            },
+        )
+        return DatasetItem(**item)
     logger.info(
         "datasets.uploaded",
         extra={
             "diagnostics": {
                 "event": "datasets.uploaded",
                 "level": "info",
-                "details": {"id": item["id"], "sizeBytes": item["sizeBytes"]},
+                "details": {"id": item["id"], "sizeBytes": item["sizeBytes"], "owner": owner},
             }
         },
     )
+    # New datasets have no run yet — enrich upload response so the
+    # registry can render "chưa phân tích" immediately without refetch.
+    if "analysisStatus" not in item or item.get("analysisStatus") is None:
+        item["analysisStatus"] = "not_analyzed"
+        item.setdefault("analysisAnomalyCount", None)
+        item.setdefault("worstSeverity", None)
+        item.setdefault("lastRunId", None)
     return DatasetItem(**item)
 
 
 @router.delete("/datasets/{dataset_id}", response_model=dict)
-async def delete_dataset(dataset_id: str) -> dict[str, str | bool]:
+async def delete_dataset(dataset_id: str, owner: str = Depends(get_current_user)) -> dict[str, str | bool]:
     """Delete a dataset (folder) under data/.
 
     Args:
@@ -332,7 +759,7 @@ async def delete_dataset(dataset_id: str) -> dict[str, str | bool]:
     Raises:
         HTTPException 404: No dataset found with the given ID.
     """
-    deleted = await anyio.to_thread.run_sync(delete_experiment, dataset_id)
+    deleted = await anyio.to_thread.run_sync(delete_experiment, dataset_id, owner)
     if not deleted:
         raise HTTPException(status_code=404, detail="dataset not found")
     logger.info(
@@ -341,32 +768,56 @@ async def delete_dataset(dataset_id: str) -> dict[str, str | bool]:
             "diagnostics": {
                 "event": "datasets.deleted",
                 "level": "info",
-                "details": {"id": dataset_id},
+                "details": {"id": dataset_id, "owner": owner},
             }
         },
     )
     return {"ok": True, "id": dataset_id}
 
 
+@router.get("/runs", response_model=RunListResponse)
+async def list_runs(limit: int = Query(default=50, ge=1, le=500)) -> RunListResponse:
+    """List analysis runs, newest first, with their real LLM usage per run.
+
+    Backs the LLM Observability console tab (`model`, `totalLatencyMs`,
+    `promptTokens`, `completionTokens`, `costUsd` per run) — replaces the
+    previous fabricated vLLM/GPU telemetry, which had no real backing data
+    since this project calls providers over plain HTTP.
+
+    Args:
+        limit: Maximum number of runs to return.
+
+    Returns:
+        ``RunListResponse`` with the matching runs and the true total count.
+    """
+    runs = await anyio.to_thread.run_sync(run_store.list_runs)
+    return RunListResponse(items=[AnalysisRun(**run) for run in runs[:limit]], total=len(runs))
+
+
 @router.get("/dashboard/overview", response_model=DashboardOverviewResponse)
-async def dashboard_overview() -> DashboardOverviewResponse:
-    """Return dashboard overview metrics computed from real data.
+async def dashboard_overview(owner: str = Depends(get_current_user)) -> DashboardOverviewResponse:
+    """Return dashboard overview metrics computed from real data (per-user).
 
     Every metric (rosbag count, runs, anomalies, severity, pending reviews,
-    trend) is derived from datasets and persisted runs; no fake data remains.
+    trend) is derived from datasets and persisted runs of the current owner
+    only; no fake data remains.
 
     Returns:
         ``DashboardOverviewResponse`` containing all overview data.
     """
-    datasets = await anyio.to_thread.run_sync(_load_datasets)
-    runs = await anyio.to_thread.run_sync(run_store.list_runs)
+    # Parallelize independent IO: datasets (FS), runs (DB), review_items (DB)
+    import asyncio as _asyncio
+
+    datasets_task = anyio.to_thread.run_sync(_load_datasets, owner)
+    runs_task = anyio.to_thread.run_sync(run_store.list_runs, owner)
+    review_task = anyio.to_thread.run_sync(run_store.list_review_items, None, owner)
+    datasets, runs, review_items = await _asyncio.gather(datasets_task, runs_task, review_task)
     anomalies_by_run = await anyio.to_thread.run_sync(
         run_store.get_runs_anomalies, [run["id"] for run in runs]
     )
     all_anomalies: list[dict[str, Any]] = [
         anomaly for run in runs for anomaly in anomalies_by_run.get(run["id"], [])
     ]
-    review_items = await anyio.to_thread.run_sync(run_store.list_review_items)
 
     succeeded = [r for r in runs if r["status"] == "succeeded"]
     runs_with_issues = [r for r in succeeded if r["anomalyCount"] > 0]
@@ -406,7 +857,7 @@ async def dashboard_overview() -> DashboardOverviewResponse:
         topIssues=[
             {
                 "kind": kind,
-                "label": _KIND_LABELS.get(kind, kind.replace("_", " ").title()),
+                "label": _kind_labels().get(kind, kind.replace("_", " ").title()),
                 "count": count,
             }
             for kind, count in kind_counts.most_common(5)
@@ -432,29 +883,84 @@ async def dashboard_overview() -> DashboardOverviewResponse:
 @router.post("/analysis", response_model=AnalysisCreateResponse, status_code=status.HTTP_202_ACCEPTED)
 async def create_analysis(
     request: AnalysisCreateRequest,
+    background_tasks: BackgroundTasks,
     _rate_limited: None = Depends(_check_rate_limit),
+    owner: str = Depends(get_current_user),
 ) -> AnalysisCreateResponse:
-    """Run real diagnostics on a dataset's rosbag.
+    """Queue diagnostics for a dataset and run it in background (per-owner).
 
-    Reads the bag file (``parse_rosbag2_db3`` for .db3), runs
-    ``detect_anomalies``, generates AI results and persists run/anomalies/
-    review items in SQLite.
+    The request returns immediately (202) with a ``running`` placeholder run so
+    the frontend proxy is never held open for the 40-800s detection phase that
+    previously caused ``socket hang up`` / ``proxy timeout``. The real
+    ``run_analysis`` pipeline (detect → LLM → persist) executes after the response
+    via ``BackgroundTasks`` and overwrites the placeholder with the final
+    ``succeeded``/``failed`` run. Callers poll ``GET /analysis/{id}`` until
+    ``status`` leaves ``running``.
 
     Args:
         request: Analysis request (rosbag id, optional model).
+        background_tasks: FastAPI background task queue.
+        owner: Current user.
 
     Returns:
-        ``AnalysisCreateResponse`` with the created run and the WebSocket channel.
+        ``AnalysisCreateResponse`` with the queued run and the WebSocket channel.
 
     Raises:
-        HTTPException 404: No dataset found with the given ID.
+        HTTPException 404: No dataset found with the given ID for this owner.
     """
-    datasets = await anyio.to_thread.run_sync(_load_datasets)
+    datasets = await anyio.to_thread.run_sync(_load_datasets, owner)
     match = next((ds for ds in datasets if ds.id == request.rosbag_id), None)
     if not match:
         raise HTTPException(status_code=404, detail="dataset not found")
 
-    result = await anyio.to_thread.run_sync(run_analysis, request.rosbag_id, request.model)
+    # In production the analysis can take 40-800s (detect + LLM) – never block the
+    # HTTP worker that the frontend proxy waits on. Queue a placeholder run and
+    # finish in BackgroundTasks. In test/dev keep the old synchronous contract so
+    # existing tests that assert ``status == succeeded`` immediately still pass.
+    settings = get_settings()
+    if settings.app_env == "production":
+        from src.services.analysis import _configured_model, _pending_run_from_dataset
+
+        resolved_model = request.model or _configured_model()
+        ds_dict = {"id": match.id, "name": match.name, "robotType": match.robotType}
+        pending = _pending_run_from_dataset(ds_dict, resolved_model)
+        pending = pending.model_copy(update={"status": "running", "progress": 5, "stage": "queued"})
+
+        def _save_pending() -> None:
+            try:
+                run_store.save_run(pending.model_dump(), owner)
+            except Exception:
+                logger.exception(
+                    "analysis.queue_save_failed",
+                    extra={"diagnostics": {"event": "analysis.queue_save_failed", "level": "warning"}},
+                )
+
+        await anyio.to_thread.run_sync(_save_pending)
+
+        async def _background() -> None:
+            try:
+                await anyio.to_thread.run_sync(lambda: run_analysis(request.rosbag_id, request.model, owner))
+            except Exception as exc:  # pragma: no cover - background failure is logged, not surfaced
+                logger.exception(
+                    "analysis.background_failed",
+                    extra={
+                        "diagnostics": {
+                            "event": "analysis.background_failed",
+                            "level": "error",
+                            "details": {"rosbag_id": request.rosbag_id, "error": str(exc)},
+                        }
+                    },
+                )
+
+        background_tasks.add_task(_background)
+
+        return AnalysisCreateResponse(
+            run=pending,
+            channel=f"/ws/runs/{pending.id}",
+        )
+
+    # Non-production: synchronous for test determinism
+    result = await anyio.to_thread.run_sync(run_analysis, request.rosbag_id, request.model, owner)
     run = result["run"]
     return AnalysisCreateResponse(
         run=run,
@@ -510,29 +1016,36 @@ async def update_thresholds(
 
 
 @router.get("/analysis/{run_id}", response_model=AnalysisDetailResponse)
-async def get_analysis(run_id: str) -> AnalysisDetailResponse:
-    """Get the detailed results of a single analysis run.
+async def get_analysis(run_id: str, owner: str = Depends(get_current_user)) -> AnalysisDetailResponse:
+    """Get the detailed results of a single analysis run (per-owner).
 
     Args:
         run_id: ID of the analysis run to fetch.
+        owner: Current user.
 
     Returns:
         ``AnalysisDetailResponse`` with the run, its rosbag, the real anomaly
         list and the AI results persisted when the run was created.
 
     Raises:
-        HTTPException 404: No run found with the given ID.
+        HTTPException 404: No run found with the given ID for this owner.
     """
-    run_row = await anyio.to_thread.run_sync(run_store.get_run, run_id)
+    run_row = await anyio.to_thread.run_sync(run_store.get_run, run_id, owner)
     if run_row is None:
         raise HTTPException(status_code=404, detail="run not found")
     run = AnalysisRun(**run_row)
-    datasets = await anyio.to_thread.run_sync(_load_datasets)
+    datasets = await anyio.to_thread.run_sync(_load_datasets, owner)
     rosbag = next((ds for ds in datasets if ds.id == run.rosbagId), None)
     detections = await anyio.to_thread.run_sync(run_store.get_run_anomalies, run_id)
     persisted_ai = await anyio.to_thread.run_sync(run_store.get_run_ai_results, run_id)
     if persisted_ai:
-        ai_results = [AIResultSummary(**result) for result in persisted_ai]
+        def _coerce_ai(payload: dict[str, Any]) -> dict[str, Any]:
+            if "vllmRequestId" in payload and "llmRequestId" not in payload:
+                payload = {**payload, "llmRequestId": payload["vllmRequestId"]}
+            # also keep alias for serialization
+            return payload
+
+        ai_results = [AIResultSummary(**_coerce_ai(result)) for result in persisted_ai]
     else:
         # Recording bounds are not persisted with the run, so this rebuild path
         # sends absolute timestamps where the original analysis sent relative
@@ -551,8 +1064,8 @@ async def get_analysis(run_id: str) -> AnalysisDetailResponse:
 
 
 @router.get("/analysis/{run_id}/health", response_model=HealthSummaryResponse)
-async def get_analysis_health(run_id: str) -> HealthSummaryResponse:
-    """Return the Health Summary JSON for a run's persisted detections.
+async def get_analysis_health(run_id: str, owner: str = Depends(get_current_user)) -> HealthSummaryResponse:
+    """Return the Health Summary JSON for a run's persisted detections (per-owner).
 
     The response is the LLM-friendly context payload: a composite 0-100
     ``health_score``, its green/yellow/red zone, the per-group subscores (log,
@@ -563,17 +1076,18 @@ async def get_analysis_health(run_id: str) -> HealthSummaryResponse:
 
     Args:
         run_id: ID of the analysis run to summarize.
+        owner: Current user.
 
     Returns:
         ``HealthSummaryResponse`` wrapping the Health Summary JSON.
 
     Raises:
-        HTTPException 404: No run found with the given ID.
+        HTTPException 404: No run found with the given ID for this owner.
     """
-    run_row = await anyio.to_thread.run_sync(run_store.get_run, run_id)
+    run_row = await anyio.to_thread.run_sync(run_store.get_run, run_id, owner)
     if run_row is None:
         raise HTTPException(status_code=404, detail="run not found")
-    datasets = await anyio.to_thread.run_sync(_load_datasets)
+    datasets = await anyio.to_thread.run_sync(_load_datasets, owner)
     rosbag = next((ds for ds in datasets if ds.id == run_row["rosbagId"]), None)
     detections = await anyio.to_thread.run_sync(run_store.get_run_anomalies, run_id)
     total_messages = rosbag.messageCount if rosbag else 0
@@ -581,12 +1095,13 @@ async def get_analysis_health(run_id: str) -> HealthSummaryResponse:
     return HealthSummaryResponse(health=health)
 
 
-@router.get("/analysis/{run_id}/deep-dive")
+@router.get("/analysis/{run_id}/deep-dive", dependencies=[Depends(_require_llm_auth)])
 async def analysis_deep_dive(
     run_id: str,
     deep_dive_threshold: float = Query(default=DEEP_DIVE_TRIGGER_THRESHOLD, ge=0.0, le=100.0),
+    owner: str = Depends(get_current_user),
 ) -> dict[str, object]:
-    """Build the LLM deep-dive context for a run.
+    """Build the LLM deep-dive context for a run (per-owner).
 
     Returns the Health Summary plus a ready-to-send context prompt. Callers
     should send the ``prompt`` to ``POST /analysis/explain`` (or the LLM chat
@@ -596,18 +1111,19 @@ async def analysis_deep_dive(
     Args:
         run_id: ID of the analysis run.
         deep_dive_threshold: Optional override of the deep-dive trigger score.
+        owner: Current user.
 
     Returns:
         Dict with ``run_id``, ``triggered``, ``threshold``, ``health`` and
         ``prompt``.
 
     Raises:
-        HTTPException 404: No run found with the given ID.
+        HTTPException 404: No run found with the given ID for this owner.
     """
-    run_row = await anyio.to_thread.run_sync(run_store.get_run, run_id)
+    run_row = await anyio.to_thread.run_sync(run_store.get_run, run_id, owner)
     if run_row is None:
         raise HTTPException(status_code=404, detail="run not found")
-    datasets = await anyio.to_thread.run_sync(_load_datasets)
+    datasets = await anyio.to_thread.run_sync(_load_datasets, owner)
     rosbag = next((ds for ds in datasets if ds.id == run_row["rosbagId"]), None)
     detections = await anyio.to_thread.run_sync(run_store.get_run_anomalies, run_id)
     total_messages = rosbag.messageCount if rosbag else 0
@@ -615,7 +1131,7 @@ async def analysis_deep_dive(
     score = float(health.get("health_score", 0.0))
     return {
         "run_id": run_id,
-        "triggered": score < deep_dive_threshold,
+        "triggered": should_deep_dive(score, deep_dive_threshold),
         "threshold": deep_dive_threshold,
         "health": health,
         "prompt": build_deep_dive_prompt(health),
@@ -626,8 +1142,9 @@ async def analysis_deep_dive(
 async def export_analysis_windows(
     run_id: str,
     window_sec: float = Query(default=10.0, ge=0.01),
+    owner: str = Depends(get_current_user),
 ) -> StreamingResponse:
-    """Stream per-time-window JSONL summaries of a run's bag dataset.
+    """Stream per-time-window JSONL summaries of a run's bag dataset (per-owner).
 
     The dataset bags are re-read in streaming mode (never materialized in
     memory) and summarized into one compact JSONL row per ``(topic, window)``:
@@ -638,21 +1155,22 @@ async def export_analysis_windows(
     Args:
         run_id: ID of the analysis run whose dataset should be exported.
         window_sec: Aggregation window width in seconds.
+        owner: Current user.
 
     Returns:
         An NDJSON stream (``application/x-ndjson``).
 
     Raises:
-        HTTPException 404: The run, its dataset or its bag files are not found.
+        HTTPException 404: The run, its dataset or its bag files are not found for this owner.
     """
-    run_row = await anyio.to_thread.run_sync(run_store.get_run, run_id)
+    run_row = await anyio.to_thread.run_sync(run_store.get_run, run_id, owner)
     if run_row is None:
         raise HTTPException(status_code=404, detail="run not found")
-    datasets = await anyio.to_thread.run_sync(_load_datasets)
+    datasets = await anyio.to_thread.run_sync(_load_datasets, owner)
     dataset = next((ds for ds in datasets if ds.id == run_row["rosbagId"]), None)
     if dataset is None:
         raise HTTPException(status_code=404, detail="dataset not found")
-    bag_files = await anyio.to_thread.run_sync(experiment_bag_files, dataset.id)
+    bag_files = await anyio.to_thread.run_sync(experiment_bag_files, dataset.id, owner)
     if not bag_files:
         raise HTTPException(status_code=404, detail="bag files not found")
 
@@ -667,26 +1185,28 @@ async def export_analysis_windows(
 @router.get("/review", response_model=ReviewListResponse)
 async def review_queue(
     status_filter: str = Query(default="pending", alias="status"),
+    owner: str = Depends(get_current_user),
 ) -> ReviewListResponse:
-    """Get AI results in the human review queue.
+    """Get AI results in the human review queue (per-owner).
 
     Args:
         status_filter: ``pending`` (default), a specific verdict
             (``approved``/``rejected``/``edited``), or ``all`` for every item.
+        owner: Current user.
 
     Returns:
         ``ReviewListResponse`` with the matching review items and total count.
     """
     rows = await anyio.to_thread.run_sync(
-        run_store.list_review_items, None if status_filter == "all" else status_filter
+        run_store.list_review_items, None if status_filter == "all" else status_filter, owner
     )
     items = [ReviewItem(**item) for item in rows]
     return ReviewListResponse(items=items, total=len(items))
 
 
 @router.get("/review/stats", response_model=ReviewStatsResponse)
-async def review_statistics() -> ReviewStatsResponse:
-    """Aggregate human verdicts into agent-accuracy metrics.
+async def review_statistics(owner: str = Depends(get_current_user)) -> ReviewStatsResponse:
+    """Aggregate human verdicts into agent-accuracy metrics (per-owner).
 
     ``accuracy`` is approved / reviewed, per run and overall; it is ``None``
     until at least one item has been reviewed. Recall is not reported because
@@ -699,7 +1219,7 @@ async def review_statistics() -> ReviewStatsResponse:
     def _accuracy(approved: int, reviewed: int) -> float | None:
         return round(approved / reviewed, 4) if reviewed else None
 
-    per_run = await anyio.to_thread.run_sync(run_store.review_stats)
+    per_run = await anyio.to_thread.run_sync(run_store.review_stats, owner)
     runs = []
     for row in per_run:
         reviewed = row["approved"] + row["rejected"] + row["edited"]
@@ -778,6 +1298,7 @@ async def diagnose(request: DiagnosticsRequest) -> DiagnosticsSummaryResponse:
 async def explain(
     request: DiagnosticsExplanationRequest,
     _rate_limited: None = Depends(_check_rate_limit),
+    _llm_auth: None = Depends(_require_llm_auth),
 ) -> DiagnosticsExplanationResponse:
     """Explain diagnostics results with the LLM.
 
@@ -815,8 +1336,9 @@ async def explain(
 async def get_hilt_summary(
     run_id: str,
     anomaly_id: str = Query(..., description="Anomaly ID to get HILT summary for"),
+    owner: str = Depends(get_current_user),
 ) -> HiltSummary:
-    """Get HILT escalation summary for expert review.
+    """Get HILT escalation summary for expert review (per-owner).
 
     Returns the complete iteration history, trigger reasons, and diagnostic
     context for a specific anomaly within a run.
@@ -824,14 +1346,15 @@ async def get_hilt_summary(
     Args:
         run_id: Analysis run ID.
         anomaly_id: Anomaly ID within the run.
+        owner: Current user.
 
     Returns:
         HiltSummary with all iterations and trigger information.
 
     Raises:
-        HTTPException 404: Run or anomaly not found.
+        HTTPException 404: Run or anomaly not found for this owner.
     """
-    run_row = await anyio.to_thread.run_sync(run_store.get_run, run_id)
+    run_row = await anyio.to_thread.run_sync(run_store.get_run, run_id, owner)
     if run_row is None:
         raise HTTPException(status_code=404, detail="run not found")
 
@@ -854,8 +1377,9 @@ async def hilt_iterate(
     test_pass: bool = Query(..., description="Whether engineer test passed"),
     test_comment: str = Query(default="", description="Engineer test comment"),
     _rate_limited: None = Depends(_check_rate_limit),
+    owner: str = Depends(get_current_user),
 ) -> AIResultSummary:
-    """Run one iteration of the iterative debug loop.
+    """Run one iteration of the iterative debug loop (per-owner).
 
     Records the engineer's test result, evaluates triggers, and returns the
     next LLM suggestion (or escalation payload if triggers fire).
@@ -865,14 +1389,15 @@ async def hilt_iterate(
         anomaly_id: Anomaly ID within the run.
         test_pass: Whether the engineer's test passed.
         test_comment: Optional comment from the engineer.
+        owner: Current user.
 
     Returns:
         Next AIResultSummary from LLM (or canned fallback).
 
     Raises:
-        HTTPException 404: Run or anomaly not found.
+        HTTPException 404: Run or anomaly not found for this owner.
     """
-    run_row = await anyio.to_thread.run_sync(run_store.get_run, run_id)
+    run_row = await anyio.to_thread.run_sync(run_store.get_run, run_id, owner)
     if run_row is None:
         raise HTTPException(status_code=404, detail="run not found")
 
@@ -937,8 +1462,9 @@ async def hilt_fix(
     run_id: str,
     anomaly_id: str = Query(..., description="Anomaly ID"),
     payload: HiltFixRequest = Body(...),
+    owner: str = Depends(get_current_user),
 ) -> HiltFixResponse:
-    """Record expert fix for an escalated anomaly.
+    """Record expert fix for an escalated anomaly (per-owner).
 
     The expert provides a corrected root cause and actions, which are stored
     and can be used to update the run's AI result.
@@ -947,14 +1473,15 @@ async def hilt_fix(
         run_id: Analysis run ID.
         anomaly_id: Anomaly ID within the run.
         payload: Expert's corrected root cause, actions, and notes.
+        owner: Current user.
 
     Returns:
         HiltFixResponse confirming the fix was recorded.
 
     Raises:
-        HTTPException 404: Run or anomaly not found.
+        HTTPException 404: Run or anomaly not found for this owner.
     """
-    run_row = await anyio.to_thread.run_sync(run_store.get_run, run_id)
+    run_row = await anyio.to_thread.run_sync(run_store.get_run, run_id, owner)
     if run_row is None:
         raise HTTPException(status_code=404, detail="run not found")
 
@@ -979,27 +1506,43 @@ async def hilt_fix(
 async def review_decision(
     review_id: str,
     payload: DashboardReviewDecisionRequest,
+    owner: str = Depends(get_current_user),
 ) -> DashboardReviewDecisionResponse:
-    """Record a review decision (approve/reject) for an AI result.
+    """Record a review decision (approve/reject) for an AI result (per-owner).
 
     Args:
         review_id: ID of the review item to process.
         payload: Verdict, reviewer and notes from the reviewer.
+        owner: Current user.
 
     Returns:
         ``DashboardReviewDecisionResponse`` confirming the recorded decision.
 
     Raises:
-        HTTPException 404: No review item found with the given ID.
+        HTTPException 404: No review item found with the given ID for this owner.
     """
-    if await anyio.to_thread.run_sync(run_store.get_review_item, review_id) is None:
+    review_item = await anyio.to_thread.run_sync(run_store.get_review_item, review_id, owner)
+    if review_item is None:
         raise HTTPException(status_code=404, detail="review item not found")
+    if payload.verdict == "approved":
+        ai_results = await anyio.to_thread.run_sync(run_store.get_run_ai_results, review_item["runId"])
+        matching = next((r for r in ai_results if r.get("anomalyId") == review_item["anomalyId"]), None)
+        # "canned-fallback" is the rule-based guess `_build_ai_results` falls back
+        # to when the LLM is unconfigured or a call fails — never approve it as
+        # if it were a model verdict. The UI already disables the button for this
+        # case; this is the server-side backstop against a client that skips it.
+        if matching is not None and matching.get("model") == "canned-fallback":
+            raise HTTPException(
+                status_code=409,
+                detail="cannot approve a rule-based fallback result — the LLM never ran for this conclusion",
+            )
     await anyio.to_thread.run_sync(
         run_store.update_review_item,
         review_id,
         payload.verdict,
         payload.reviewer or "reviewer",
         payload.notes,
+        owner,
     )
     return DashboardReviewDecisionResponse(
         ok=True,

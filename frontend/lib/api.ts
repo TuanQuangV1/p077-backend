@@ -28,16 +28,143 @@ export function resolveApiUrl(url: string): string {
     if (route === "review/stats") return "/api/v1/review/stats"
     if (route.startsWith("review/")) return `/api/v1/${route}`
     if (route.startsWith("reports")) return url
-    if (route.startsWith("vllm/")) return url
+    if (route.startsWith("llm/")) return url
     if (route.startsWith("stream")) return url
 
     return url
 }
 
+/* ---------- auth ---------- */
+export interface LoginResponse {
+    access_token: string
+    token_type: string
+    expires_in: number
+    username: string
+}
+
+export interface VerifyResponse {
+    valid: boolean
+    username: string | null
+    expires_at: string | null
+}
+
+export function getAuthToken(): string | null {
+    if (typeof window === "undefined") return null
+    return localStorage.getItem("auth_token")
+}
+
+export function setAuthToken(token: string, expiresInSec?: number): void {
+    if (typeof window === "undefined") return
+    localStorage.setItem("auth_token", token)
+    // Also set cookie for middleware (server can read cookies, not localStorage)
+    const maxAge = expiresInSec ?? 60 * 60
+    document.cookie = `auth_token=${token}; Path=/; Max-Age=${maxAge}; SameSite=Lax`
+}
+
+export function clearAuthToken(): void {
+    if (typeof window === "undefined") return
+    localStorage.removeItem("auth_token")
+    document.cookie = "auth_token=; Path=/; Max-Age=0; SameSite=Lax"
+}
+
+function authHeaders(): Record<string, string> {
+    const token = getAuthToken()
+    return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+export async function login(username: string, password: string): Promise<LoginResponse> {
+    const res = await fetch("/api/v1/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+    })
+    if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { detail?: string } | null
+        throw new Error(body?.detail ?? `Login failed: ${res.status}`)
+    }
+    const data = (await res.json()) as LoginResponse
+    setAuthToken(data.access_token, data.expires_in)
+    return data
+}
+
+export async function signup(username: string, password: string, confirm_password: string): Promise<LoginResponse> {
+    const res = await fetch("/api/v1/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password, confirm_password }),
+    })
+    if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { detail?: string } | null
+        // Try to surface validation detail
+        throw new Error(body?.detail ?? `Signup failed: ${res.status}`)
+    }
+    const data = (await res.json()) as LoginResponse
+    setAuthToken(data.access_token, data.expires_in)
+    return data
+}
+
+export async function verifyToken(): Promise<VerifyResponse> {
+    const token = getAuthToken()
+    if (!token) return { valid: false, username: null, expires_at: null }
+    try {
+        const res = await fetch("/api/v1/auth/verify", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+        })
+        if (!res.ok) return { valid: false, username: null, expires_at: null }
+        return (await res.json()) as VerifyResponse
+    } catch {
+        return { valid: false, username: null, expires_at: null }
+    }
+}
+
+export async function logout(): Promise<void> {
+    const token = getAuthToken()
+    if (token) {
+        await fetch("/api/v1/auth/logout", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+        }).catch(() => {})
+    }
+    clearAuthToken()
+    if (typeof window !== "undefined") window.location.href = "/login"
+}
+
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
     const target = resolveApiUrl(url)
-    const res = await fetch(target, init)
-    if (!res.ok) throw new Error(`Request failed: ${res.status}`)
+    const headers = { ...authHeaders(), ...((init?.headers as Record<string, string>) ?? {}) }
+    const res = await fetch(target, { ...init, headers })
+    if (res.status === 401 && typeof window !== "undefined" && !target.includes("/auth/")) {
+        clearAuthToken()
+        // Avoid infinite loop if already on login
+        if (window.location.pathname !== "/login") window.location.href = "/login"
+        throw new Error("Phiên hết hạn — đang chuyển tới trang đăng nhập")
+    }
+    if (!res.ok) {
+        let detail = `Yêu cầu thất bại: ${res.status}`
+        try {
+            // Try text first, fallback to json detail
+            if (typeof (res as unknown as { text?: () => Promise<string> }).text === "function") {
+                const t = await (res as unknown as { text: () => Promise<string> }).text().catch(() => "")
+                if (t) detail = t
+                else {
+                    const j = (await (res as unknown as { json: () => Promise<unknown> }).json().catch(() => null)) as { detail?: string } | null
+                    if (j?.detail) detail = j.detail
+                }
+            } else {
+                const j = (await (res as unknown as { json: () => Promise<unknown> }).json().catch(() => null)) as { detail?: string } | null
+                if (j?.detail) detail = j.detail
+            }
+        } catch {}
+        // If body is JSON detail, surface it
+        if (detail.startsWith("{")) {
+            try {
+                const j = JSON.parse(detail) as { detail?: string }
+                if (j.detail) detail = j.detail
+            } catch {}
+        }
+        throw new Error(detail.includes("Yêu cầu thất bại") ? detail : `Yêu cầu thất bại: ${res.status} - ${detail}`)
+    }
     return res.json() as Promise<T>
 }
 
@@ -83,8 +210,15 @@ export interface WindowSummaryRow {
  * place only.
  */
 export async function fetchWindowSummaries(runId: string, windowSec = 5): Promise<WindowSummaryRow[]> {
-    const res = await fetch(`/api/v1/analysis/${runId}/export/windows?window_sec=${windowSec}`)
-    if (!res.ok) throw new Error(`Request failed: ${res.status}`)
+    const res = await fetch(`/api/v1/analysis/${runId}/export/windows?window_sec=${windowSec}`, {
+        headers: { ...authHeaders() },
+    })
+    if (res.status === 401 && typeof window !== "undefined") {
+        clearAuthToken()
+        if (window.location.pathname !== "/login") window.location.href = "/login"
+        throw new Error("Không có quyền")
+    }
+    if (!res.ok) throw new Error(`Yêu cầu thất bại: ${res.status}`)
     const body = await res.text()
     return body.split("\n").filter(Boolean).map((line) => JSON.parse(line) as WindowSummaryRow)
 }
@@ -95,11 +229,17 @@ export async function uploadRosbag(file: File): Promise<Rosbag> {
     form.append("file", file)
     const res = await fetch("/api/v1/datasets/upload", {
         method: "POST",
+        headers: { ...authHeaders() },
         body: form,
     })
+    if (res.status === 401 && typeof window !== "undefined") {
+        clearAuthToken()
+        if (window.location.pathname !== "/login") window.location.href = "/login"
+        throw new Error("Không có quyền")
+    }
     if (!res.ok) {
         const body = await res.json().catch(() => null) as { detail?: string } | null
-        throw new Error(body?.detail ?? `HTTP ${res.status}`)
+        throw new Error(body?.detail ?? `Lỗi HTTP ${res.status}`)
     }
     return res.json() as Promise<Rosbag>
 }
@@ -136,11 +276,11 @@ export function ms(n: number): string {
 }
 
 export function timeOfDay(iso: string): string {
-    return new Date(iso).toLocaleTimeString("en-US", { hour12: false })
+    return new Date(iso).toLocaleTimeString("vi-VN", { hour12: false })
 }
 
 export function shortDate(iso: string): string {
-    return new Date(iso).toLocaleString("en-US", {
+    return new Date(iso).toLocaleString("vi-VN", {
         month: "short",
         day: "numeric",
         hour: "2-digit",
@@ -152,11 +292,11 @@ export function shortDate(iso: string): string {
 export function ago(iso: string): string {
     const diff = Date.now() - new Date(iso).getTime()
     const mins = Math.round(diff / 60000)
-    if (mins < 1) return "just now"
-    if (mins < 60) return `${mins}m ago`
+    if (mins < 1) return "vừa xong"
+    if (mins < 60) return `${mins} phút trước`
     const hours = Math.round(mins / 60)
-    if (hours < 24) return `${hours}h ago`
-    return `${Math.round(hours / 24)}d ago`
+    if (hours < 24) return `${hours} giờ trước`
+    return `${Math.round(hours / 24)} ngày trước`
 }
 
 /* ---------- severity ---------- */

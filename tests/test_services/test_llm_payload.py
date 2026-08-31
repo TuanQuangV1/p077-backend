@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from src.services import llm
@@ -86,6 +87,52 @@ def test_gate_demotes_actuator_claimed_primary_while_transform_fault_overlaps() 
     assert gated[2]["role"] == "consequence"
 
 
+def test_causal_order_promotes_a_consequence_that_started_before_every_primary() -> None:
+    """The model labelled /cmd_vel (silent from 304s) a consequence of a /tf conflict at 331s."""
+    rows = [
+        {"index": 1, "topic": "/tf", "start_sec": 331.23, "end_sec": 340.13},
+        {"index": 2, "topic": "/cmd_vel", "start_sec": 304.02, "end_sec": 446.32},
+    ]
+    findings = {
+        1: {"role": "primary", "detail": "tf conflict"},
+        2: {"role": "consequence", "detail": "controller stalled"},
+    }
+
+    assert llm._enforce_causal_order(rows, findings)[2]["role"] == "primary"
+
+
+def test_causal_order_leaves_a_genuine_cascade_alone() -> None:
+    """A controller stalling seconds after the scan that feeds it is a real consequence."""
+    rows = [
+        {"index": 1, "topic": "/scan", "start_sec": 60.0, "end_sec": 175.0},
+        {"index": 2, "topic": "/cmd_vel", "start_sec": 62.0, "end_sec": 175.0},
+    ]
+    findings = {
+        1: {"role": "primary", "detail": "scan died"},
+        2: {"role": "consequence", "detail": "controller starved"},
+    }
+
+    assert llm._enforce_causal_order(rows, findings) == findings
+
+
+def test_gate_leaves_actuator_primary_when_the_upstream_fault_started_later() -> None:
+    """A transform conflict that begins 27s after the controller went silent cannot explain it.
+
+    Measured on `F4_01`: /cmd_vel silent from 304s to the end of the recording,
+    /tf conflict only from 331s. Overlap alone demoted the real injected fault.
+    """
+    rows = [
+        {"index": 1, "topic": "/tf", "start_sec": 331.23, "end_sec": 340.13},
+        {"index": 2, "topic": "/cmd_vel", "start_sec": 304.02, "end_sec": 446.32},
+    ]
+    findings = {
+        1: {"role": "consequence", "detail": "tf conflict"},
+        2: {"role": "primary", "detail": "controller died"},
+    }
+
+    assert llm._gate_actuator_primary(rows, findings)[2]["role"] == "primary"
+
+
 def test_gate_leaves_a_lone_actuator_fault_as_primary() -> None:
     """/cmd_vel really is the injected fault in some recordings — no blanket ban."""
     rows = [{"index": 1, "topic": "/cmd_vel", "start_sec": 10.0, "end_sec": 20.0}]
@@ -128,3 +175,100 @@ def test_gate_has_the_final_say_over_the_simultaneity_backstop() -> None:
 
     assert settled[1]["role"] == "primary"
     assert settled[2]["role"] == "consequence"
+
+
+def _impossible_cluster() -> list[dict[str, Any]]:
+    """/cmd_vel silent from 304s, /tf conflict only from 331s — as measured on `F4_01`."""
+    return [
+        _detection("/cmd_vel", "silent_node", 304.02, 446.32, severity="critical"),
+        _detection("/tf", "tf_conflict", 331.23, 340.13, severity="critical"),
+    ]
+
+
+def _reply(role_for_cmd_vel: str, prose: str) -> str:
+    """A cluster answer whose /tf row is index 1 and /cmd_vel row index 2."""
+    return json.dumps(
+        {
+            "root_cause": prose,
+            "explanation": "The /tf conflict starts at 331.230s.",
+            "recommended_actions": ["Inspect the transform publishers."],
+            "findings": [
+                {"index": 1, "role": "primary", "detail": "tf conflict"},
+                {"index": 2, "role": role_for_cmd_vel, "detail": "controller silent"},
+            ],
+        }
+    )
+
+
+def test_explain_cluster_asks_again_when_the_claimed_ordering_is_impossible(monkeypatch) -> None:
+    """A consequence starting before its cause earns exactly one corrective round trip."""
+    replies = [
+        _reply("consequence", "The /tf conflict caused /cmd_vel to fall silent."),
+        _reply("primary", "/cmd_vel fell silent at 304.020s, before the /tf conflict at 331.230s."),
+    ]
+    sent: list[list[dict[str, Any]]] = []
+
+    def fake_chat(messages: list[dict[str, Any]], tools: Any = None) -> dict[str, Any]:
+        sent.append(messages)
+        return {
+            "message": {"content": replies[len(sent) - 1]},
+            "prompt_tokens": 100,
+            "completion_tokens": 10,
+            "latency_ms": 5.0,
+        }
+
+    monkeypatch.setattr(llm, "chat_completion", fake_chat)
+
+    result = llm.explain_detection_cluster(_impossible_cluster())
+
+    assert len(sent) == 2
+    assert "cannot start before its cause" in sent[1][-1]["content"]
+    assert result["root_cause"].startswith("/cmd_vel fell silent")
+    assert "Automated correction" not in result["explanation"]
+    assert result["usage"]["prompt_tokens"] == 200
+
+
+def test_explain_cluster_annotates_prose_the_model_refuses_to_correct(monkeypatch) -> None:
+    """When the retry repeats the impossible ordering, say so next to the prose."""
+
+    def fake_chat(messages: list[dict[str, Any]], tools: Any = None) -> dict[str, Any]:
+        return {
+            "message": {"content": _reply("consequence", "The /tf conflict caused /cmd_vel to fall silent.")},
+            "prompt_tokens": 100,
+            "completion_tokens": 10,
+            "latency_ms": 5.0,
+        }
+
+    monkeypatch.setattr(llm, "chat_completion", fake_chat)
+
+    result = llm.explain_detection_cluster(_impossible_cluster())
+
+    assert "Automated correction" in result["explanation"]
+    assert "/cmd_vel" in result["explanation"]
+    findings = result["findings"]
+    assert findings[1]["role"] == "primary"
+
+
+def test_explain_cluster_makes_one_call_when_the_ordering_holds(monkeypatch) -> None:
+    """A genuine cascade must not pay for a second round trip."""
+    calls = []
+
+    def fake_chat(messages: list[dict[str, Any]], tools: Any = None) -> dict[str, Any]:
+        calls.append(messages)
+        return {
+            "message": {"content": _reply("consequence", "The /scan outage starved the controller.")},
+            "prompt_tokens": 100,
+            "completion_tokens": 10,
+            "latency_ms": 5.0,
+        }
+
+    monkeypatch.setattr(llm, "chat_completion", fake_chat)
+
+    llm.explain_detection_cluster(
+        [
+            _detection("/cmd_vel", "silent_node", 62.0, 175.0, severity="critical"),
+            _detection("/tf", "tf_conflict", 60.0, 175.0, severity="critical"),
+        ]
+    )
+
+    assert len(calls) == 1

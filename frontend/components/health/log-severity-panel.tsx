@@ -130,26 +130,26 @@ export function LogSeverityPanel({ logs, anomalies }: LogSeverityPanelProps) {
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-sm">
           <AlertCircleIcon className="size-4" />
-          Mức độ nghiêm trọng nhật ký Log
+          Mức độ nghiêm trọng nhật ký
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         {/* Stat Cards */}
         <div className="grid grid-cols-3 gap-2">
           <LogStatCard
-            label="Nghiêm trọng"
+            label="NGHIÊM TRỌNG"
             count={fatalCount}
             color="#dc3545"
             isAlert={hasFatal}
           />
           <LogStatCard
-            label="Lỗi"
+            label="LỖI"
             count={errorCount}
             color="#dc3545"
             isAlert={hasError}
           />
           <LogStatCard
-            label="Cảnh báo"
+            label="CẢNH BÁO"
             count={warnCount}
             color="#ffc107"
             isAlert={hasWarn}
@@ -160,7 +160,7 @@ export function LogSeverityPanel({ logs, anomalies }: LogSeverityPanelProps) {
         {logAnomalies.length > 0 && (
           <div className="space-y-1.5">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Anomalies
+              Bất thường
             </span>
             {logAnomalies.slice(0, 3).map((anomaly) => (
               <div
@@ -191,7 +191,7 @@ export function LogSeverityPanel({ logs, anomalies }: LogSeverityPanelProps) {
         {latestError && (
           <div className="space-y-1.5">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Latest ERROR
+              Lỗi mới nhất
             </span>
             <LogBanner
               level={latestError.level}

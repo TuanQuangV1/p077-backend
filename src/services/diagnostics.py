@@ -14,6 +14,7 @@ import logging
 import math
 import statistics
 from collections import defaultdict
+from dataclasses import dataclass, field
 from itertools import pairwise
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -1346,6 +1347,170 @@ def _evaluate_auxiliary_rules(
     return detections, logs
 
 
+@dataclass
+class _StreamAggregates:
+    """Per-stream aggregates accumulated by the single ingestion pass."""
+
+    topic_times: dict[str, list[float]] = field(default_factory=lambda: defaultdict(list))
+    topic_message_types: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))
+    topic_node_counts: dict[str, dict[str, int]] = field(
+        default_factory=lambda: defaultdict(lambda: defaultdict(int))
+    )
+    topic_latency: dict[str, list[tuple[float, float]]] = field(default_factory=lambda: defaultdict(list))
+    topic_payload: dict[str, list[tuple[float, int]]] = field(default_factory=lambda: defaultdict(list))
+    topic_nan: dict[str, list[tuple[float, float]]] = field(default_factory=lambda: defaultdict(list))
+    topic_out_of_range: dict[str, list[tuple[float, float]]] = field(
+        default_factory=lambda: defaultdict(list)
+    )
+    log_entries: dict[str, list[tuple[float, str]]] = field(default_factory=lambda: defaultdict(list))
+    tf_pairs: dict[
+        str, list[tuple[float, str, str, tuple[float, float, float] | None]]
+    ] = field(default_factory=lambda: defaultdict(list))
+    total_messages: int = 0
+
+
+def _collect_stream_aggregates(messages: Iterable[Mapping[str, Any]]) -> _StreamAggregates:
+    """Consume ``messages`` exactly once, bucketing fields per rule family."""
+    agg = _StreamAggregates()
+    for message in messages:
+        try:
+            timestamp = float(message["timestamp"])
+            topic = str(message["topic"])
+            node = str(message["node"])
+        except (KeyError, TypeError, ValueError):
+            # Skip malformed messages that are missing required fields.
+            logger.debug(
+                "diagnostics.message_skipped",
+                extra={
+                    "diagnostics": {
+                        "event": "diagnostics.message_skipped",
+                        "level": "debug",
+                        "details": {"keys": list(message.keys()) if hasattr(message, "keys") else []},
+                    }
+                },
+            )
+            continue
+        agg.total_messages += 1
+        agg.topic_times[topic].append(timestamp)
+        agg.topic_message_types[topic].add(str(message.get("message_type") or ""))
+        agg.topic_node_counts[topic][node] += 1
+        header = message.get("header")
+        if header is not None:
+            drift = timestamp - float(header)
+            agg.topic_latency[topic].append((timestamp, drift))
+        payload_bytes = message.get("payload_bytes")
+        if payload_bytes is not None:
+            agg.topic_payload[topic].append((timestamp, int(payload_bytes)))
+        nan_ratio = message.get("nan_ratio")
+        if nan_ratio is not None:
+            agg.topic_nan[topic].append((timestamp, float(nan_ratio)))
+        out_of_range_ratio = message.get("out_of_range_ratio")
+        if out_of_range_ratio is not None:
+            agg.topic_out_of_range[topic].append((timestamp, float(out_of_range_ratio)))
+        level = message.get("level")
+        if level is not None:
+            agg.log_entries[topic].append((timestamp, str(level).lower()))
+        if topic in _TF_TOPICS:
+            transforms = message.get("transforms")
+            if transforms:
+                for transform in transforms:
+                    tr_frame = str(transform.get("frame_id") or "")
+                    tr_child = str(transform.get("child_frame_id") or "")
+                    tr_translation = transform.get("translation")
+                    if tr_translation is not None:
+                        tr_translation = tuple(float(v) for v in tr_translation)
+                    if tr_frame or tr_child:
+                        agg.tf_pairs[topic].append((timestamp, tr_frame, tr_child, tr_translation))
+            else:
+                frame_id = str(message.get("frame_id") or "")
+                child_frame_id = str(message.get("child_frame_id") or "")
+                if frame_id or child_frame_id:
+                    agg.tf_pairs[topic].append((timestamp, frame_id, child_frame_id, None))
+    return agg
+
+
+def _resolve_cadence_topics(
+    topic_message_types: Mapping[str, set[str]],
+    expected_hz: Mapping[str, float] | None,
+) -> set[str]:
+    # Status/event messages have no stable publish cadence unless a caller
+    # supplies an explicit expected rate. Treating their natural pauses as
+    # failures produced false Gate 2 alarms on healthy captures.
+    return {
+        topic
+        for topic, message_types in topic_message_types.items()
+        if (expected_hz is not None and topic in expected_hz)
+        or not message_types.intersection(_EVENT_DRIVEN_MESSAGE_TYPES)
+    }
+
+
+def _empty_input_result(resolved_thresholds: dict[str, Any]) -> dict[str, Any]:
+    empty_log_payload: dict[str, Any] = {
+        "event": "diagnostics.analysis.empty_input",
+        "level": "info",
+        "message": "No messages available for diagnostics.",
+        "details": {"message_count": 0, "thresholds": resolved_thresholds},
+    }
+    logger.info("diagnostics.analysis.empty_input", extra={"diagnostics": empty_log_payload})
+    return {
+        "summary": {"total_messages": 0, "total_detections": 0, "severity": "low"},
+        "detections": [],
+        "thresholds": resolved_thresholds,
+        "logs": [empty_log_payload],
+    }
+
+
+def _apply_pre_roll_grace(
+    detections: list[dict[str, Any]],
+    topic_times: Mapping[str, list[float]],
+    grace_sec: float,
+) -> list[dict[str, Any]]:
+    # Recorder/simulator warm-up produces irregular publish timing for the
+    # first few seconds of every topic's own life, independent of any real
+    # fault; without a filter these look identical to a genuine anomaly. No
+    # injected fault in the framework's dataset starts inside the observed
+    # warm-up window (worst case ~6.3s), so excluding each topic's own first
+    # `pre_roll_grace_sec` never masks a real incident.
+    if grace_sec <= 0:
+        return detections
+    topic_start = {topic: min(timestamps) for topic, timestamps in topic_times.items()}
+    return [
+        d
+        for d in detections
+        if float(d.get("tSec", 0.0))
+        >= topic_start.get(str(d.get("topic", "")), float("-inf")) + grace_sec
+    ]
+
+
+def _finalize_detections(
+    detections: list[dict[str, Any]],
+    topic_times: Mapping[str, list[float]],
+) -> float:
+    """Sort, assign stable ids, and stamp relative times. Returns stream start."""
+    # Identity is assigned here, at the point detections are created, so it
+    # survives into the anomaly store and every consumer downstream refers to
+    # the same anomaly by the same name. Without it the HILT routes matched on
+    # an `id` key that raw detections never carried and always 404'd.
+    # Detection timestamps are absolute simulation time, which on its own says
+    # nothing about where in the recording an event sits — a fault at t=1815 in
+    # a 182-second bag reads as implausible until you know the bag starts at
+    # 1761, and anything plotting it against recording duration draws it off the
+    # end of the timeline. Publish the observed bounds, and carry the relative
+    # time on each detection so consumers never have to guess the origin.
+    all_times = [t for times in topic_times.values() for t in times]
+    stream_start = min(all_times) if all_times else 0.0
+    detections.sort(
+        key=lambda d: (float(d.get("tSec", 0.0)), str(d.get("topic", "")), str(d.get("kind", "")))
+    )
+    for index, detection in enumerate(detections, start=1):
+        detection["id"] = f"anomaly_{index:03d}"
+        detection["tRelSec"] = round(float(detection.get("tSec", 0.0)) - stream_start, 3)
+        detection["endRelSec"] = round(
+            float(detection.get("endSec", detection.get("tSec", 0.0))) - stream_start, 3
+        )
+    return stream_start
+
+
 def detect_anomalies(
     messages: Iterable[Mapping[str, Any]],
     thresholds: dict[str, Any] | None = None,
@@ -1440,106 +1605,15 @@ def detect_anomalies(
     """
     resolved_thresholds = merge_diagnostics_thresholds(thresholds=thresholds)
     logs: list[dict[str, Any]] = []
+    agg = _collect_stream_aggregates(messages)
 
-    topic_times: dict[str, list[float]] = defaultdict(list)
-    topic_message_types: dict[str, set[str]] = defaultdict(set)
-    topic_node_counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    topic_latency: dict[str, list[tuple[float, float]]] = defaultdict(list)
-    topic_payload: dict[str, list[tuple[float, int]]] = defaultdict(list)
-    topic_nan: dict[str, list[tuple[float, float]]] = defaultdict(list)
-    topic_out_of_range: dict[str, list[tuple[float, float]]] = defaultdict(list)
-    log_entries: dict[str, list[tuple[float, str]]] = defaultdict(list)
-    tf_pairs: dict[str, list[tuple[float, str, str, tuple[float, float, float] | None]]] = defaultdict(list)
-    total_messages = 0
-    for message in messages:
-        try:
-            timestamp = float(message["timestamp"])
-            topic = str(message["topic"])
-            node = str(message["node"])
-        except (KeyError, TypeError, ValueError):
-            # Skip malformed messages that are missing required fields.
-            logger.debug(
-                "diagnostics.message_skipped",
-                extra={
-                    "diagnostics": {
-                        "event": "diagnostics.message_skipped",
-                        "level": "debug",
-                        "details": {"keys": list(message.keys()) if hasattr(message, "keys") else []},
-                    }
-                },
-            )
-            continue
-        total_messages += 1
-        topic_times[topic].append(timestamp)
-        topic_message_types[topic].add(str(message.get("message_type") or ""))
-        topic_node_counts[topic][node] += 1
-        header = message.get("header")
-        if header is not None:
-            drift = timestamp - float(header)
-            topic_latency[topic].append((timestamp, drift))
-        payload_bytes = message.get("payload_bytes")
-        if payload_bytes is not None:
-            topic_payload[topic].append((timestamp, int(payload_bytes)))
-        nan_ratio = message.get("nan_ratio")
-        if nan_ratio is not None:
-            topic_nan[topic].append((timestamp, float(nan_ratio)))
-        out_of_range_ratio = message.get("out_of_range_ratio")
-        if out_of_range_ratio is not None:
-            topic_out_of_range[topic].append((timestamp, float(out_of_range_ratio)))
-        level = message.get("level")
-        if level is not None:
-            log_entries[topic].append((timestamp, str(level).lower()))
-        if topic in _TF_TOPICS:
-            transforms = message.get("transforms")
-            if transforms:
-                for transform in transforms:
-                    tr_frame = str(transform.get("frame_id") or "")
-                    tr_child = str(transform.get("child_frame_id") or "")
-                    tr_translation = transform.get("translation")
-                    if tr_translation is not None:
-                        tr_translation = tuple(float(v) for v in tr_translation)
-                    if tr_frame or tr_child:
-                        tf_pairs[topic].append((timestamp, tr_frame, tr_child, tr_translation))
-            else:
-                frame_id = str(message.get("frame_id") or "")
-                child_frame_id = str(message.get("child_frame_id") or "")
-                if frame_id or child_frame_id:
-                    tf_pairs[topic].append((timestamp, frame_id, child_frame_id, None))
+    if agg.total_messages == 0:
+        return _empty_input_result(resolved_thresholds)
 
-    if total_messages == 0:
-        empty_log_payload: dict[str, Any] = {
-            "event": "diagnostics.analysis.empty_input",
-            "level": "info",
-            "message": "No messages available for diagnostics.",
-            "details": {
-                "message_count": 0,
-                "thresholds": resolved_thresholds,
-            },
-        }
-        logger.info("diagnostics.analysis.empty_input", extra={"diagnostics": empty_log_payload})
-        return {
-            "summary": {
-                "total_messages": 0,
-                "total_detections": 0,
-                "severity": "low",
-            },
-            "detections": [],
-            "thresholds": resolved_thresholds,
-            "logs": [empty_log_payload],
-        }
-
-    # Status/event messages have no stable publish cadence unless a caller
-    # supplies an explicit expected rate. Treating their natural pauses as
-    # failures produced false Gate 2 alarms on healthy captures.
-    cadence_topics = {
-        topic
-        for topic, message_types in topic_message_types.items()
-        if (expected_hz is not None and topic in expected_hz)
-        or not message_types.intersection(_EVENT_DRIVEN_MESSAGE_TYPES)
-    }
-
+    cadence_topics = _resolve_cadence_topics(agg.topic_message_types, expected_hz)
     detections: list[dict[str, Any]] = []
-    for topic, timestamps in topic_times.items():
+
+    for topic, timestamps in agg.topic_times.items():
         if topic not in cadence_topics:
             continue
         timestamps_arr = sorted(timestamps)
@@ -1550,7 +1624,7 @@ def detect_anomalies(
         logs.extend(topic_logs)
 
     clock_drift_windows: dict[str, list[tuple[float, float]]] = defaultdict(list)
-    for topic, samples in topic_latency.items():
+    for topic, samples in agg.topic_latency.items():
         drift_detections, drift_log, drift_windows = _evaluate_drift_rule(
             topic, sorted(samples), resolved_thresholds
         )
@@ -1559,14 +1633,14 @@ def detect_anomalies(
         if drift_windows:
             clock_drift_windows[topic].extend(drift_windows)
 
-    observation_end = max(timestamp for timestamps in topic_times.values() for timestamp in timestamps)
-    for topic, timestamps in topic_times.items():
+    observation_end = max(t for times in agg.topic_times.values() for t in times)
+    for topic, timestamps in agg.topic_times.items():
         if topic not in cadence_topics:
             continue
         timestamps_arr = sorted(timestamps)
         if len(timestamps_arr) < 2:
             continue
-        node_counts = topic_node_counts[topic]
+        node_counts = agg.topic_node_counts[topic]
         node = max(node_counts, key=lambda value: node_counts[value])
         silent_detections, silent_log = _evaluate_silent_rule(
             topic, node, timestamps_arr, observation_end, resolved_thresholds
@@ -1575,13 +1649,13 @@ def detect_anomalies(
         logs.append(silent_log)
 
     aux_detections, aux_logs = _evaluate_auxiliary_rules(
-        topic_times,
-        topic_latency,
-        log_entries,
-        topic_payload,
-        topic_nan,
-        topic_out_of_range,
-        tf_pairs,
+        agg.topic_times,
+        agg.topic_latency,
+        agg.log_entries,
+        agg.topic_payload,
+        agg.topic_nan,
+        agg.topic_out_of_range,
+        agg.tf_pairs,
         resolved_thresholds,
         expected_hz,
         cadence_topics,
@@ -1591,49 +1665,20 @@ def detect_anomalies(
     detections.extend(aux_detections)
     logs.extend(aux_logs)
 
-    # Recorder/simulator warm-up produces irregular publish timing for the
-    # first few seconds of every topic's own life, independent of any real
-    # fault; without a filter these look identical to a genuine anomaly. No
-    # injected fault in the framework's dataset starts inside the observed
-    # warm-up window (worst case ~6.3s), so excluding each topic's own first
-    # `pre_roll_grace_sec` never masks a real incident.
-    pre_roll_grace = float(resolved_thresholds["pre_roll_grace_sec"])
-    if pre_roll_grace > 0:
-        topic_start = {topic: min(timestamps) for topic, timestamps in topic_times.items()}
-        detections = [
-            d
-            for d in detections
-            if float(d.get("tSec", 0.0)) >= topic_start.get(str(d.get("topic", "")), float("-inf")) + pre_roll_grace
-        ]
-
-    # Identity is assigned here, at the point detections are created, so it
-    # survives into the anomaly store and every consumer downstream refers to
-    # the same anomaly by the same name. Without it the HILT routes matched on
-    # an `id` key that raw detections never carried and always 404'd.
-    # Detection timestamps are absolute simulation time, which on its own says
-    # nothing about where in the recording an event sits — a fault at t=1815 in
-    # a 182-second bag reads as implausible until you know the bag starts at
-    # 1761, and anything plotting it against recording duration draws it off the
-    # end of the timeline. Publish the observed bounds, and carry the relative
-    # time on each detection so consumers never have to guess the origin.
-    all_times = [t for times in topic_times.values() for t in times]
-    stream_start = min(all_times) if all_times else 0.0
-
-    detections.sort(key=lambda d: (float(d.get("tSec", 0.0)), str(d.get("topic", "")), str(d.get("kind", ""))))
-    for index, detection in enumerate(detections, start=1):
-        detection["id"] = f"anomaly_{index:03d}"
-        detection["tRelSec"] = round(float(detection.get("tSec", 0.0)) - stream_start, 3)
-        detection["endRelSec"] = round(
-            float(detection.get("endSec", detection.get("tSec", 0.0))) - stream_start, 3
-        )
+    detections = _apply_pre_roll_grace(
+        detections, agg.topic_times, float(resolved_thresholds["pre_roll_grace_sec"])
+    )
+    stream_start = _finalize_detections(detections, agg.topic_times)
 
     result = {
         "summary": {
-            "total_messages": total_messages,
+            "total_messages": agg.total_messages,
             "total_detections": len(detections),
             "severity": "medium" if detections else "low",
             "stream_start_sec": stream_start,
-            "stream_end_sec": max(all_times) if all_times else 0.0,
+            "stream_end_sec": max(
+                t for times in agg.topic_times.values() for t in times
+            ) if agg.topic_times else 0.0,
         },
         "detections": detections,
         "thresholds": resolved_thresholds,
@@ -1647,7 +1692,7 @@ def detect_anomalies(
                 "level": "info",
                 "message": "Diagnostics analysis completed.",
                 "details": {
-                    "total_messages": total_messages,
+                    "total_messages": agg.total_messages,
                     "total_detections": len(detections),
                     "thresholds": resolved_thresholds,
                 },

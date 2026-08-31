@@ -333,11 +333,11 @@ export function TimelineCanvas({
           onDoubleClick={() => onViewChange({ from: 0, to: durationSec })}
           role="slider"
           tabIndex={0}
-          aria-label="Run timeline scrubber"
+          aria-label="Thanh trượt dòng thời gian"
           aria-valuemin={0}
           aria-valuemax={durationSec}
           aria-valuenow={Number(playhead.toFixed(2))}
-          aria-valuetext={`${clock(playhead)} of ${clock(durationSec)}`}
+          aria-valuetext={`${clock(playhead)} / ${clock(durationSec)}`}
           onKeyDown={(e) => {
             const fine = e.shiftKey ? 0.05 : 0.5
             if (e.key === "ArrowRight") onScrub(clampT(playhead + fine))
@@ -359,7 +359,7 @@ export function TimelineCanvas({
       </div>
 
       <p className="mt-2 px-3 font-mono text-[10px] text-muted-foreground">
-        drag scrub · wheel zoom · shift+drag pan · dblclick reset · window {clock(view.from)}–{clock(view.to)}
+        kéo để cuộn · lăn để phóng · giữ Shift để kéo · nhấp đúp để đặt lại · cửa sổ {clock(view.from)}–{clock(view.to)}
       </p>
     </div>
   )

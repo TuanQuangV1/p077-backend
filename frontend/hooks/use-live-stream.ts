@@ -26,9 +26,8 @@ export interface LiveLog {
   message: string
 }
 
-export interface VllmTick {
+export interface LlmTick {
   tokensPerSec: number
-  gpuUtil: number
   queueLen: number
   batchSize: number
   p95: number
@@ -43,7 +42,7 @@ export function useLiveStream(options?: { paused?: boolean; logLimit?: number; t
   const [connected, setConnected] = useState(false)
   const [job, setJob] = useState<JobProgress | null>(null)
   const [logs, setLogs] = useState<LiveLog[]>([])
-  const [ticks, setTicks] = useState<VllmTick[]>([])
+  const [ticks, setTicks] = useState<LlmTick[]>([])
   const pausedRef = useRef(paused)
   pausedRef.current = paused
 
@@ -64,8 +63,8 @@ export function useLiveStream(options?: { paused?: boolean; logLimit?: number; t
       } else if (evt.type === "log") {
         const log = evt.payload as unknown as LiveLog
         setLogs((prev) => [...prev.slice(-(logLimit - 1)), log])
-      } else if (evt.type === "vllm.tick") {
-        const tick = { ...(evt.payload as unknown as VllmTick), ts: evt.ts }
+      } else if (evt.type === "llm.tick") {
+        const tick = { ...(evt.payload as unknown as LlmTick), ts: evt.ts }
         setTicks((prev) => [...prev.slice(-(tickLimit - 1)), tick])
       }
     }

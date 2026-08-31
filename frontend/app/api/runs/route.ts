@@ -2,17 +2,20 @@ import { backendFailure, backendGet, backendPost } from "@/lib/server/backend"
 import { fail, ok } from "@/lib/server/http"
 import type { AnalysisRun } from "@/lib/types"
 
-/** GET /api/runs?rosbagId=&status= — analysis runs, newest first. */
+/** GET /api/runs?rosbagId=&status=&limit= — analysis runs, newest first, real LLM usage per run. */
 export async function GET(req: Request) {
   const url = new URL(req.url)
   const rosbagId = url.searchParams.get("rosbagId")
   const status = url.searchParams.get("status")
+  const limit = url.searchParams.get("limit") ?? "50"
   try {
-    const overview = await backendGet<{ recentRuns: AnalysisRun[] }>("/dashboard/overview")
-    const items = (overview.recentRuns ?? []).filter(
+    const { items: runs, total } = await backendGet<{ items: AnalysisRun[]; total: number }>(
+      `/runs?limit=${encodeURIComponent(limit)}`,
+    )
+    const items = runs.filter(
       (run) => (!rosbagId || run.rosbagId === rosbagId) && (!status || run.status === status),
     )
-    return ok({ items, total: items.length })
+    return ok({ items, total: rosbagId || status ? items.length : total })
   } catch (error) {
     const { message, status: code } = backendFailure(error)
     return fail(message, code)

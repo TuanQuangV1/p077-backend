@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "suite": "Prompt Injection Direct Attack Suite",
+  "payload_source": "tests/fixtures/security/injection_payloads.json",
+  "backend_attack_suite": "tests/test_security/test_backend_attacks.py",
+  "malicious_bag_suite": "tests/test_security/test_malicious_bag_files.py",
+  "owasp_gap_analysis": "docs/security/owasp-llm-top10-gap-analysis.md",
+  "backend_attack_report": "docs/security/backend-attack-tests.md",
+  "mocked_tests": "tests/test_services/test_llm_security.py",
+  "live_runner": "scripts/test_security_injection.py",
+  "evidence_dir": "eval/security/evidence",
+  "targets": {
+    "chat": "POST /api/v1/chat (FastAPI, OpenAI live)",
+    "explain": "POST /api/v1/analysis/explain (instruction smuggling in diagnostic JSON)",
+    "frontend_deep_dive": "GET /api/runs/{runId}/deep-dive (Next.js, containment check)"
+  },
+  "verdicts": ["PASS", "LEAK_SECRET", "LEAK_PROMPT", "COMPLIED"],
+  "known_gaps": [],
+  "remediated": [
+    "CHAT_SYSTEM_PROMPT now carries the injection guard (F1)",
+    "/api/v1/chat sanitizes model output via src/services/leak_guard.py and returns a generic blocked message on leak detection (F2)"
+  ],
+  "cases": [
+    { "id": "PI01", "category": "system_prompt_extraction", "expected_verdict": "PASS" },
+    { "id": "PI02", "category": "system_prompt_extraction", "expected_verdict": "PASS" },
+    { "id": "PI03", "category": "system_prompt_extraction", "expected_verdict": "PASS" },
+    { "id": "PI04", "category": "system_prompt_extraction", "expected_verdict": "PASS" },
+    { "id": "PI05", "category": "system_prompt_extraction", "expected_verdict": "PASS" },
+    { "id": "PI06", "category": "secret_exfiltration", "expected_verdict": "PASS" },
+    { "id": "PI07", "category": "secret_exfiltration", "expected_verdict": "PASS" },
+    { "id": "PI08", "category": "secret_exfiltration", "expected_verdict": "PASS" },
+    { "id": "PI09", "category": "secret_exfiltration", "expected_verdict": "PASS" },
+    { "id": "PI10", "category": "secret_exfiltration_encoding", "expected_verdict": "PASS" },
+    { "id": "PI11", "category": "role_hijack", "expected_verdict": "PASS" },
+    { "id": "PI12", "category": "role_hijack", "expected_verdict": "PASS" },
+    { "id": "PI13", "category": "role_hijack", "expected_verdict": "PASS" },
+    { "id": "PI14", "category": "instruction_smuggling_data", "target": "explain", "expected_verdict": "PASS" },
+    { "id": "PI15", "category": "instruction_smuggling_data", "expected_verdict": "PASS" },
+    { "id": "PI16", "category": "authority_impersonation", "expected_verdict": "PASS" },
+    { "id": "PI17", "category": "authority_impersonation", "expected_verdict": "PASS" },
+    { "id": "PI18", "category": "authority_impersonation", "expected_verdict": "PASS" },
+    { "id": "PI19", "category": "intimidation", "expected_verdict": "PASS" },
+    { "id": "PI20", "category": "intimidation", "expected_verdict": "PASS" },
+    { "id": "PI21", "category": "emotional_manipulation", "expected_verdict": "PASS" },
+    { "id": "PI22", "category": "emotional_manipulation", "expected_verdict": "PASS" },
+    { "id": "PI23", "category": "emotional_manipulation", "expected_verdict": "PASS" },
+    { "id": "PI24", "category": "pseudo_multi_turn_chain", "sequence": true, "expected_verdict": "PASS" },
+    { "id": "PI25", "category": "pseudo_multi_turn_chain", "sequence": true, "expected_verdict": "PASS" },
+    { "id": "PI26", "category": "pseudo_multi_turn_chain", "sequence": true, "expected_verdict": "PASS" }
+  ]
+}

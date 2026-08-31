@@ -13,9 +13,9 @@ const _geistSans = Geist({ subsets: ['latin'] })
 const _geistMono = Geist_Mono({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'RAV-13 · ROS2 Rosbag Diagnosis Console',
+  title: 'RAV-13 · Bảng điều khiển chẩn đoán rosbag ROS2',
   description:
-    'AI-assisted rosbag log analysis for robotics fleets: parse ROS2 bags, detect anomalies, diagnose root cause with a VLLM agent, review conclusions, and replay the run.',
+    'Phân tích log rosbag có hỗ trợ AI cho đội robot: phân tích bag ROS2, phát hiện bất thường, chẩn đoán nguyên nhân gốc với LLM gpt-4.1, duyệt kết luận và xem lại lượt chạy.',
   generator: 'v0.app',
   icons: {
     icon: [

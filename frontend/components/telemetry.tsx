@@ -46,7 +46,7 @@ export function StatTile({
   )
 }
 
-const SEVERITY_VI: Record<string, string> = {
+const severityLabel: Record<Severity, string> = {
   critical: "nghiêm trọng",
   high: "cao",
   medium: "trung bình",
@@ -56,7 +56,7 @@ const SEVERITY_VI: Record<string, string> = {
 export function SeverityBadge({ severity, className }: { severity: Severity; className?: string }) {
   return (
     <Badge variant="outline" className={cn("font-mono text-[10px] uppercase", severityBorder[severity], className)}>
-      {SEVERITY_VI[severity] ?? severity}
+      {severityLabel[severity] ?? severity}
     </Badge>
   )
 }
@@ -75,29 +75,30 @@ export function StatusDot({ status }: { status: string }) {
   return <span className={cn("inline-block size-1.5 shrink-0 rounded-full", color)} aria-hidden />
 }
 
-const STATUS_VI: Record<string, string> = {
+const statusLabel: Record<string, string> = {
   succeeded: "thành công",
-  analyzed: "đã phân tích",
-  ok: "ổn định",
-  published: "đã xuất",
-  running: "đang chạy",
-  analyzing: "đang phân tích",
-  parsing: "đang đọc dữ liệu",
   failed: "thất bại",
-  error: "lỗi",
-  oom: "tràn bộ nhớ",
-  timeout: "quá thời gian",
+  running: "đang chạy",
   queued: "đang chờ",
   pending: "chờ duyệt",
-  draft: "bản nháp",
-  uploaded: "đã nạp",
+  draft: "nháp",
+  analyzed: "đã phân tích",
+  ok: "bình thường",
+  published: "đã xuất bản",
+  analyzing: "đang phân tích",
+  parsing: "đang phân tách",
+  error: "lỗi",
+  oom: "hết bộ nhớ",
+  timeout: "hết thời gian",
+  uploaded: "đã tải lên",
+  not_analyzed: "chưa phân tích",
 }
 
 export function StatusLabel({ status, className }: { status: string; className?: string }) {
   return (
     <span className={cn("inline-flex items-center gap-1.5 font-mono text-xs", className)}>
       <StatusDot status={status} />
-      {STATUS_VI[status.toLowerCase()] ?? status}
+      {statusLabel[status] ?? status}
     </span>
   )
 }
@@ -116,29 +117,16 @@ export function PageHeader({
   title,
   description,
   actions,
-  badge,
 }: {
   title: string
-  description?: ReactNode
+  description?: string
   actions?: ReactNode
-  badge?: ReactNode
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border/50 pb-3">
+    <div className="flex flex-wrap items-end justify-between gap-3">
       <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-2.5">
-          <h1 className="text-xl font-semibold tracking-tight text-foreground text-balance">
-            {title}
-          </h1>
-          {badge}
-        </div>
-        {description ? (
-          typeof description === "string" ? (
-            <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">{description}</p>
-          ) : (
-            <div className="text-xs text-muted-foreground">{description}</div>
-          )
-        ) : null}
+        <h1 className="text-xl font-semibold tracking-tight text-balance">{title}</h1>
+        {description ? <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">{description}</p> : null}
       </div>
       {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
     </div>

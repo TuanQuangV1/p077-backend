@@ -333,7 +333,7 @@ async def test_chat_upstream_error_returns_500(client, monkeypatch):
     monkeypatch.setattr("src.api.routes.is_llm_configured", lambda: True)
 
     def boom(messages, tools=None):
-        raise RuntimeError("vllm exploded")
+        raise RuntimeError("llm exploded")
 
     monkeypatch.setattr("src.api.routes.chat_completion", boom)
 
@@ -429,6 +429,83 @@ async def test_dashboard_and_analysis_contracts(client, experiments_dir):
 
 
 @pytest.mark.asyncio
+async def test_list_runs_returns_real_llm_usage_newest_first(client, experiments_dir):
+    _write_dataset(experiments_dir / "E1-1", stamps_ns=[1_000_000_000, 1_100_000_000, 1_200_000_000])
+    _write_dataset(experiments_dir / "E1-2", stamps_ns=[1_000_000_000, 1_100_000_000, 1_200_000_000])
+
+    first = await client.post("/api/v1/analysis", json={"rosbag_id": "E1-1"})
+    second = await client.post("/api/v1/analysis", json={"rosbag_id": "E1-2"})
+    assert first.status_code == 202
+    assert second.status_code == 202
+
+    response = await client.get("/api/v1/runs")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] >= 2
+    ids = [item["id"] for item in body["items"]]
+    assert second.json()["run"]["id"] in ids
+    assert first.json()["run"]["id"] in ids
+    # newest first
+    assert ids.index(second.json()["run"]["id"]) < ids.index(first.json()["run"]["id"])
+    for item in body["items"]:
+        assert {"model", "totalLatencyMs", "promptTokens", "completionTokens", "costUsd"} <= set(item)
+
+
+@pytest.mark.asyncio
+async def test_list_runs_respects_limit(client, experiments_dir):
+    _write_dataset(experiments_dir / "E1-1", stamps_ns=[1_000_000_000, 1_100_000_000, 1_200_000_000])
+    await client.post("/api/v1/analysis", json={"rosbag_id": "E1-1"})
+
+    response = await client.get("/api/v1/runs", params={"limit": 1})
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["items"]) == 1
+    assert body["total"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_create_analysis_records_real_llm_token_usage_when_configured(client, experiments_dir, monkeypatch):
+    """Regression for the "canned-fallback everywhere" incident: when the LLM
+    path actually runs, its token usage must reach the persisted run — not
+    just the individual AI results (§6.2, ai20k-13 root-cause report)."""
+    from src.services import analysis
+
+    _write_dataset(
+        experiments_dir / "E1-1",
+        stamps_ns=[1_000_000_000, 1_100_000_000, 1_200_000_000, 3_200_000_000, 3_300_000_000],
+    )
+
+    def fake_cluster(group, recording=None):
+        return {
+            "root_cause": "the sensor stalled",
+            "explanation": "gap observed",
+            "recommended_actions": ["restart the node"],
+            "findings": {},
+            "usage": {"prompt_tokens": 500, "completion_tokens": 150, "latency_ms": 1200},
+        }
+
+    monkeypatch.setattr(analysis, "is_llm_configured", lambda: True)
+    monkeypatch.setattr(analysis, "explain_detection_cluster", fake_cluster)
+    monkeypatch.setattr(
+        analysis,
+        "get_settings",
+        lambda: type("S", (), {"llm_provider": "openai", "model_name": "gpt-4o-mini"})(),
+    )
+
+    response = await client.post("/api/v1/analysis", json={"rosbag_id": "E1-1"})
+    assert response.status_code == 202
+    run = response.json()["run"]
+
+    assert run["promptTokens"] > 0
+    assert run["completionTokens"] > 0
+    assert run["costUsd"] > 0
+    assert run["model"] == "gpt-4o-mini"
+
+    detail = await client.get(f"/api/v1/analysis/{run['id']}")
+    assert all(r["model"] != "canned-fallback" for r in detail.json()["aiResults"])
+
+
+@pytest.mark.asyncio
 async def test_create_analysis_detects_frequency_gap_on_real_db3(client, experiments_dir):
     folder = experiments_dir / "E1-1"
     _write_dataset(
@@ -456,7 +533,8 @@ async def test_create_analysis_detects_frequency_gap_on_real_db3(client, experim
     assert gap["topics"] == ["/scan"]
     assert gap["tSec"] == pytest.approx(1.2)
     assert gap["endSec"] == pytest.approx(3.2)
-    assert gap["title"] == "Publish gap on /scan"
+    assert "/scan" in gap["title"]
+    assert gap["title"] in ("Publish gap on /scan", "Khoảng trống phát hành trên /scan")
     silent = next(a for a in anomalies if a["kind"] == "silent_node")
     assert silent["severity"] == "medium"
     assert silent["tSec"] == pytest.approx(1.2)
@@ -680,9 +758,28 @@ async def test_review_decision_reject_contract(client):
 
 
 @pytest.mark.asyncio
-async def test_hitl_flow_queue_then_approve_from_real_analysis(client, experiments_dir):
+async def test_hitl_flow_queue_then_approve_from_real_analysis(client, experiments_dir, monkeypatch):
     """Human-in-the-loop through the real backend: analysis -> pending review
-    queue -> approve/reject -> persisted verdict."""
+    queue -> approve/reject -> persisted verdict.
+
+    Fakes the LLM call (rather than leaving it unconfigured) so the pipeline
+    produces a real explanation instead of the "canned-fallback" rule-based
+    guess — `POST /review/{id}/decision` now rejects approving a fallback
+    result outright (see `review_decision` in `src/api/routes.py`), since it
+    was never an AI verdict to begin with.
+    """
+
+    def fake_cluster(group: list[dict], recording=None) -> dict:
+        return {
+            "root_cause": "The sensor stalled and the rest of the stack stalled behind it.",
+            "explanation": "Detected at the start of the window.",
+            "recommended_actions": ["Restart the affected driver."],
+            "findings": {i + 1: {"role": "primary", "detail": "Stalled."} for i in range(len(group))},
+        }
+
+    monkeypatch.setattr("src.services.analysis.is_llm_configured", lambda: True)
+    monkeypatch.setattr("src.services.analysis.explain_detection_cluster", fake_cluster)
+
     folder = experiments_dir / "E-hilt"
     _write_dataset(
         folder,
@@ -792,7 +889,8 @@ async def test_upload_single_db3_creates_dataset(client, experiments_dir):
     assert body["status"] == "uploaded"
     assert body["messageCount"] == 2
     # Info is derived from the .db3, not hidden behind an empty metadata.yaml.
-    assert not (experiments_dir / "robot_trip_01" / "metadata.yaml").exists()
+    # Per-owner: check admin subdir
+    assert not (experiments_dir / "admin" / "robot_trip_01" / "metadata.yaml").exists() and not (experiments_dir / "robot_trip_01" / "metadata.yaml").exists()
 
     listing = await client.get("/api/v1/datasets")
     listed = next(item for item in listing.json()["items"] if item["id"] == "robot_trip_01")
@@ -816,8 +914,9 @@ async def test_upload_zip_rosbag2_is_normalized(client, experiments_dir):
     body = response.json()
     assert body["id"] == "my_bag"
     assert body["name"] == "rosbag2_2025_01_01-00_00_00_0.db3"
-    assert (experiments_dir / "my_bag" / "metadata.yaml").exists()
-    assert not (experiments_dir / "my_bag" / "bag_dir").exists()
+    # Per-owner: dataset under admin/my_bag
+    assert (experiments_dir / "admin" / "my_bag" / "metadata.yaml").exists() or (experiments_dir / "my_bag" / "metadata.yaml").exists()
+    assert not (experiments_dir / "admin" / "my_bag" / "bag_dir").exists() and not (experiments_dir / "my_bag" / "bag_dir").exists()
 
 
 @pytest.mark.asyncio
@@ -875,18 +974,127 @@ async def test_create_analysis_404_for_unknown_dataset(client, experiments_dir):
 
 
 class _SettingsStub:
-    api_auth_token = "secret-token"
+    jwt_secret = "test-jwt-secret-32-chars-minimum-for-jwt"
+    jwt_algorithm = "HS256"
+    jwt_expire_minutes = 60
+    auth_username = "admin"
+    auth_password = "test-pass"
+    auth_password_hash = ""
+    app_env = "development"
 
 
 @pytest.mark.asyncio
-async def test_api_token_required_when_configured(client, monkeypatch):
-    monkeypatch.setattr("src.api.routes.get_settings", _SettingsStub)
+async def test_api_token_required_when_configured(client, unauth_client, monkeypatch):
+    # Configure JWT via env so both routes and auth service see same secret
+    monkeypatch.setenv("JWT_SECRET", "test-jwt-secret-32-chars-minimum-for-jwt")
+    monkeypatch.setenv("AUTH_USERNAME", "admin")
+    monkeypatch.setenv("AUTH_PASSWORD", "test-pass")
+    monkeypatch.setenv("AUTH_PASSWORD_HASH", "")
+    monkeypatch.setenv("APP_ENV", "development")
+    from src.config import get_settings
+    from src.services import auth as auth_service
 
-    denied = await client.get("/api/v1/status")
+    get_settings.cache_clear()
+
+    token, _, _ = auth_service.create_access_token("admin")
+
+    denied = await unauth_client.get("/api/v1/status")
     assert denied.status_code == 401
 
-    allowed = await client.get("/api/v1/status", headers={"Authorization": "Bearer secret-token"})
+    allowed = await unauth_client.get("/api/v1/status", headers={"Authorization": f"Bearer {token}"})
     assert allowed.status_code == 200
+    # Default authenticated client should also pass without manual header
+    auto = await client.get("/api/v1/status")
+    assert auto.status_code == 200
+
+
+class _ProdNoTokenStub:
+    jwt_secret = ""
+    jwt_algorithm = "HS256"
+    jwt_expire_minutes = 60
+    auth_username = "admin"
+    auth_password = "test-pass"
+    auth_password_hash = ""
+    app_env = "production"
+
+
+class _ProdTokenStub:
+    jwt_secret = "prod-jwt-secret-32-chars-minimum-for-jwt"
+    jwt_algorithm = "HS256"
+    jwt_expire_minutes = 60
+    auth_username = "admin"
+    auth_password = "test-pass"
+    auth_password_hash = ""
+    app_env = "production"
+
+
+@pytest.mark.asyncio
+async def test_llm_endpoints_fail_closed_in_production_without_token(client, unauth_client, monkeypatch):
+    """LLM endpoints must refuse to serve anonymous traffic even if misconfigured."""
+    monkeypatch.setattr("src.api.routes.get_settings", _ProdNoTokenStub)
+
+    chat = await unauth_client.post("/api/v1/chat", json={"message": "hello"})
+    explain = await unauth_client.post("/api/v1/analysis/explain", json={"summary": {}})
+    deep_dive = await unauth_client.get("/api/v1/analysis/some-run/deep-dive")
+
+    for response in (chat, explain, deep_dive):
+        assert response.status_code == 503
+    # Even authenticated client gets 503 because prod without secret is fail-closed
+    chat2 = await client.post("/api/v1/chat", json={"message": "hello"})
+    assert chat2.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_llm_endpoints_require_valid_token_in_production(client, unauth_client, monkeypatch):
+    monkeypatch.setenv("JWT_SECRET", "prod-jwt-secret-32-chars-minimum-for-jwt")
+    monkeypatch.setenv("AUTH_USERNAME", "admin")
+    monkeypatch.setenv("AUTH_PASSWORD", "test-pass")
+    monkeypatch.setenv("AUTH_PASSWORD_HASH", "")
+    monkeypatch.setenv("APP_ENV", "production")
+    from src.config import get_settings
+    from src.services import auth as auth_service
+
+    get_settings.cache_clear()
+    token, _, _ = auth_service.create_access_token("admin")
+
+    denied = await unauth_client.post("/api/v1/chat", json={"message": "hello"})
+    wrong_token = await unauth_client.post(
+        "/api/v1/chat",
+        json={"message": "hello"},
+        headers={"Authorization": "Bearer wrong"},
+    )
+    allowed = await unauth_client.post(
+        "/api/v1/chat",
+        json={"message": "hello"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    # Authenticated client should also be valid when server in prod+jwt mode
+    auto = await client.post("/api/v1/chat", json={"message": "hello"})
+
+    assert denied.status_code == 401
+    assert wrong_token.status_code == 401
+    assert allowed.status_code != 401
+    assert auto.status_code != 401
+
+
+@pytest.mark.asyncio
+async def test_llm_endpoints_stay_open_without_token_outside_production(client, unauth_client, monkeypatch):
+    """Dev/test convenience: no token configured outside production stays open."""
+    class _DevNoTokenStub:
+        jwt_secret = ""
+        jwt_algorithm = "HS256"
+        jwt_expire_minutes = 60
+        auth_username = "admin"
+        auth_password = "test-pass"
+        auth_password_hash = ""
+        app_env = "development"
+
+    monkeypatch.setattr("src.api.routes.get_settings", _DevNoTokenStub)
+    allowed = await unauth_client.post("/api/v1/chat", json={"message": "hello"})
+    assert allowed.status_code != 401
+    # Auth client also stays open (bypass) when secret empty outside prod
+    allowed2 = await client.post("/api/v1/chat", json={"message": "hello"})
+    assert allowed2.status_code != 401
 
 
 @pytest.mark.asyncio

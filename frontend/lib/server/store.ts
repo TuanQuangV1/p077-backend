@@ -19,8 +19,8 @@ import type {
   RobotType,
   Severity,
   TopicStat,
-  VllmPoint,
-  VllmRequest,
+  LlmPoint,
+  LlmRequest,
 } from "@/lib/types"
 
 /* ------------------------------------------------------------------ */
@@ -109,19 +109,19 @@ interface AnomalyTemplate {
 const ANOMALY_TEMPLATES: AnomalyTemplate[] = [
   {
     kind: "tf_timeout",
-    title: "TF lookup timeout on map -> base_link",
+    title: "Timeout tra cứu TF trên map -> base_link",
     severity: "high",
     topics: ["/tf", "/amcl_pose"],
-    metric: "tf latency p99 0.41s (tolerance 0.20s)",
-    issue: "Nav2 could not transform the goal pose because map -> base_link exceeded the TF tolerance.",
+    metric: "độ trễ TF p99 0.41s (ngưỡng 0.20s)",
+    issue: "Nav2 không thể biến đổi pose mục tiêu vì map -> base_link vượt quá ngưỡng dung sai TF.",
     rootCause:
-      "robot_state_publisher was republishing /tf at ~12 Hz instead of the configured 100 Hz. It shares CPU core 2 with pointcloud_to_laserscan, which saturated during the turn, so the TF buffer could not extrapolate map -> base_link inside the 0.20 s tolerance.",
+      "robot_state_publisher đang phát lại /tf ở ~12 Hz thay vì 100 Hz đã cấu hình. Nó chia sẻ core CPU 2 với pointcloud_to_laserscan, vốn bão hòa khi rẽ, khiến buffer TF không thể ngoại suy map -> base_link trong ngưỡng 0.20 s.",
     explanation:
-      "The /tf publish interval widened from 10 ms to 83 ms exactly when /diagnostics reported controller_server loop overruns. amcl kept publishing /amcl_pose at 10 Hz, so localization itself was healthy - only the transform tree was late. Nav2 fails closed on a stale transform and aborts the current goal, which is what produced the visible pause in the trajectory.",
+      "Khoảng phát /tf giãn từ 10 ms lên 83 ms đúng lúc /diagnostics báo vòng lặp controller_server bị quá hạn. amcl vẫn phát /amcl_pose ở 10 Hz nên định vị vẫn ổn — chỉ cây transform bị trễ. Nav2 đóng an toàn khi transform cũ và hủy goal hiện tại, gây ra khoảng dừng thấy được trên quỹ đạo.",
     fixes: [
-      "Move robot_state_publisher to a reserved core (taskset / cgroup cpuset) so sensor preprocessing cannot starve it.",
-      "Raise transform_tolerance for the controller from 0.20 s to 0.35 s as a short-term mitigation only.",
-      "Publish /tf on a SensorDataQoS profile with depth 100 so a late subscriber burst does not stall the publisher.",
+      "Chuyển robot_state_publisher sang core riêng (taskset / cgroup cpuset) để tiền xử lý sensor không làm đói tài nguyên.",
+      "Nâng transform_tolerance cho controller từ 0.20 s lên 0.35 s như biện pháp tạm thời.",
+      "Phát /tf với QoS SensorDataQoS depth 100 để burst subscriber trễ không làm tắc publisher.",
     ],
     node: "bt_navigator",
     logs: [
@@ -132,19 +132,19 @@ const ANOMALY_TEMPLATES: AnomalyTemplate[] = [
   },
   {
     kind: "lidar_dropout",
-    title: "LaserScan dropout on /scan",
+    title: "Mất tín hiệu LaserScan trên /scan",
     severity: "critical",
     topics: ["/scan", "/local_costmap/costmap"],
-    metric: "0 messages for 2.20 s (expected 20 Hz)",
-    issue: "The primary 2D lidar stopped publishing for over two seconds while the robot was moving at 0.6 m/s.",
+    metric: "0 tin nhắn trong 2.20 s (kỳ vọng 20 Hz)",
+    issue: "Lidar 2D chính ngừng phát hơn hai giây khi robot đang di chuyển 0.6 m/s.",
     rootCause:
-      "The lidar driver's UDP socket dropped 3 consecutive packet windows after an ARP storm on the sensor VLAN. The driver does not resynchronise mid-scan, so it discarded partial scans instead of publishing degraded data.",
+      "Socket UDP của driver lidar rớt 3 cửa sổ gói liên tiếp sau bão ARP trên VLAN cảm biến. Driver không đồng bộ lại giữa chừng scan nên loại bỏ scan dở thay vì phát dữ liệu suy giảm.",
     explanation:
-      "Kernel counters show rx_missed_errors climbing on the sensor NIC in the same window. /scan went silent while /imu/data and /odom kept flowing, which rules out a global executor stall and points at the driver's network path. The local costmap kept the last observation and marked it as fresh, so the robot briefly planned through space it could not see.",
+      "Bộ đếm kernel cho thấy rx_missed_errors tăng trên NIC cảm biến cùng cửa sổ. /scan im lặng trong khi /imu/data và /odom vẫn chảy, loại trừ tắc executor toàn cục và chỉ ra đường mạng của driver. Local costmap giữ quan sát cuối và đánh dấu tươi nên robot tạm thời lập kế hoạch qua vùng không nhìn thấy.",
     fixes: [
-      "Isolate the sensor VLAN from the fleet management VLAN and enable IGMP snooping on the switch.",
-      "Publish an empty scan with a valid header when a scan window is lost so the costmap correctly ages out observations.",
-      "Set observation_persistence to 0.0 on the obstacle layer so stale returns cannot be treated as current.",
+      "Tách VLAN cảm biến khỏi VLAN quản lý đội và bật IGMP snooping trên switch.",
+      "Phát scan rỗng với header hợp lệ khi mất cửa sổ scan để costmap hết hạn quan sát đúng cách.",
+      "Đặt observation_persistence về 0.0 trên lớp chướng ngại vật để không coi dữ liệu cũ là hiện tại.",
     ],
     node: "lidar_driver",
     logs: [
@@ -155,19 +155,19 @@ const ANOMALY_TEMPLATES: AnomalyTemplate[] = [
   },
   {
     kind: "localization_jump",
-    title: "AMCL pose discontinuity",
+    title: "Gián đoạn pose AMCL",
     severity: "critical",
     topics: ["/amcl_pose", "/odom", "/tf"],
-    metric: "pose delta 0.84 m in a single update (limit 0.15 m)",
-    issue: "The localization estimate jumped almost a metre laterally, invalidating the active plan.",
+    metric: "độ lệch pose 0.84 m trong một lần cập nhật (giới hạn 0.15 m)",
+    issue: "Ước lượng định vị nhảy gần một mét theo chiều ngang, làm vô hiệu kế hoạch đang hoạt động.",
     rootCause:
-      "The particle filter re-converged onto a symmetric shelf aisle. Only 26 of 2000 particles carried meaningful weight after the lidar dropout, so the next resample collapsed the distribution into the neighbouring aisle hypothesis.",
+      "Bộ lọc particle hội tụ lại vào lối đi kệ đối xứng. Chỉ 26 trong 2000 particle còn trọng số đáng kể sau khi lidar mất tín hiệu, nên lần resample tiếp theo làm sụp phân bố vào giả thuyết lối đi bên cạnh.",
     explanation:
-      "The jump occurs 1.4 s after the /scan gap ends. Covariance trace rises from 0.02 to 0.61 before the jump and then collapses, which is the classic signature of particle depletion followed by a bad resample rather than a sensor calibration issue. Wheel odometry stayed continuous across the same interval.",
+      "Cú nhảy xảy ra 1.4 s sau khi khoảng trống /scan kết thúc. Vết hiệp phương sai tăng từ 0.02 lên 0.61 trước cú nhảy rồi sụp, là dấu hiệu điển hình của cạn kiệt particle rồi resample sai chứ không phải lỗi hiệu chuẩn cảm biến. Odometry bánh xe vẫn liên tục trong cùng khoảng.",
     fixes: [
-      "Increase recovery_alpha_slow/fast so AMCL injects random particles when the average weight drops.",
-      "Feed the ceiling fiducial detector into the EKF to break aisle symmetry.",
-      "Reject scan matches when the observation buffer age exceeds 0.3 s instead of matching against stale data.",
+      "Tăng recovery_alpha_slow/fast để AMCL bơm particle ngẫu nhiên khi trọng số trung bình giảm.",
+      "Đưa detector fiducial trần vào EKF để phá đối xứng lối đi.",
+      "Loại bỏ phép khớp scan khi tuổi buffer quan sát vượt 0.3 s thay vì khớp với dữ liệu cũ.",
     ],
     node: "amcl",
     logs: [
@@ -178,19 +178,19 @@ const ANOMALY_TEMPLATES: AnomalyTemplate[] = [
   },
   {
     kind: "costmap_stale",
-    title: "Local costmap update rate collapsed",
+    title: "Tần suất cập nhật local costmap sụp giảm",
     severity: "medium",
     topics: ["/local_costmap/costmap", "/scan"],
-    metric: "costmap update 1.2 Hz (configured 5 Hz)",
-    issue: "The local costmap fell behind the controller loop while inflating a dense obstacle field.",
+    metric: "cập nhật costmap 1.2 Hz (cấu hình 5 Hz)",
+    issue: "Local costmap tụt lại sau vòng lặp controller khi inflate vùng chướng ngại vật dày đặc.",
     rootCause:
-      "The inflation layer was configured with a 1.2 m radius on a 0.025 m/cell rolling window, which is 4x the cell count the CPU budget allows. Every update recomputed the full inflation instead of the dirty region.",
+      "Lớp inflation được cấu hình bán kính 1.2 m trên cửa sổ lăn 0.025 m/cell, gấp 4 lần số cell ngân sách CPU cho phép. Mỗi lần cập nhật tính lại toàn bộ inflation thay vì chỉ vùng bẩn.",
     explanation:
-      "Costmap update duration tracks obstacle count almost linearly in this window, and the controller server logged 'control loop missed its desired rate' on the same timestamps. This is a configuration cost problem, not a sensor problem.",
+      "Thời gian cập nhật costmap bám gần tuyến tính theo số chướng ngại vật trong cửa sổ này, và controller server ghi 'control loop missed its desired rate' cùng mốc thời gian. Đây là vấn đề chi phí cấu hình, không phải cảm biến.",
     fixes: [
-      "Coarsen the local costmap resolution to 0.05 m/cell, which quarters inflation cost with negligible clearance loss.",
-      "Reduce inflation_radius to 0.55 m and rely on the footprint padding for the rest.",
-      "Enable the rolling window dirty-region update path instead of full-map recomputation.",
+      "Thô hóa độ phân giải local costmap lên 0.05 m/cell, giảm 4 lần chi phí inflation mà hầu như không mất khoảng trống an toàn.",
+      "Giảm inflation_radius xuống 0.55 m và dựa vào padding footprint cho phần còn lại.",
+      "Bật đường cập nhật vùng bẩn của cửa sổ lăn thay vì tính lại toàn bản đồ.",
     ],
     node: "costmap_2d",
     logs: [
@@ -201,19 +201,19 @@ const ANOMALY_TEMPLATES: AnomalyTemplate[] = [
   },
   {
     kind: "cpu_spike",
-    title: "Controller loop overrun under CPU saturation",
+    title: "Vòng lặp controller quá hạn do bão hòa CPU",
     severity: "high",
     topics: ["/diagnostics", "/cmd_vel"],
-    metric: "CPU 98% for 3.4 s, control loop 6.1 Hz (target 20 Hz)",
-    issue: "The controller published velocity commands at a third of the configured rate, causing visible stutter.",
+    metric: "CPU 98% trong 3.4 s, vòng lặp điều khiển 6.1 Hz (mục tiêu 20 Hz)",
+    issue: "Controller phát lệnh vận tốc chỉ bằng một phần ba tần suất cấu hình, gây giật cục rõ rệt.",
     rootCause:
-      "Log compression (rosbag2 zstd) ran on the same cgroup as the navigation stack with no CPU quota, so recording competed with the real-time control loop during a high-message-rate segment.",
+      "Nén log (rosbag2 zstd) chạy cùng cgroup với ngăn xếp điều hướng mà không có hạn mức CPU, nên việc ghi cạnh tranh với vòng lặp điều khiển thời gian thực trong đoạn tốc độ bản tin cao.",
     explanation:
-      "cmd_vel inter-message gaps widen to 160 ms while /odom keeps a steady 50 Hz, meaning the sensor pipeline was fine and the controller thread specifically was descheduled. The spike aligns exactly with the recorder's flush interval.",
+      "Khoảng trống giữa các bản tin cmd_vel giãn tới 160 ms trong khi /odom vẫn ổn định 50 Hz, nghĩa là pipeline cảm biến ổn và riêng luồng controller bị ngắt lập lịch. Đỉnh CPU khớp chính xác với khoảng xả bộ ghi.",
     fixes: [
-      "Give the recorder its own cgroup with cpu.max set to 30% of one core.",
-      "Record to a separate NVMe namespace and switch compression to file-level, off the hot path.",
-      "Run controller_server with SCHED_FIFO priority 60 and lock its memory.",
+      "Tách bộ ghi ra cgroup riêng với cpu.max đặt 30% một core.",
+      "Ghi ra namespace NVMe riêng và chuyển nén sang cấp file, tránh đường nóng.",
+      "Chạy controller_server với độ ưu tiên SCHED_FIFO 60 và khóa bộ nhớ.",
     ],
     node: "controller_server",
     logs: [
@@ -224,19 +224,19 @@ const ANOMALY_TEMPLATES: AnomalyTemplate[] = [
   },
   {
     kind: "nav_recovery",
-    title: "Nav2 entered recovery behaviors",
+    title: "Nav2 rơi vào hành vi phục hồi",
     severity: "medium",
     topics: ["/plan", "/cmd_vel"],
-    metric: "2 recovery cycles (BackUp, Spin) in 11 s",
-    issue: "The behavior tree fell through to recovery twice while the goal was still reachable.",
+    metric: "2 chu kỳ phục hồi (BackUp, Spin) trong 11 s",
+    issue: "Cây hành vi rơi xuống phục hồi hai lần dù mục tiêu vẫn tới được.",
     rootCause:
-      "The DWB critic scored every trajectory as invalid because the inflated costmap left no admissible corridor after the stale-observation window. The goal was reachable; the cost surface was wrong.",
+      "Bộ chấm điểm DWB đánh mọi quỹ đạo là không hợp lệ vì costmap bị inflate không còn hành lang khả dụng sau cửa sổ quan sát cũ. Mục tiêu vẫn tới được; bề mặt chi phí mới sai.",
     explanation:
-      "Recovery is a downstream symptom here. Both recovery cycles start within 900 ms of a costmap staleness warning, and the plan is republished unchanged afterwards, confirming the planner had a valid global path the whole time.",
+      "Phục hồi là triệu chứng hạ nguồn ở đây. Cả hai chu kỳ phục hồi bắt đầu trong 900 ms sau cảnh báo costmap cũ, và plan được phát lại không đổi sau đó, xác nhận planner luôn có đường toàn cục hợp lệ.",
     fixes: [
-      "Fix the upstream costmap freshness issue before tuning recovery behaviors.",
-      "Add a PathAlign critic weight floor so partially blocked corridors still score above zero.",
-      "Log the full DWB critic score table at DEBUG on failure for faster triage.",
+      "Sửa vấn đề tươi mới của costmap ở thượng nguồn trước khi tinh chỉnh hành vi phục hồi.",
+      "Thêm ngưỡng trọng số PathAlign để hành lang bị chắn một phần vẫn được chấm điểm trên 0.",
+      "Ghi bảng điểm critic DWB đầy đủ ở mức DEBUG khi thất bại để chẩn đoán nhanh hơn.",
     ],
     node: "bt_navigator",
     logs: [
@@ -247,19 +247,19 @@ const ANOMALY_TEMPLATES: AnomalyTemplate[] = [
   },
   {
     kind: "topic_hz_drop",
-    title: "Odometry publish rate degraded",
+    title: "Suy giảm tần suất phát odometry",
     severity: "medium",
     topics: ["/odom", "/joint_states"],
-    metric: "/odom 31 Hz (expected 50 Hz)",
-    issue: "Wheel odometry publication rate dropped by 38% for the second half of the run.",
+    metric: "/odom 31 Hz (kỳ vọng 50 Hz)",
+    issue: "Tần suất phát odometry bánh xe giảm 38% trong nửa sau của lượt chạy.",
     rootCause:
-      "The EKF node was configured with a 50 Hz frequency but its sensor timeout was 0.02 s, so every late /joint_states message forced a predict-only cycle that was published on the next tick instead of immediately.",
+      "Node EKF được cấu hình tần suất 50 Hz nhưng timeout cảm biến là 0.02 s, nên mỗi bản tin /joint_states trễ buộc chu kỳ chỉ dự đoán và phát ở tick tiếp theo thay vì ngay lập tức.",
     explanation:
-      "Rate loss is smooth rather than bursty and correlates with /joint_states jitter, which is characteristic of a filter timeout misconfiguration rather than transport loss.",
+      "Mất tần suất diễn ra mượt chứ không giật cục và tương quan với jitter của /joint_states, đặc trưng cho cấu hình sai timeout bộ lọc hơn là mất mát truyền dẫn.",
     fixes: [
-      "Set the EKF sensor_timeout to 0.1 s so a single late joint state does not skip a publish.",
-      "Publish /joint_states with a best-effort QoS and depth 1 to drop instead of queue.",
-      "Add a rate monitor to /diagnostics so this degrades loudly next time.",
+      "Đặt sensor_timeout của EKF thành 0.1 s để một bản tin joint state trễ đơn lẻ không bỏ lỡ lần phát.",
+      "Phát /joint_states với QoS best-effort và depth 1 để loại bỏ thay vì xếp hàng.",
+      "Thêm monitor tần suất vào /diagnostics để lần sau suy giảm sẽ ồn ào hơn.",
     ],
     node: "ekf_filter_node",
     logs: [
@@ -270,18 +270,18 @@ const ANOMALY_TEMPLATES: AnomalyTemplate[] = [
   },
   {
     kind: "message_drop",
-    title: "QoS incompatibility dropped messages",
+    title: "Không tương thích QoS làm rớt tin nhắn",
     severity: "low",
     topics: ["/joint_states"],
-    metric: "412 messages dropped (2.1% of topic)",
-    issue: "A subscriber with an incompatible durability policy silently lost messages.",
+    metric: "412 tin nhắn bị rớt (2.1% của topic)",
+    issue: "Một subscriber với chính sách durability không tương thích đã lặng lẽ mất tin nhắn.",
     rootCause:
-      "The diagnostics aggregator subscribed with TRANSIENT_LOCAL durability while the publisher offers VOLATILE. rmw reported the incompatibility once at startup and then dropped every message.",
+      "Bộ tổng hợp diagnostics đăng ký với durability TRANSIENT_LOCAL trong khi publisher cung cấp VOLATILE. rmw báo không tương thích một lần khi khởi động rồi rớt mọi tin nhắn sau đó.",
     explanation:
-      "This one is benign for navigation but it hides fault signals from the aggregator, which is why the earlier CPU spike never raised a diagnostic error.",
+      "Trường hợp này lành tính cho điều hướng nhưng che giấu tín hiệu lỗi khỏi bộ tổng hợp, đó là lý do đỉnh CPU trước đó không bao giờ nâng lỗi diagnostic.",
     fixes: [
-      "Match the subscriber durability to VOLATILE.",
-      "Promote rmw QoS incompatibility warnings to errors in the launch validation step.",
+      "Khớp durability của subscriber về VOLATILE.",
+      "Nâng cảnh báo không tương thích QoS của rmw thành lỗi ở bước kiểm tra launch.",
     ],
     node: "controller_server",
     logs: [
@@ -295,14 +295,14 @@ const templateByKind = new Map<AnomalyKind, AnomalyTemplate>(ANOMALY_TEMPLATES.m
 export const anomalyTemplate = (kind: AnomalyKind) => templateByKind.get(kind) ?? ANOMALY_TEMPLATES[0]
 
 export const KIND_LABEL: Record<DemoAnomalyKind, string> = {
-  tf_timeout: "TF timeout",
-  lidar_dropout: "Lidar dropout",
-  costmap_stale: "Costmap stale",
-  localization_jump: "Localization jump",
-  cpu_spike: "CPU spike",
-  nav_recovery: "Nav recovery",
-  topic_hz_drop: "Rate drop",
-  message_drop: "Message drop",
+  tf_timeout: "Timeout TF",
+  lidar_dropout: "Mất lidar",
+  costmap_stale: "Costmap cũ",
+  localization_jump: "Nhảy định vị",
+  cpu_spike: "Đỉnh CPU",
+  nav_recovery: "Phục hồi Nav",
+  topic_hz_drop: "Sụt tần suất",
+  message_drop: "Rớt tin nhắn",
 }
 
 /* ------------------------------------------------------------------ */
@@ -378,7 +378,7 @@ function buildRosbags(): Rosbag[] {
 /* runs, anomalies, ai results, logs                                   */
 /* ------------------------------------------------------------------ */
 
-const MODELS = ["vllm/qwen2.5-coder-32b", "vllm/llama-3.1-70b-instruct", "vllm/qwen2.5-vl-7b"]
+const MODELS = ["openai/gpt-4.1", "openai/gpt-4o-mini", "anthropic/claude-sonnet-4-5"]
 
 function anomaliesForRun(runId: string, durationSec: number, count: number): Anomaly[] {
   const r = rng(runId + ":anom")
@@ -435,7 +435,7 @@ function aiResultsForRun(runId: string, anomalies: Anomaly[], model: string): AI
       latencyMs: 1600 + Math.floor(r() * 6800),
       promptTokens,
       completionTokens,
-      vllmRequestId: `req_${hashSeed(a.id).toString(16).slice(0, 8)}`,
+      llmRequestId: `req_${hashSeed(a.id).toString(16).slice(0, 8)}`,
     }
   })
 }
@@ -541,12 +541,12 @@ function buildRuns(bags: Rosbag[]): AnalysisRun[] {
 }
 
 /* ------------------------------------------------------------------ */
-/* vllm telemetry                                                      */
+/* llm telemetry                                                       */
 /* ------------------------------------------------------------------ */
 
-function buildVllmSeries(points = 180, stepSec = 20): VllmPoint[] {
-  const r = rng("vllm-series")
-  const out: VllmPoint[] = []
+function buildLlmSeries(points = 180, stepSec = 20): LlmPoint[] {
+  const r = rng("llm-series")
+  const out: LlmPoint[] = []
   const start = NOW - points * stepSec * 1000
   let queue = 3
   for (let i = 0; i < points; i++) {
@@ -554,15 +554,11 @@ function buildVllmSeries(points = 180, stepSec = 20): VllmPoint[] {
     const burst = Math.sin(phase * Math.PI * 6) * 0.5 + 0.5
     const incident = i > points * 0.72 && i < points * 0.79 ? 1 : 0
     queue = Math.max(0, Math.round(queue * 0.7 + burst * 9 + incident * 22 + r() * 3))
-    const batchSize = Math.min(64, Math.max(1, Math.round(4 + burst * 26 + incident * 18 + r() * 4)))
     const tps = Math.round(420 + burst * 1450 - incident * 900 + r() * 160)
     const p50 = Math.round(180 + burst * 240 + incident * 1900 + r() * 40)
     out.push({
       t: new Date(start + i * stepSec * 1000).toISOString(),
-      gpuUtil: round(Math.min(99, 34 + burst * 52 + incident * 12 + r() * 6), 1),
-      vramUsedGb: round(Math.min(79.5, 41 + burst * 22 + incident * 14 + r() * 2), 1),
       tokensPerSec: tps,
-      batchSize,
       queueLen: queue,
       p50,
       p95: Math.round(p50 * (1.9 + r() * 0.4)),
@@ -584,13 +580,13 @@ const PROMPT_PREVIEWS = [
   "Compare run_9f21 with run_7b55 on the same route. Report which anomalies are new and which regressed",
 ]
 
-function buildVllmRequests(runs: AnalysisRun[], count = 96): VllmRequest[] {
-  const r = rng("vllm-req")
-  const out: VllmRequest[] = []
+function buildLlmRequests(runs: AnalysisRun[], count = 96): LlmRequest[] {
+  const r = rng("llm-req")
+  const out: LlmRequest[] = []
   for (let i = 0; i < count; i++) {
     const run = runs.length ? runs[Math.floor(r() * runs.length)] : null
     const roll = r()
-    const status: VllmRequest["status"] = roll > 0.94 ? "timeout" : roll > 0.9 ? "oom" : roll > 0.87 ? "error" : "ok"
+    const status: LlmRequest["status"] = roll > 0.92 ? "timeout" : roll > 0.88 ? "error" : "ok"
     const promptTokens = 1200 + Math.floor(r() * 7200)
     const completionTokens = status === "ok" ? 180 + Math.floor(r() * 900) : Math.floor(r() * 60)
     const queueMs = Math.round(status === "timeout" ? 8200 + r() * 4000 : 20 + r() * 900)
@@ -618,12 +614,10 @@ function buildVllmRequests(runs: AnalysisRun[], count = 96): VllmRequest[] {
       costUsd: round(promptTokens * 0.0000006 + completionTokens * 0.0000024, 4),
       error:
         status === "timeout"
-          ? "Request timed out after 60s while waiting in the scheduler queue"
-          : status === "oom"
-            ? "CUDA out of memory: tried to allocate 2.31 GiB (GPU 0; 79.15 GiB total; 78.02 GiB in use)"
-            : status === "error"
-              ? "ValueError: prompt length 8420 exceeds max_model_len 8192"
-              : undefined,
+          ? "Request timed out after 60s while waiting in the queue"
+          : status === "error"
+            ? "ValueError: prompt length 8420 exceeds max_tokens 8192"
+            : undefined,
     })
   }
   return out.sort((a, b) => b.ts.localeCompare(a.ts))
@@ -672,8 +666,8 @@ interface Dataset {
   anomalies: Anomaly[]
   aiResults: AIResult[]
   logs: LogEvent[]
-  vllmSeries: VllmPoint[]
-  vllmRequests: VllmRequest[]
+  llmSeries: LlmPoint[]
+  llmRequests: LlmRequest[]
   feedback: Feedback[]
   reports: Report[]
 }
@@ -697,8 +691,8 @@ function buildDataset(): Dataset {
     anomalies,
     aiResults,
     logs,
-    vllmSeries: buildVllmSeries(),
-    vllmRequests: buildVllmRequests(runs),
+    llmSeries: buildLlmSeries(),
+    llmRequests: buildLlmRequests(runs),
     feedback: [],
     reports: [],
   }

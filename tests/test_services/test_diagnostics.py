@@ -173,13 +173,11 @@ def test_detect_anomalies_accepts_runtime_threshold_overrides(tmp_path) -> None:
 
 def test_validate_llm_config_requires_openai_key(monkeypatch) -> None:
     class SettingsStub:
-        model_name = "gpt-4o-mini"
+        model_name = "gpt-4.1"
         openai_api_key = ""
         llm_temperature = 0.7
         llm_provider = "openai"
-        vllm_base_url = ""
-        vllm_model_name = "qwen2.5-coder-32b"
-        vllm_api_key = ""
+        llm_language = "vi"
 
     def get_settings() -> SettingsStub:
         return SettingsStub()
@@ -190,41 +188,13 @@ def test_validate_llm_config_requires_openai_key(monkeypatch) -> None:
         validate_llm_config()
 
 
-@pytest.mark.parametrize(
-    ("base_url", "api_key", "error"),
-    [
-        ("", "secret", "vllm_base_url"),
-        ("http://localhost:8000/v1", "", "vllm_api_key"),
-    ],
-)
-def test_validate_llm_config_requires_vllm_configuration(monkeypatch, base_url, api_key, error) -> None:
-    class SettingsStub:
-        model_name = "qwen2.5-coder-32b"
-        openai_api_key = ""
-        llm_temperature = 0.7
-        llm_provider = "vllm"
-        vllm_base_url = base_url
-        vllm_model_name = "qwen2.5-coder-32b"
-        vllm_api_key = api_key
-
-    def get_settings() -> SettingsStub:
-        return SettingsStub()
-
-    monkeypatch.setattr("src.services.llm.get_settings", get_settings)
-
-    with pytest.raises(ValueError, match=error):
-        validate_llm_config()
-
-
 def test_validate_llm_config_rejects_unknown_provider(monkeypatch) -> None:
     class SettingsStub:
         model_name = "unknown"
         openai_api_key = "secret"
         llm_temperature = 0.7
         llm_provider = "local"
-        vllm_base_url = ""
-        vllm_model_name = "unknown"
-        vllm_api_key = "secret"
+        llm_language = "vi"
 
     def get_settings() -> SettingsStub:
         return SettingsStub()
@@ -237,13 +207,11 @@ def test_validate_llm_config_rejects_unknown_provider(monkeypatch) -> None:
 
 def test_explain_diagnostics_serializes_summary_for_prompt(monkeypatch) -> None:
     class SettingsStub:
-        model_name = "qwen2.5-coder-32b"
-        openai_api_key = ""
+        model_name = "gpt-4.1"
+        openai_api_key = "secret"
         llm_temperature = 0.7
-        llm_provider = "vllm"
-        vllm_base_url = "http://localhost:8000/v1"
-        vllm_model_name = "qwen2.5-coder-32b"
-        vllm_api_key = "secret"
+        llm_provider = "openai"
+        llm_language = "vi"
 
     captured: dict[str, Any] = {}
 
@@ -289,13 +257,11 @@ def test_explain_diagnostics_serializes_summary_for_prompt(monkeypatch) -> None:
 
 def test_explain_diagnostics_uses_configured_openai_provider(monkeypatch) -> None:
     class SettingsStub:
-        model_name = "gpt-4o-mini"
+        model_name = "gpt-4.1"
         openai_api_key = "secret"
         llm_temperature = 0.2
         llm_provider = "openai"
-        vllm_base_url = ""
-        vllm_model_name = "unused"
-        vllm_api_key = ""
+        llm_language = "vi"
 
     called = False
 
@@ -321,13 +287,11 @@ def test_explain_diagnostics_uses_configured_openai_provider(monkeypatch) -> Non
 
 def test_explain_diagnostics_handles_empty_and_nested_untrusted_values(monkeypatch) -> None:
     class SettingsStub:
-        model_name = "unused"
-        openai_api_key = ""
+        model_name = "gpt-4.1"
+        openai_api_key = "secret"
         llm_temperature = 0.2
-        llm_provider = "vllm"
-        vllm_base_url = "http://localhost:8000/v1"
-        vllm_model_name = "qwen2.5-coder-32b"
-        vllm_api_key = "secret"
+        llm_provider = "openai"
+        llm_language = "vi"
 
     captured: dict[str, Any] = {}
 
@@ -379,13 +343,11 @@ def test_explain_detection_cluster_applies_simultaneity_correction_end_to_end(mo
     """Even if the model picks a causal order for a millisecond-scale tie, findings get corrected."""
 
     class SettingsStub:
-        model_name = "gpt-4o-mini"
+        model_name = "gpt-4.1"
         openai_api_key = "secret"
         llm_temperature = 0.2
         llm_provider = "openai"
-        vllm_base_url = ""
-        vllm_model_name = ""
-        vllm_api_key = ""
+        llm_language = "vi"
 
     def fake_chat(messages: list[dict[str, object]], tools: list[dict[str, object]] | None = None) -> dict[str, object]:
         content = json.dumps(
@@ -415,14 +377,14 @@ def test_explain_detection_cluster_applies_simultaneity_correction_end_to_end(mo
     assert result["findings"][2]["role"] == "primary"
 
 
-def test_chat_completion_posts_to_vllm_endpoint(monkeypatch) -> None:
+def test_chat_completion_posts_to_openai_endpoint(monkeypatch) -> None:
     class SettingsStub:
-        llm_provider = "vllm"
-        vllm_base_url = "http://localhost:8000/v1"
-        vllm_api_key = "secret"
-        vllm_model_name = "qwen2.5-coder-32b"
+        llm_provider = "openai"
+        openai_api_key = "secret"
         llm_temperature = 0.2
-        model_name = "unused"
+        model_name = "gpt-4.1"
+        llm_language = "vi"
+        llm_max_tokens = 1024
 
     captured: dict[str, Any] = {}
 
@@ -453,9 +415,9 @@ def test_chat_completion_posts_to_vllm_endpoint(monkeypatch) -> None:
         tools=[{"type": "function", "function": {"name": "f", "parameters": {}}}],
     )
 
-    assert captured["url"] == "http://localhost:8000/v1/chat/completions"
+    assert captured["url"] == "https://api.openai.com/v1/chat/completions"
     assert captured["headers"]["Authorization"] == "Bearer secret"
-    assert captured["json"]["model"] == "qwen2.5-coder-32b"
+    assert captured["json"]["model"] == "gpt-4.1"
     assert captured["json"]["temperature"] == 0.2
     assert captured["json"]["tools"][0]["type"] == "function"
     assert result["message"]["content"] == "hi"

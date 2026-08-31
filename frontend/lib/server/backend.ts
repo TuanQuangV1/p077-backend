@@ -23,17 +23,31 @@ export class BackendError extends Error {
   }
 }
 
-function authHeaders(): Record<string, string> {
+async function authHeaders(incoming?: Request | Headers): Promise<Record<string, string>> {
+  // Prefer incoming request's Authorization (from browser's localStorage via fetch),
+  // fall back to deprecated env token for backwards compat (not used in JWT mode)
+  if (incoming) {
+    const h = incoming instanceof Headers ? incoming.get("authorization") : (incoming as Request).headers.get("authorization")
+    if (h) return { Authorization: h }
+  }
+  // Also try next/headers() when called from server component without explicit Request
+  try {
+    const { headers } = await import("next/headers")
+    const h = (await headers()).get("authorization")
+    if (h) return { Authorization: h }
+  } catch {}
   const token = process.env.API_AUTH_TOKEN
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit & { incomingHeaders?: Headers | Request }): Promise<T> {
+  const { incomingHeaders, ...restInit } = init as RequestInit & { incomingHeaders?: Headers | Request }
   let response: Response
   try {
+    const auth = await authHeaders(incomingHeaders)
     response = await fetch(`${BACKEND_ORIGIN}${API_PREFIX}${path}`, {
-      ...init,
-      headers: { ...authHeaders(), ...(init?.headers ?? {}) },
+      ...restInit,
+      headers: { ...auth, ...(restInit?.headers ?? {}) },
       cache: "no-store",
     })
   } catch (cause) {
@@ -49,16 +63,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T
 }
 
-export function backendGet<T>(path: string): Promise<T> {
-  return request<T>(path)
+export function backendGet<T>(path: string, req?: Request): Promise<T> {
+  return request<T>(path, { incomingHeaders: req?.headers } as RequestInit & { incomingHeaders?: Headers | Request })
 }
 
-export function backendPost<T>(path: string, body?: unknown): Promise<T> {
+export function backendPost<T>(path: string, body?: unknown, req?: Request): Promise<T> {
   return request<T>(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
-  })
+    incomingHeaders: req?.headers,
+  } as RequestInit & { incomingHeaders?: Headers | Request })
 }
 
 /** Map a `BackendError` onto the status/message a route handler should return. */

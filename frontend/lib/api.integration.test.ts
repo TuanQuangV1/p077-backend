@@ -7,7 +7,12 @@ function okResponse(body: unknown): Response {
 }
 
 function errorResponse(status: number): Response {
-    return { ok: false, status, json: async () => ({ detail: "boom" }) } as unknown as Response
+    return {
+        ok: false,
+        status,
+        json: async () => ({ detail: "boom" }),
+        text: async () => JSON.stringify({ detail: "boom" }),
+    } as unknown as Response
 }
 
 describe("api integration", () => {
@@ -23,7 +28,7 @@ describe("api integration", () => {
 
         expect(payload).toEqual({ totals: {} })
         expect(fetchMock).toHaveBeenCalledTimes(1)
-        expect(fetchMock).toHaveBeenCalledWith("/api/v1/dashboard/overview", undefined)
+        expect(fetchMock).toHaveBeenCalledWith("/api/v1/dashboard/overview", expect.objectContaining({ headers: {} }))
     })
 
     it("fetcher passes through Next.js-only routes unchanged", async () => {
@@ -32,7 +37,10 @@ describe("api integration", () => {
 
         await fetcher("/api/runs/run_001/timeline?from=0&to=120")
 
-        expect(fetchMock).toHaveBeenCalledWith("/api/runs/run_001/timeline?from=0&to=120", undefined)
+        expect(fetchMock).toHaveBeenCalledWith(
+            "/api/runs/run_001/timeline?from=0&to=120",
+            expect.objectContaining({ headers: {} }),
+        )
     })
 
     it("post sends JSON headers and serialized body", async () => {
@@ -54,13 +62,13 @@ describe("api integration", () => {
         const fetchMock = vi.fn().mockResolvedValue(errorResponse(500))
         vi.stubGlobal("fetch", fetchMock)
 
-        await expect(fetcher("/api/overview")).rejects.toThrow("Request failed: 500")
+        await expect(fetcher("/api/overview")).rejects.toThrow("Yêu cầu thất bại: 500")
     })
 
     it("throws Request failed for post too", async () => {
         const fetchMock = vi.fn().mockResolvedValue(errorResponse(404))
         vi.stubGlobal("fetch", fetchMock)
 
-        await expect(post("/api/reports", { runId: "run_001" })).rejects.toThrow("Request failed: 404")
+        await expect(post("/api/reports", { runId: "run_001" })).rejects.toThrow("Yêu cầu thất bại: 404")
     })
 })

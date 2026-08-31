@@ -40,20 +40,24 @@ CREATE TABLE IF NOT EXISTS runs (
     total_latency_ms INTEGER NOT NULL,
     prompt_tokens INTEGER NOT NULL,
     completion_tokens INTEGER NOT NULL,
-    cost_usd REAL NOT NULL
+    cost_usd REAL NOT NULL,
+    owner TEXT NOT NULL DEFAULT 'admin'
 );
+CREATE INDEX IF NOT EXISTS idx_runs_owner ON runs(owner);
 CREATE TABLE IF NOT EXISTS run_anomalies (
     run_id TEXT NOT NULL,
     idx INTEGER NOT NULL,
     payload TEXT NOT NULL,
     PRIMARY KEY (run_id, idx)
 );
+CREATE INDEX IF NOT EXISTS idx_run_anomalies_run_id ON run_anomalies(run_id);
 CREATE TABLE IF NOT EXISTS run_ai_results (
     run_id TEXT NOT NULL,
     idx INTEGER NOT NULL,
     payload TEXT NOT NULL,
     PRIMARY KEY (run_id, idx)
 );
+CREATE INDEX IF NOT EXISTS idx_run_ai_results_run_id ON run_ai_results(run_id);
 CREATE TABLE IF NOT EXISTS review_items (
     id TEXT PRIMARY KEY,
     run_id TEXT NOT NULL,
@@ -106,8 +110,13 @@ def _connect() -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = perf.open_connection(path, source="runs.db")
     conn.row_factory = sqlite3.Row
+    # Enable WAL in production by default when env requests it; also set synchronous=NORMAL for speed
     if os.environ.get("RUN_DB_WAL", "0") == "1":
-        conn.execute("PRAGMA journal_mode=WAL")
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+        except sqlite3.Error:
+            pass
     return conn
 
 
@@ -115,7 +124,27 @@ def _init(conn: sqlite3.Connection) -> None:
     current_path = str(_db_path())
     if not _init_state[0] or _init_state_db_path[0] != current_path:
         conn.executescript(_SCHEMA)
-        conn.commit()
+        # Ensure new indexes exist even if schema was already executed before they were added
+        try:
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_run_anomalies_run_id ON run_anomalies(run_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_run_ai_results_run_id ON run_ai_results(run_id)")
+            conn.commit()
+        except sqlite3.Error:
+            pass
+        # Migrate legacy DBs: add owner column if missing
+        try:
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
+            if "owner" not in cols:
+                conn.execute("ALTER TABLE runs ADD COLUMN owner TEXT NOT NULL DEFAULT 'admin'")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_owner ON runs(owner)")
+                conn.execute("UPDATE runs SET owner = 'admin' WHERE owner IS NULL OR owner = ''")
+                conn.commit()
+            else:
+                # Ensure existing rows with empty owner are migrated
+                conn.execute("UPDATE runs SET owner = 'admin' WHERE owner IS NULL OR owner = ''")
+                conn.commit()
+        except sqlite3.Error:
+            pass
         _init_state[0] = True
         _init_state_db_path[0] = current_path
 
@@ -140,14 +169,16 @@ def _with_conn(
 
 
 @_with_conn
-def save_run(conn: sqlite3.Connection, run: dict[str, Any]) -> None:
+def save_run(conn: sqlite3.Connection, run: dict[str, Any], owner: str = "admin") -> None:
+    # owner can be in run dict (analysis) or passed explicitly
+    owner_val = run.get("owner") or owner or "admin"
     conn.execute(
         """
         INSERT OR REPLACE INTO runs (
             id, rosbag_id, rosbag_name, robot_type, status, progress, stage,
             started_at, finished_at, anomaly_count, worst_severity, model,
-            total_latency_ms, prompt_tokens, completion_tokens, cost_usd
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            total_latency_ms, prompt_tokens, completion_tokens, cost_usd, owner
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             run["id"],
@@ -166,24 +197,36 @@ def save_run(conn: sqlite3.Connection, run: dict[str, Any]) -> None:
             run["promptTokens"],
             run["completionTokens"],
             run["costUsd"],
+            owner_val,
         ),
     )
     conn.commit()
 
 
 @_with_conn
-def get_run(conn: sqlite3.Connection, run_id: str) -> dict[str, Any] | None:
-    row = conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
+def get_run(conn: sqlite3.Connection, run_id: str, owner: str | None = None) -> dict[str, Any] | None:
+    if owner is not None:
+        row = conn.execute("SELECT * FROM runs WHERE id = ? AND owner = ?", (run_id, owner)).fetchone()
+    else:
+        row = conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
     return _run_row_to_dict(row) if row is not None else None
 
 
 @_with_conn
-def list_runs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    rows = conn.execute("SELECT * FROM runs ORDER BY started_at DESC").fetchall()
+def list_runs(conn: sqlite3.Connection, owner: str | None = None) -> list[dict[str, Any]]:
+    if owner is not None:
+        rows = conn.execute("SELECT * FROM runs WHERE owner = ? ORDER BY started_at DESC", (owner,)).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM runs ORDER BY started_at DESC").fetchall()
     return [_run_row_to_dict(row) for row in rows]
 
 
 def _run_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
+    # owner may not exist in legacy rows before migration, default to admin
+    try:
+        owner_val = row["owner"]
+    except (IndexError, KeyError):
+        owner_val = "admin"
     return {
         "id": row["id"],
         "rosbagId": row["rosbag_id"],
@@ -201,6 +244,7 @@ def _run_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
         "promptTokens": row["prompt_tokens"],
         "completionTokens": row["completion_tokens"],
         "costUsd": row["cost_usd"],
+        "owner": owner_val or "admin",
     }
 
 
@@ -284,8 +328,53 @@ def save_review_items(conn: sqlite3.Connection, items: list[dict[str, Any]]) -> 
 
 
 @_with_conn
-def list_review_items(conn: sqlite3.Connection, status: str | None = None) -> list[dict[str, Any]]:
-    if status is None:
+def list_review_items(
+    conn: sqlite3.Connection, status: str | None = None, owner: str | None = None
+) -> list[dict[str, Any]]:
+    if owner is not None:
+        if owner == "admin":
+            # Admin sees orphaned review items (no run) as well for backwards compat with tests
+            if status is None:
+                rows = conn.execute(
+                    """
+                    SELECT ri.* FROM review_items ri
+                    LEFT JOIN runs r ON r.id = ri.run_id
+                    WHERE r.owner = ? OR r.owner IS NULL
+                    ORDER BY ri.id
+                    """,
+                    (owner,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT ri.* FROM review_items ri
+                    LEFT JOIN runs r ON r.id = ri.run_id
+                    WHERE ri.review_status = ? AND (r.owner = ? OR r.owner IS NULL)
+                    ORDER BY ri.id
+                    """,
+                    (status, owner),
+                ).fetchall()
+        elif status is None:
+            rows = conn.execute(
+                """
+                    SELECT ri.* FROM review_items ri
+                    JOIN runs r ON r.id = ri.run_id
+                    WHERE r.owner = ?
+                    ORDER BY ri.id
+                    """,
+                (owner,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                    SELECT ri.* FROM review_items ri
+                    JOIN runs r ON r.id = ri.run_id
+                    WHERE ri.review_status = ? AND r.owner = ?
+                    ORDER BY ri.id
+                    """,
+                (status, owner),
+            ).fetchall()
+    elif status is None:
         rows = conn.execute("SELECT * FROM review_items ORDER BY id").fetchall()
     else:
         rows = conn.execute("SELECT * FROM review_items WHERE review_status = ? ORDER BY id", (status,)).fetchall()
@@ -293,8 +382,30 @@ def list_review_items(conn: sqlite3.Connection, status: str | None = None) -> li
 
 
 @_with_conn
-def get_review_item(conn: sqlite3.Connection, review_id: str) -> dict[str, Any] | None:
-    row = conn.execute("SELECT * FROM review_items WHERE id = ?", (review_id,)).fetchone()
+def get_review_item(
+    conn: sqlite3.Connection, review_id: str, owner: str | None = None
+) -> dict[str, Any] | None:
+    if owner is not None:
+        if owner == "admin":
+            row = conn.execute(
+                """
+                SELECT ri.* FROM review_items ri
+                LEFT JOIN runs r ON r.id = ri.run_id
+                WHERE ri.id = ? AND (r.owner = ? OR r.owner IS NULL)
+                """,
+                (review_id, owner),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """
+                SELECT ri.* FROM review_items ri
+                JOIN runs r ON r.id = ri.run_id
+                WHERE ri.id = ? AND r.owner = ?
+                """,
+                (review_id, owner),
+            ).fetchone()
+    else:
+        row = conn.execute("SELECT * FROM review_items WHERE id = ?", (review_id,)).fetchone()
     return _review_row_to_dict(row) if row is not None else None
 
 
@@ -305,10 +416,33 @@ def update_review_item(
     verdict: str,
     reviewer: str,
     notes: str | None,
+    owner: str | None = None,
 ) -> None:
-    target = conn.execute(
-        "SELECT run_id, anomaly_id FROM review_items WHERE id = ?", (review_id,)
-    ).fetchone()
+    if owner is not None:
+        if owner == "admin":
+            target = conn.execute(
+                """
+                SELECT ri.run_id, ri.anomaly_id FROM review_items ri
+                LEFT JOIN runs r ON r.id = ri.run_id
+                WHERE ri.id = ? AND (r.owner = ? OR r.owner IS NULL)
+                """,
+                (review_id, owner),
+            ).fetchone()
+        else:
+            target = conn.execute(
+                """
+                SELECT ri.run_id, ri.anomaly_id FROM review_items ri
+                JOIN runs r ON r.id = ri.run_id
+                WHERE ri.id = ? AND r.owner = ?
+                """,
+                (review_id, owner),
+            ).fetchone()
+        if target is None:
+            return
+    else:
+        target = conn.execute(
+            "SELECT run_id, anomaly_id FROM review_items WHERE id = ?", (review_id,)
+        ).fetchone()
     decided_at = _now_iso()
     conn.execute(
         """
@@ -358,23 +492,42 @@ def _sync_ai_result_review_status(
 
 
 @_with_conn
-def review_stats(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+def review_stats(conn: sqlite3.Connection, owner: str | None = None) -> list[dict[str, Any]]:
     """Per-run verdict tallies for the agent-accuracy report."""
-    rows = conn.execute(
-        """
-        SELECT r.run_id AS run_id,
-               COALESCE(runs.rosbag_name, r.run_id) AS rosbag_name,
-               COUNT(*) AS total,
-               SUM(CASE WHEN r.review_status = 'approved' THEN 1 ELSE 0 END) AS approved,
-               SUM(CASE WHEN r.review_status = 'rejected' THEN 1 ELSE 0 END) AS rejected,
-               SUM(CASE WHEN r.review_status = 'edited' THEN 1 ELSE 0 END) AS edited,
-               SUM(CASE WHEN r.review_status = 'pending' THEN 1 ELSE 0 END) AS pending
-        FROM review_items r
-        LEFT JOIN runs ON runs.id = r.run_id
-        GROUP BY r.run_id
-        ORDER BY r.run_id
-        """
-    ).fetchall()
+    if owner is not None:
+        rows = conn.execute(
+            """
+            SELECT r.run_id AS run_id,
+                   COALESCE(runs.rosbag_name, r.run_id) AS rosbag_name,
+                   COUNT(*) AS total,
+                   SUM(CASE WHEN r.review_status = 'approved' THEN 1 ELSE 0 END) AS approved,
+                   SUM(CASE WHEN r.review_status = 'rejected' THEN 1 ELSE 0 END) AS rejected,
+                   SUM(CASE WHEN r.review_status = 'edited' THEN 1 ELSE 0 END) AS edited,
+                   SUM(CASE WHEN r.review_status = 'pending' THEN 1 ELSE 0 END) AS pending
+            FROM review_items r
+            LEFT JOIN runs ON runs.id = r.run_id
+            WHERE runs.owner = ?
+            GROUP BY r.run_id
+            ORDER BY r.run_id
+            """,
+            (owner,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT r.run_id AS run_id,
+                   COALESCE(runs.rosbag_name, r.run_id) AS rosbag_name,
+                   COUNT(*) AS total,
+                   SUM(CASE WHEN r.review_status = 'approved' THEN 1 ELSE 0 END) AS approved,
+                   SUM(CASE WHEN r.review_status = 'rejected' THEN 1 ELSE 0 END) AS rejected,
+                   SUM(CASE WHEN r.review_status = 'edited' THEN 1 ELSE 0 END) AS edited,
+                   SUM(CASE WHEN r.review_status = 'pending' THEN 1 ELSE 0 END) AS pending
+            FROM review_items r
+            LEFT JOIN runs ON runs.id = r.run_id
+            GROUP BY r.run_id
+            ORDER BY r.run_id
+            """
+        ).fetchall()
     return [
         {
             "runId": row["run_id"],

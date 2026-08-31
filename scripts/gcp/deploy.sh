@@ -7,6 +7,8 @@ set -euo pipefail
 BACKEND_IMAGE="$1"
 FRONTEND_IMAGE="$2"
 
+log() { echo "[deploy] $*"; }
+
 cd /opt/app
 
 export BACKEND_IMAGE
@@ -37,6 +39,12 @@ for i in $(seq 1 30); do
   fi
   sleep 5
 done
+
+# Nginx path failed — distinguish a proxy problem from a backend problem so
+# the log dump below points at the right container.
+if curl -fsS --max-time 5 http://localhost:8000/health >/dev/null 2>&1; then
+  echo "[deploy] backend is healthy on :8000; nginx/proxy is the broken hop."
+fi
 
 echo "[deploy] backend NOT healthy after 150s; dumping logs:"
 docker compose -f docker-compose.gcp.yml logs --tail 50 || true

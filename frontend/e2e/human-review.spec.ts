@@ -3,12 +3,12 @@ import { expect, test } from "@playwright/test"
 test("human review queue renders pending conclusions", async ({ page }) => {
     await page.goto("/review")
 
-    await expect(page.getByRole("heading", { name: "Hàng đợi duyệt thủ công" })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Hàng đợi duyệt" })).toBeVisible()
     await expect(page.getByText("chờ duyệt").first()).toBeVisible()
     // The queue exposes the three verdict actions on a review card.
     await expect(page.getByRole("button", { name: "Phê duyệt" }).first()).toBeVisible()
     await expect(page.getByRole("button", { name: "Từ chối" }).first()).toBeVisible()
-    await expect(page.getByRole("button", { name: "Chỉnh sửa" }).first()).toBeVisible()
+    await expect(page.getByRole("button", { name: "Sửa đổi" }).first()).toBeVisible()
 })
 
 test("a review card shows evidence, suggested fix, and confidence", async ({ page }) => {
@@ -19,5 +19,5 @@ test("a review card shows evidence, suggested fix, and confidence", async ({ pag
     await expect(card.getByText("Nguyên nhân gốc rễ")).toBeVisible()
     await expect(card.getByText("Chuỗi bằng chứng")).toBeVisible()
     await expect(card.getByText("Đề xuất hướng khắc phục")).toBeVisible()
-    await expect(card.getByText(/Độ tin cậy của AI/)).toBeVisible()
+    await expect(card.getByText(/Độ tin cậy AI/)).toBeVisible()
 })

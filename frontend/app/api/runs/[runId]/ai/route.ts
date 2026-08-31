@@ -6,6 +6,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ runId: 
   const { runId } = await params
   const d = data()
   const items = d.aiResults.filter((a) => a.runId === runId)
-  const requests = d.vllmRequests.filter((r) => r.runId === runId).slice(0, 12)
+  const requests = d.llmRequests.filter((r) => r.runId === runId).slice(0, 12)
   return ok({ items, inference: requests })
 }

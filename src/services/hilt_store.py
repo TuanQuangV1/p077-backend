@@ -21,12 +21,17 @@ def _hilt_dir() -> Path:
     return Path(os.environ.get("HILT_DIR", str(DEFAULT_HILT_DIR)))
 
 
-def hilt_file(run_id: str) -> Path:
+def hilt_file(run_id: str, owner: str | None = None) -> Path:
     """Return the JSONL feedback file for a run."""
-    return _hilt_dir() / f"{run_id}.jsonl"
+    base = _hilt_dir()
+    if owner:
+        # Sanitize owner for filesystem
+        safe = "".join(c if c.isalnum() or c in "_-." else "-" for c in owner).strip("-_.") or "admin"
+        return base / safe / f"{run_id}.jsonl"
+    return base / f"{run_id}.jsonl"
 
 
-def append_hilt_review(run_id: str, record: dict[str, Any]) -> dict[str, Any]:
+def append_hilt_review(run_id: str, record: dict[str, Any], owner: str | None = None) -> dict[str, Any]:
     """Append one feedback record to the run's JSONL file and return it.
 
     Args:
@@ -42,26 +47,31 @@ def append_hilt_review(run_id: str, record: dict[str, Any]) -> dict[str, Any]:
     label = record.get("label")
     if label not in HILT_LABELS:
         raise ValueError(f"invalid hilt label: {label!r}; expected one of {sorted(HILT_LABELS)}")
-    path = hilt_file(run_id)
+    path = hilt_file(run_id, owner)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
     return record
 
 
-def list_hilt_reviews(run_id: str) -> list[dict[str, Any]]:
+def list_hilt_reviews(run_id: str, owner: str | None = None) -> list[dict[str, Any]]:
     """Return every feedback record saved for a run, in review order.
 
     Returns an empty list when no feedback has been recorded yet.
     """
-    path = hilt_file(run_id)
-    if not path.exists():
-        return []
-    records: list[dict[str, Any]] = []
-    with path.open("r", encoding="utf-8") as handle:
-        for raw_line in handle:
-            line = raw_line.strip()
-            if not line:
-                continue
-            records.append(json.loads(line))
-    return records
+    # Check owner-specific first, then legacy flat for admin compat
+    candidates: list[Path] = []
+    if owner:
+        candidates.append(hilt_file(run_id, owner))
+    candidates.append(hilt_file(run_id, None))
+    for path in candidates:
+        if path.exists():
+            records: list[dict[str, Any]] = []
+            with path.open("r", encoding="utf-8") as handle:
+                for raw_line in handle:
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+                    records.append(json.loads(line))
+            return records
+    return []

@@ -6,7 +6,26 @@ Auto-docs: `/docs` (Swagger) and `/redoc` (ReDoc).
 
 ## Authentication
 
-Optional `API_AUTH_TOKEN` env var → `Authorization: Bearer <token>` header. Dev default (no token set) = no-op. See `_require_auth` in `routes.py:113`.
+**100% JWT** — không còn `API_AUTH_TOKEN`. Cấu hình qua `JWT_SECRET` + `AUTH_USERNAME`/`AUTH_PASSWORD` (hoặc `AUTH_PASSWORD_HASH` bcrypt) trong `config.py`.
+
+* Public (không cần JWT): `POST /api/v1/auth/login`, `POST /api/v1/auth/signup`, `POST /api/v1/auth/verify`, `GET /health`.
+* Protected: mọi endpoint còn lại dưới `/api/v1` yêu cầu `Authorization: Bearer <JWT>` (xem `POST /api/v1/auth/login` để lấy token). Logic tại `routes.py:get_current_user` / `_require_auth` + `_require_llm_auth` cho LLM endpoints.
+* Dev/Test convenience: khi `JWT_SECRET=""` và `APP_ENV != "production"` thì bypass open (trả `admin`). Trong `production` thiếu `JWT_SECRET` → `503 JWT_SECRET not configured` (fail-closed).
+* Signup là fake in-memory (không DB): `POST /api/v1/auth/signup` với `username/password/confirm_password`, trả JWT `201`, `409` nếu trùng (kể cả admin).
+
+```bash
+# Login
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"test-pass"}'
+# → {"access_token":"eyJ...","token_type":"Bearer","expires_in":3600,"username":"admin"}
+
+# Dùng token
+curl http://localhost:8000/api/v1/datasets \
+  -H "Authorization: Bearer eyJ..."
+```
+
+Tests ở strict mode: `tests/conftest.py` mặc định `JWT_SECRET=test-jwt-secret-32-chars-minimum-for-tests`, `client` tự inject JWT, `unauth_client` không inject để assert `401/503`.
 
 ## Rate Limiting
 

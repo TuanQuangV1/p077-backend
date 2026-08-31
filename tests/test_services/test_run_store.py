@@ -21,7 +21,7 @@ def test_save_and_get_run_round_trip(monkeypatch, tmp_path) -> None:
             "finishedAt": "2026-07-01T00:00:05+00:00",
             "anomalyCount": 2,
             "worstSeverity": "medium",
-            "model": "vllm/qwen2.5-coder-32b",
+            "model": "openai/gpt-4.1",
             "totalLatencyMs": 1200,
             "promptTokens": 10,
             "completionTokens": 5,
@@ -132,7 +132,7 @@ def test_ai_results_round_trip(monkeypatch, tmp_path) -> None:
             "latencyMs": 0,
             "promptTokens": 0,
             "completionTokens": 0,
-            "vllmRequestId": "vllm_req_001",
+            "llmRequestId": "llm_req_001",
         }
     ]
     run_store.save_run_ai_results("run_E1-1", results)

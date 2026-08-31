@@ -4,11 +4,12 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
     ActivityIcon,
-    CpuIcon,
+    BotIcon,
     DatabaseIcon,
     FileTextIcon,
     GaugeIcon,
     LayersIcon,
+    LogOutIcon,
     RadarIcon,
     ScanSearchIcon,
     UserCheckIcon,
@@ -30,32 +31,27 @@ import {
 } from "@/components/ui/sidebar"
 
 const NAV = [
-    {
-        label: "Vận hành",
-        items: [
-            { href: "/", label: "Tổng quan", icon: GaugeIcon },
-            { href: "/datasets", label: "Tập dữ liệu", icon: DatabaseIcon },
-        ],
-    },
-    {
-        label: "Chẩn đoán",
-        items: [
-            { href: "/analysis", label: "Phân tích", icon: ScanSearchIcon },
-            { href: "/review", label: "Duyệt thủ công", icon: UserCheckIcon, badge: "pending" as const },
-        ],
-    },
-    {
-        label: "Nền tảng",
-        items: [
-            { href: "/vllm", label: "Giám sát vLLM", icon: CpuIcon },
-            { href: "/reports", label: "Báo cáo", icon: FileTextIcon },
-            { href: "/architecture", label: "Kiến trúc", icon: LayersIcon },
-        ],
-    },
+    { label: "Vận hành", items: [
+        { href: "/", label: "Tổng quan", icon: GaugeIcon },
+        { href: "/datasets", label: "Tập dữ liệu", icon: DatabaseIcon },
+    ]},
+    { label: "Chẩn đoán", items: [
+        { href: "/analysis", label: "Phân tích", icon: ScanSearchIcon },
+        { href: "/review", label: "Duyệt thủ công", icon: UserCheckIcon, badge: "pending" as const },
+    ]},
+    { label: "Nền tảng", items: [
+        { href: "/llm", label: "Giám sát LLM", icon: BotIcon },
+        { href: "/reports", label: "Báo cáo", icon: FileTextIcon },
+        { href: "/architecture", label: "Kiến trúc", icon: LayersIcon },
+    ]},
 ]
 
 export function AppSidebar({ pendingReviews }: { pendingReviews?: number }) {
     const pathname = usePathname()
+    const handleLogout = async () => {
+        const { logout } = await import("@/lib/api")
+        await logout()
+    }
 
     return (
         <Sidebar collapsible="icon">
@@ -66,7 +62,7 @@ export function AppSidebar({ pendingReviews }: { pendingReviews?: number }) {
                     </div>
                     <div className="flex min-w-0 flex-col group-data-[collapsible=icon]:hidden">
                         <span className="truncate font-mono text-sm font-semibold tracking-tight">RAV&#8209;13</span>
-                        <span className="truncate text-[11px] text-muted-foreground">rosbag diagnosis console</span>
+                        <span className="truncate text-[11px] text-muted-foreground">bảng điều khiển chẩn đoán rosbag</span>
                     </div>
                 </div>
             </SidebarHeader>
@@ -102,11 +98,20 @@ export function AppSidebar({ pendingReviews }: { pendingReviews?: number }) {
             </SidebarContent>
 
             <SidebarFooter>
-                <div className="flex items-center gap-2 rounded-md border border-sidebar-border bg-sidebar-accent/40 px-2 py-2 group-data-[collapsible=icon]:hidden">
-                    <ActivityIcon className="size-3.5 shrink-0 text-primary" />
-                    <div className="min-w-0 flex-1 font-mono text-[11px] leading-4">
-                        <div className="truncate text-sidebar-foreground">vllm 0.6.3</div>
-                        <div className="truncate text-muted-foreground">2x H100 80GB</div>
+                <div className="flex flex-col gap-2 group-data-[collapsible=icon]:hidden">
+                    <button
+                        onClick={handleLogout}
+                        className="flex items-center gap-2 rounded-md border border-sidebar-border bg-sidebar-accent/40 px-2 py-2 text-left hover:bg-sidebar-accent"
+                    >
+                        <LogOutIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                        <span className="font-mono text-[11px] text-sidebar-foreground">Đăng xuất</span>
+                    </button>
+                    <div className="flex items-center gap-2 rounded-md border border-sidebar-border bg-sidebar-accent/40 px-2 py-2">
+                        <ActivityIcon className="size-3.5 shrink-0 text-primary" />
+                        <div className="min-w-0 flex-1 font-mono text-[11px] leading-4">
+                            <div className="truncate text-sidebar-foreground">gpt-4.1</div>
+                            <div className="truncate text-muted-foreground">OpenAI</div>
+                        </div>
                     </div>
                 </div>
             </SidebarFooter>
