@@ -61,20 +61,21 @@ function TFNodeComponent({
       {/* Node */}
       <button
         onClick={() => node.anomalyId && onSelect?.(node.anomalyId)}
+        title={node.anomalyId ? "🎯 Click to sync and focus timeline" : undefined}
         className={`
-          flex flex-col items-center gap-1 rounded-lg border-2 p-3
-          transition-colors
-          ${node.anomalyId ? "cursor-pointer hover:bg-accent" : "cursor-default"}
+          flex min-w-[76px] sm:min-w-[90px] flex-col items-center gap-1 rounded-xl border-2 px-3 py-2.5
+          transition-all shadow-xs
+          ${node.anomalyId ? "cursor-pointer hover:bg-accent hover:scale-105 hover:border-primary" : "cursor-default"}
         `}
         style={{
           borderColor: color,
           backgroundColor: `${color}10`,
         }}
       >
-        <Icon className="size-5" style={{ color }} />
-        <span className="text-xs font-semibold font-mono">{node.label}</span>
+        <Icon className="size-4 sm:size-5" style={{ color }} />
+        <span className="text-xs font-bold font-mono tracking-tight">{node.label}</span>
         {isRoot && (
-          <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-mono">
+          <span className="text-[8.5px] uppercase tracking-wider text-muted-foreground font-mono font-semibold">
             root frame
           </span>
         )}
@@ -82,7 +83,7 @@ function TFNodeComponent({
 
       {/* Anomaly Details */}
       {node.anomalyId && anomaly && (
-        <div className="mt-2 max-w-[180px] rounded border border-border bg-card p-2">
+        <div className="mt-2 max-w-[180px] rounded-lg border border-border bg-card p-2 shadow-sm text-left">
           <div className="flex items-center gap-1.5">
             <Badge
               variant="outline"
@@ -95,13 +96,13 @@ function TFNodeComponent({
               {anomaly.kind}
             </Badge>
             <span
-              className="text-[9px] font-medium uppercase font-mono"
+              className="text-[9px] font-bold uppercase font-mono"
               style={{ color }}
             >
               {SEVERITY_LABEL[anomaly.severity] ?? anomaly.severity}
             </span>
           </div>
-          <p className="mt-1 text-[10px] text-muted-foreground">
+          <p className="mt-1 text-[10px] text-muted-foreground font-sans">
             {node.details}
           </p>
           <p className="mt-0.5 font-mono text-[9px] text-muted-foreground">
@@ -114,8 +115,6 @@ function TFNodeComponent({
 }
 
 function TFEdge({
-  fromLabel,
-  toLabel,
   status,
   label,
 }: {
@@ -128,26 +127,46 @@ function TFEdge({
   const isHealthy = status === "healthy"
 
   return (
-    <div className="flex flex-col items-center">
-      <div
-        className="w-0.5 rounded-full"
-        style={{
-          height: 24,
-          backgroundColor: color,
-          opacity: isHealthy ? 0.5 : 1,
-        }}
-      />
+    <div className="flex flex-col items-center justify-center self-center px-1">
       {label && (
         <span
-          className="mb-1 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold"
+          className="mb-1 rounded px-1.5 py-0.5 text-[8.5px] font-mono font-bold uppercase tracking-wider"
           style={{
             backgroundColor: `${color}20`,
             color,
+            border: `1px solid ${color}40`,
           }}
         >
           {label}
         </span>
       )}
+      <div className="flex items-center">
+        {/* Horizontal Connector Line */}
+        <div
+          className="h-0.5 w-6 sm:w-10 rounded-full transition-all"
+          style={{
+            backgroundColor: color,
+            opacity: isHealthy ? 0.65 : 1,
+          }}
+        />
+        {/* Directional Arrow Head pointing right */}
+        <svg
+          width="8"
+          height="12"
+          viewBox="0 0 8 12"
+          className="-ml-1 shrink-0"
+          style={{ color }}
+        >
+          <path
+            d="M 1 1 L 7 6 L 1 11"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
     </div>
   )
 }
@@ -244,7 +263,7 @@ export function TFTreeStatus({
         )}
 
         {/* TF Tree visualization */}
-        <div className="flex items-start justify-center gap-8 py-4">
+        <div className="flex items-center justify-center gap-2 sm:gap-5 py-4">
           <TFNodeComponent
             node={nodes[0]}
             isRoot={true}

@@ -319,10 +319,10 @@ export const severityText: Record<Severity, string> = {
 }
 
 export const severityBorder: Record<Severity, string> = {
-    critical: "border-critical/40 bg-critical/10 text-critical",
-    high: "border-high/40 bg-high/10 text-high",
-    medium: "border-medium/40 bg-medium/10 text-medium",
-    low: "border-low/40 bg-low/10 text-low",
+    critical: "border-rose-500/30 bg-rose-500/8 text-rose-400/90",
+    high: "border-amber-500/30 bg-amber-500/8 text-amber-400/90",
+    medium: "border-slate-400/30 bg-slate-400/8 text-slate-400/90",
+    low: "border-slate-500/20 bg-slate-500/5 text-slate-500/80",
 }
 
 export const levelText: Record<string, string> = {

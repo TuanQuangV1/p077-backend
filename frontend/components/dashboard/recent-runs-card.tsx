@@ -1,12 +1,7 @@
 "use client"
 
 import React from "react"
-import {
-  ArrowRightIcon,
-  CheckCircle2Icon,
-  DatabaseIcon,
-  FileTextIcon,
-} from "lucide-react"
+import { ArrowRightIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { StatusLabel } from "@/components/telemetry"
 import type { AnalysisRun } from "@/lib/types"
@@ -35,7 +30,6 @@ export function RecentRunsCard({ runs = [], navigate }: RecentRunsCardProps) {
   if (!runs || runs.length === 0) {
     return (
       <div className="flex h-36 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 p-6 text-center text-xs text-muted-foreground">
-        <FileTextIcon className="size-5 opacity-40" />
         <p>No ROSBag diagnostic runs recorded yet.</p>
         <Button variant="outline" size="sm" onClick={() => navigate("/datasets")} className="cursor-pointer">
           Register ROSBag Dataset
@@ -82,10 +76,9 @@ export function RecentRunsCard({ runs = [], navigate }: RecentRunsCardProps) {
 
                 {/* 2. File Name */}
                 <td className="py-3 pr-3">
-                  <div className="flex items-center gap-1.5 font-sans font-semibold text-foreground group-hover:text-primary transition-colors">
-                    <DatabaseIcon className="size-3.5 text-muted-foreground/70 shrink-0 hidden sm:inline" />
-                    <span className="truncate max-w-[180px] lg:max-w-none">{run.rosbagName}</span>
-                  </div>
+                  <span className="truncate max-w-[200px] lg:max-w-none font-sans font-semibold text-foreground group-hover:text-primary transition-colors">
+                    {run.rosbagName}
+                  </span>
                 </td>
 
                 {/* 3. Robot Type */}
@@ -115,7 +108,7 @@ export function RecentRunsCard({ runs = [], navigate }: RecentRunsCardProps) {
                 <td className="py-3 pr-3 font-sans">
                   {isClean ? (
                     <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
-                      <CheckCircle2Icon className="size-3 shrink-0" />
+                      <span className="size-1.5 rounded-full bg-emerald-400" />
                       Nominal
                     </span>
                   ) : isCritical ? (

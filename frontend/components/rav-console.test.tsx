@@ -47,19 +47,25 @@ describe("rav-console standard English robotics navigation", () => {
 
 describe("analysis workspace standard English controls", () => {
   it("analysis workspace has English topic filter labels", () => {
-    const src = readFrontendFile("frontend/components/rav-console.tsx")
+    const src =
+      readFrontendFile("frontend/components/analysis/analysis-control-bar.tsx") +
+      readFrontendFile("frontend/components/rav-console.tsx")
     expect(src).toContain("All Topics")
   })
 
   it("analysis workspace time ranges are in English", () => {
-    const src = readFrontendFile("frontend/components/rav-console.tsx")
+    const src =
+      readFrontendFile("frontend/components/analysis/analysis-control-bar.tsx") +
+      readFrontendFile("frontend/components/rav-console.tsx")
     expect(src).toContain("Full ROSBag Run")
     expect(src).toContain("First 30 Seconds")
     expect(src).toContain("First 60 Seconds")
   })
 
   it("thresholds panel uses English", () => {
-    const src = readFrontendFile("frontend/components/rav-console.tsx")
+    const src =
+      readFrontendFile("frontend/components/analysis/analysis-control-bar.tsx") +
+      readFrontendFile("frontend/components/rav-console.tsx")
     expect(src).toContain("Frequency Gap Threshold")
   })
 

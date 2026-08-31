@@ -297,24 +297,24 @@ def _canned_explanation(detection: dict[str, Any]) -> dict[str, Any]:
     if is_vi:
         canned = {
             "frequency_gap": (
-                f"Phát hiện khoảng trống phát hành thường xuyên trên {topic}.",
-                "Luồng phát của node bị nghẽn hoặc bộ đệm truyền dẫn làm gián đoạn việc xuất bản.",
+                f"Phát hiện khoảng trống phát dữ liệu trên {topic}.",
+                "Nghẽn luồng xử lý hoặc bộ đệm truyền thông tạm dừng phát tin.",
             ),
             "message_drop_burst": (
-                f"Phát hiện cụm mất gói tin trên {topic}.",
-                "Một khoảng trống dài giữa hai bản tin cho thấy gói tin bị rơi hoặc bị gộp.",
+                f"Phát hiện chùm tin bị mất trên {topic}.",
+                "Mất gói theo cụm do tràn bộ đệm truyền thông hoặc nghẽn mạng.",
             ),
             "timestamp_jitter": (
-                f"Phát hiện jitter dấu thời gian trên {topic}.",
-                "Nhịp phát hành dao động vượt ngưỡng so với tần suất danh định.",
+                f"Phát hiện rung nhịp thời gian trên {topic}.",
+                "Nhịp phát tin lệch khỏi tần số danh định vượt ngưỡng cho phép.",
             ),
             "silent_node": (
                 f"Phát hiện node im lặng trên topic {topic}.",
-                "Node đã ngừng phát hành trong toàn bộ cửa sổ quan sát.",
+                "Node ngừng phát tin trong toàn bộ cửa sổ quan sát.",
             ),
             "clock_drift": (
                 f"Phát hiện trôi đồng hồ trên {topic}.",
-                "Dấu thời gian trong header lệch so với thời gian ghi của bag.",
+                "Thời gian đóng dấu header lệch so với thời gian ghi rosbag.",
             ),
             "unknown": (
                 f"Phát hiện mẫu bất thường trên {topic}.",
@@ -337,7 +337,7 @@ def _canned_explanation(detection: dict[str, Any]) -> dict[str, Any]:
         ),
         "message_drop_burst": (
             f"Burst of dropped messages detected on {topic}.",
-            "A single long inter-message interval indicates dropped or coalesced messages.",
+            "Burst packet loss or transport buffer overflow occurred.",
         ),
         "timestamp_jitter": (
             f"Timestamp jitter detected on {topic}.",

@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { MoonIcon, SunIcon, LaptopIcon } from "lucide-react"
-import { useTheme } from "next-themes"
+import { useTheme } from "@/components/theme-provider"
 
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme()

@@ -264,22 +264,22 @@ export function LLMDeepDivePanel({
   const priorityColor = deepDive ? PRIORITY_COLORS[deepDive.priority] : "#6c757d"
 
   return (
-    <Card className="border-primary/20">
-      <CardHeader className="pb-2">
+    <Card>
+      <CardHeader className="pb-3 border-b border-border/70">
         <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <BrainCircuitIcon className="size-4" />
-            LLM Deep-Dive RCA Engine
+          <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+            <BrainCircuitIcon className="size-4 text-primary" />
+            <span>LLM Deep-Dive RCA Engine</span>
             {isAutoTriggered && triggerLLM && (
-              <Badge variant="outline" className="text-[10px] font-mono">
+              <Badge variant="outline" className="text-[10px] font-mono border-amber-500/40 text-amber-500 bg-amber-500/5">
                 Triggered (Health Index &lt; 70)
               </Badge>
             )}
           </CardTitle>
           <div className="flex items-center gap-1">
             <Tooltip>
-              <TooltipTrigger render={<Button variant="ghost" size="sm" className="size-8 p-0" />}>
-                <HelpCircleIcon className="size-4 text-muted-foreground" />
+              <TooltipTrigger className="size-7 inline-flex items-center justify-center rounded-md hover:bg-accent cursor-pointer text-muted-foreground hover:text-foreground transition-colors">
+                <HelpCircleIcon className="size-3.5" />
               </TooltipTrigger>
               <TooltipContent side="left" className="max-w-xs text-xs">
                 LLM agent correlates multiple ROS2 anomaly streams to synthesize root causes and actionable remediations.
@@ -288,158 +288,182 @@ export function LLMDeepDivePanel({
             <Button
               variant="ghost"
               size="sm"
-              className="size-8 p-0 cursor-pointer"
+              className="size-7 p-0 cursor-pointer text-muted-foreground hover:text-foreground"
               onClick={exportJSON}
+              title="Export report JSON"
             >
-              <DownloadIcon className="size-4" />
+              <DownloadIcon className="size-3.5" />
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              className="size-8 p-0 cursor-pointer"
+              className="size-7 p-0 cursor-pointer text-muted-foreground hover:text-foreground"
               onClick={triggerDeepDive}
               disabled={isLoading}
+              title="Re-run synthesis"
             >
-              <RefreshCwIcon className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
+              <RefreshCwIcon className={`size-3.5 ${isLoading ? "animate-spin" : ""}`} />
             </Button>
           </div>
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-4">
+      <CardContent className="p-4">
         {isLoading && !deepDive ? (
           <LoadingSkeleton />
         ) : deepDive ? (
-          <>
-            {/* Executive Summary */}
-            <div
-              className="rounded-lg border p-3 font-sans"
-              style={{
-                borderColor: `${priorityColor}30`,
-                backgroundColor: `${priorityColor}05`,
-              }}
-            >
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground font-mono">
-                  Executive Diagnostic Summary
-                </h4>
-                <div className="flex items-center gap-2 font-mono">
-                  <span
-                    className="text-xs font-medium"
-                    style={{ color: priorityColor }}
-                  >
-                    Confidence {Math.round(deepDive.confidence * 100)}%
-                  </span>
-                  <span className="text-muted-foreground">|</span>
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] font-bold uppercase"
-                    style={{
-                      borderColor: priorityColor,
-                      color: priorityColor,
-                    }}
-                  >
-                    {PRIORITY_LABELS[deepDive.priority] ?? deepDive.priority.toUpperCase()}
-                  </Badge>
+          <div className="grid gap-5 lg:grid-cols-2 items-start font-sans">
+            {/* LEFT COLUMN: The Why (Executive Summary, RCA, Impacted Subsystems) */}
+            <div className="space-y-4">
+              {/* Executive Diagnostic Summary */}
+              <div
+                className="rounded-xl border p-3.5 shadow-xs transition-colors"
+                style={{
+                  borderColor: `${priorityColor}35`,
+                  backgroundColor: `${priorityColor}06`,
+                }}
+              >
+                <div className="flex items-center justify-between border-b border-border/50 pb-2">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground font-mono">
+                    Executive Diagnostic Summary
+                  </h4>
+                  <div className="flex items-center gap-2 font-mono text-xs">
+                    <span style={{ color: priorityColor }} className="font-semibold">
+                      Confidence {Math.round(deepDive.confidence * 100)}%
+                    </span>
+                    <span className="text-muted-foreground">|</span>
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-bold uppercase tracking-wider"
+                      style={{
+                        borderColor: priorityColor,
+                        color: priorityColor,
+                        backgroundColor: `${priorityColor}15`,
+                      }}
+                    >
+                      {PRIORITY_LABELS[deepDive.priority] ?? deepDive.priority.toUpperCase()}
+                    </Badge>
+                  </div>
                 </div>
+                <p className="mt-2.5 text-xs text-foreground leading-relaxed">
+                  {deepDive.summary}
+                </p>
               </div>
-              <p className="mt-2 text-sm leading-relaxed">{deepDive.summary}</p>
+
+              {/* Root Cause Analysis (RCA) */}
+              {deepDive.explanation.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground font-mono">
+                    Root Cause Analysis (RCA)
+                  </h4>
+                  <ul className="space-y-2">
+                    {deepDive.explanation.map((exp, i) => (
+                      <li
+                        key={i}
+                        className="flex items-start gap-2.5 rounded-lg border border-border/70 bg-card/60 p-2.5 text-xs text-foreground leading-relaxed shadow-2xs"
+                      >
+                        <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded bg-primary/10 text-primary font-mono text-[10px] font-bold">
+                          {i + 1}
+                        </span>
+                        <span className="flex-1">{exp}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Impacted Subsystems */}
+              {deepDive.affected_components.length > 0 && (
+                <div className="flex items-center gap-2 pt-1 font-mono text-xs">
+                  <span className="text-[10.5px] font-semibold uppercase text-muted-foreground">
+                    Impacted Subsystems:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {deepDive.affected_components.map((comp) => (
+                      <Badge
+                        key={comp}
+                        variant="secondary"
+                        className="font-mono text-[10px] uppercase font-semibold"
+                      >
+                        {comp}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Root Cause Analysis */}
-            {deepDive.explanation.length > 0 && (
-              <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground font-mono">
-                  Root Cause Analysis (RCA)
-                </h4>
-                <ul className="mt-2 space-y-1.5">
-                  {deepDive.explanation.map((exp, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm">
-                      <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />
-                      <span>{exp}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Affected Components */}
-            {deepDive.affected_components.length > 0 && (
-              <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground font-mono">
-                  Affected Subsystems
-                </h4>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {deepDive.affected_components.map((comp) => (
-                    <Badge
-                      key={comp}
-                      variant="secondary"
-                      className="font-mono text-[10px]"
-                    >
-                      {comp}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Recommended Fixes */}
-            {deepDive.suggestions.length > 0 && (
-              <div>
-                <div className="flex items-center justify-between">
+            {/* RIGHT COLUMN: The How & When (Remediation Actions & Correlated Anomalies) */}
+            <div className="space-y-4">
+              {/* Recommended Remediation Actions */}
+              {deepDive.suggestions.length > 0 && (
+                <div className="space-y-2">
                   <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground font-mono">
                     Recommended Remediation Actions
                   </h4>
+                  <div className="space-y-2">
+                    {deepDive.suggestions.map((suggestion, i) => (
+                      <Collapsible key={i}>
+                        <CollapsibleTrigger className="flex w-full items-center gap-2.5 rounded-lg border border-border bg-card p-2.5 text-left transition-colors hover:bg-accent hover:border-primary/40 cursor-pointer shadow-2xs">
+                          <CheckCircleIcon className="size-4 shrink-0 text-green-500" />
+                          <span className="flex-1 text-xs font-medium text-foreground">{suggestion}</span>
+                          <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform ui-open:rotate-180" />
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="px-3.5 py-2 border-x border-b border-border/60 rounded-b-lg -mt-1 bg-muted/20 text-xs text-muted-foreground">
+                          Inspect corresponding ROS2 launch parameters, DDS XML configuration, and Nav2 controller settings.
+                        </CollapsibleContent>
+                      </Collapsible>
+                    ))}
+                  </div>
                 </div>
-                <div className="mt-2 space-y-2">
-                  {deepDive.suggestions.map((suggestion, i) => (
-                    <Collapsible key={i}>
-                      <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-lg border border-border bg-card p-2.5 text-left transition-colors hover:bg-accent cursor-pointer">
-                        <CheckCircleIcon className="size-4 shrink-0 text-green-500" />
-                        <span className="flex-1 text-sm">{suggestion}</span>
-                        <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground transition-transform ui-open:rotate-180" />
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="px-3 py-2">
-                        <p className="text-xs text-muted-foreground">
-                          Inspect corresponding ROS2 parameters, DDS XML configuration, and Nav2 controller settings.
-                        </p>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  ))}
-                </div>
-              </div>
-            )}
+              )}
 
-            {/* Associated Detections */}
-            {anomalies.length > 0 && (
-              <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground font-mono">
-                  Correlated Anomalies
-                </h4>
-                <div className="mt-2 space-y-1">
-                  {anomalies.slice(0, 5).map((anomaly) => (
-                    <button
-                      key={anomaly.id}
-                      onClick={() => onSelectAnomaly?.(anomaly.id)}
-                      className="flex w-full items-center gap-2 rounded border border-border bg-card px-2.5 py-1.5 text-left transition-colors hover:bg-accent cursor-pointer"
-                    >
-                      <span
-                        className="size-2 shrink-0 rounded-full"
-                        style={{ backgroundColor: SEVERITY_COLORS[anomaly.severity] }}
-                      />
-                      <span className="flex-1 truncate text-xs font-medium">{anomaly.title}</span>
-                      <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground" />
-                    </button>
-                  ))}
+              {/* Correlated Anomalies with 1-Click Timeline Seek */}
+              {anomalies.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs font-mono">
+                    <h4 className="font-semibold uppercase tracking-wider text-muted-foreground">
+                      Correlated Faults ({anomalies.length})
+                    </h4>
+                    <span className="text-[10px] text-muted-foreground">Click to seek timeline</span>
+                  </div>
+                  <div className="divide-y divide-border/60 rounded-lg border border-border bg-card/80 overflow-hidden shadow-2xs">
+                    {anomalies.slice(0, 5).map((anomaly) => (
+                      <button
+                        key={anomaly.id}
+                        onClick={() => onSelectAnomaly?.(anomaly.id)}
+                        className="group flex w-full items-center justify-between px-3 py-2 text-left text-xs hover:bg-accent/60 transition-colors cursor-pointer"
+                        title="Click to seek timeline to this anomaly"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span
+                            className="size-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: SEVERITY_COLORS[anomaly.severity] }}
+                          />
+                          <span className="font-medium truncate group-hover:text-primary transition-colors">
+                            {anomaly.title}
+                          </span>
+                          {anomaly.topics?.length > 0 && (
+                            <span className="font-mono text-[10px] text-muted-foreground">
+                              {anomaly.topics[0]}
+                            </span>
+                          )}
+                        </div>
+                        <span className="font-mono text-[10.5px] text-muted-foreground group-hover:text-primary shrink-0 ml-2">
+                          t={(anomaly.tRelSec ?? anomaly.tSec ?? 0).toFixed(1)}s &rarr;
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-          </>
+              )}
+            </div>
+          </div>
         ) : (
           <div className="flex flex-col items-center justify-center p-6 text-center">
             <BotIcon className="size-12 text-muted-foreground mb-3" />
-            <p className="text-sm text-muted-foreground font-sans">
-              Click below to synthesize root causes using specialized LLM agents.
+            <p className="text-xs text-muted-foreground font-sans">
+              Click below to synthesize root causes using specialized diagnostics engine.
             </p>
             <Button
               className="mt-3 cursor-pointer"
@@ -449,12 +473,12 @@ export function LLMDeepDivePanel({
             >
               {isLoading ? (
                 <>
-                  <LoaderIcon className="mr-2 size-4 animate-spin" />
+                  <LoaderIcon className="mr-2 size-3.5 animate-spin" />
                   Synthesizing...
                 </>
               ) : (
                 <>
-                  <BrainCircuitIcon className="mr-2 size-4" />
+                  <BrainCircuitIcon className="mr-2 size-3.5" />
                   Run LLM Diagnostics
                 </>
               )}

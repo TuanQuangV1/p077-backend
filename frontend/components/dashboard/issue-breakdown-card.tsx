@@ -27,18 +27,18 @@ const SEVERITY_DOT: Record<string, { label: string; dot: string; text: string }>
   },
   high: {
     label: "High",
-    dot: "bg-orange-500",
-    text: "text-orange-400",
-  },
-  medium: {
-    label: "Medium",
     dot: "bg-amber-500",
     text: "text-amber-400",
   },
-  low: {
-    label: "Low",
+  medium: {
+    label: "Medium",
     dot: "bg-slate-400",
     text: "text-slate-400",
+  },
+  low: {
+    label: "Low",
+    dot: "bg-slate-600",
+    text: "text-slate-500",
   },
 }
 
@@ -78,9 +78,9 @@ export function IssueBreakdownCard({ topIssues = [], severity = [] }: IssueBreak
                     </span>
                   </div>
                   {/* Clean, authentic solid bar without loud rainbow gradients */}
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/70">
                     <div
-                      className="h-full rounded-full bg-primary/70 transition-all duration-300 group-hover:bg-primary"
+                      className="h-full rounded-full bg-primary/60 transition-all duration-300 group-hover:bg-primary/80"
                       style={{ width: `${Math.max(4, pct)}%` }}
                     />
                   </div>
@@ -103,18 +103,18 @@ export function IssueBreakdownCard({ topIssues = [], severity = [] }: IssueBreak
         </div>
 
         {/* Multi-segment distribution bar */}
-        <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted">
+        <div className="flex h-2 w-full overflow-hidden rounded-full bg-muted/70">
           {severity.map((item) => {
             const widthPct = (item.count / totalSeverityCount) * 100
             if (widthPct <= 0) return null
             const bgClass =
               item.severity === "critical"
-                ? "bg-rose-500"
+                ? "bg-rose-500/90"
                 : item.severity === "high"
-                ? "bg-orange-500"
+                ? "bg-amber-500/80"
                 : item.severity === "medium"
-                ? "bg-amber-500"
-                : "bg-slate-400"
+                ? "bg-slate-400/60"
+                : "bg-slate-600/40"
             return (
               <div
                 key={item.severity}

@@ -22,22 +22,22 @@ export function StatTile({
   tone?: "default" | "primary" | "critical" | "ok"
   icon?: ReactNode
 }) {
-  const toneClass = {
-    default: "text-foreground",
-    primary: "text-primary",
-    critical: "text-critical",
-    ok: "text-ok",
+  const accentBorder = {
+    default: "border-l-border",
+    primary: "border-l-primary/50",
+    critical: "border-l-rose-500/50",
+    ok: "border-l-emerald-500/50",
   }[tone]
 
   return (
-    <Card className="gap-0 py-4">
+    <Card className={cn("gap-0 py-4 border-l-2 bg-card/60", accentBorder)}>
       <CardContent className="flex flex-col gap-1.5 px-4">
         <div className="flex items-center justify-between gap-2">
           <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
-          {icon ? <span className="text-muted-foreground">{icon}</span> : null}
+          {icon ? <span className="text-muted-foreground/60">{icon}</span> : null}
         </div>
         <div className="flex items-baseline gap-1">
-          <span className={cn("font-mono text-2xl font-semibold tabular-nums leading-none", toneClass)}>{value}</span>
+          <span className="font-mono text-2xl font-semibold tabular-nums leading-none text-foreground">{value}</span>
           {unit ? <span className="font-mono text-xs text-muted-foreground">{unit}</span> : null}
         </div>
         {hint ? <span className="text-[11px] leading-4 text-muted-foreground">{hint}</span> : null}

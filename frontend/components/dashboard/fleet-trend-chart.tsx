@@ -11,7 +11,6 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts"
-import { ActivityIcon, AlertTriangleIcon, LayersIcon } from "lucide-react"
 
 export interface TrendPoint {
   date: string
@@ -46,14 +45,14 @@ const CustomTooltip = ({ active, payload, label }: any) => {
         <span className="font-mono text-xs font-semibold text-foreground">
           {dataPoint?.date || label}
         </span>
-        <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+        <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-mono">
           Telemetry Snapshot
         </span>
       </div>
       <div className="space-y-1.5 text-xs font-mono">
         <div className="flex items-center justify-between gap-4">
           <span className="flex items-center gap-1.5 text-cyan-400">
-            <LayersIcon className="size-3.5" />
+            <span className="size-2 rounded-xs bg-cyan-400 shrink-0" />
             ROSBags Ingested:
           </span>
           <span className="font-semibold text-foreground">
@@ -62,7 +61,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
         </div>
         <div className="flex items-center justify-between gap-4">
           <span className="flex items-center gap-1.5 text-rose-400">
-            <AlertTriangleIcon className="size-3.5" />
+            <span className="size-2 rounded-xs bg-rose-400 shrink-0" />
             Anomalies:
           </span>
           <span className="font-semibold text-rose-400">
@@ -71,7 +70,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
         </div>
         <div className="flex items-center justify-between gap-4">
           <span className="flex items-center gap-1.5 text-purple-400">
-            <ActivityIcon className="size-3.5" />
+            <span className="size-2 rounded-xs bg-purple-400 shrink-0" />
             P95 Latency:
           </span>
           <span className="font-semibold text-purple-300">
@@ -107,12 +106,12 @@ export function FleetTrendChart({ data }: FleetTrendChartProps) {
           >
             <defs>
               <linearGradient id="bagsGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#06b6d4" stopOpacity={0.85} />
-                <stop offset="100%" stopColor="#0891b2" stopOpacity={0.2} />
+                <stop offset="0%" stopColor="#0284c7" stopOpacity={0.8} />
+                <stop offset="100%" stopColor="#0284c7" stopOpacity={0.25} />
               </linearGradient>
               <linearGradient id="anomaliesGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#f43f5e" stopOpacity={0.85} />
-                <stop offset="100%" stopColor="#e11d48" stopOpacity={0.2} />
+                <stop offset="0%" stopColor="#f43f5e" stopOpacity={0.8} />
+                <stop offset="100%" stopColor="#f43f5e" stopOpacity={0.2} />
               </linearGradient>
             </defs>
 
@@ -120,7 +119,7 @@ export function FleetTrendChart({ data }: FleetTrendChartProps) {
               strokeDasharray="3 3"
               vertical={false}
               stroke="var(--border)"
-              strokeOpacity={0.4}
+              strokeOpacity={0.3}
             />
 
             <XAxis
@@ -156,8 +155,8 @@ export function FleetTrendChart({ data }: FleetTrendChartProps) {
               dataKey="bags"
               name="ROSBags"
               fill="url(#bagsGradient)"
-              radius={[4, 4, 0, 0]}
-              maxBarSize={28}
+              radius={[3, 3, 0, 0]}
+              maxBarSize={24}
             />
 
             <Bar
@@ -165,8 +164,8 @@ export function FleetTrendChart({ data }: FleetTrendChartProps) {
               dataKey="anomalies"
               name="Anomalies"
               fill="url(#anomaliesGradient)"
-              radius={[4, 4, 0, 0]}
-              maxBarSize={28}
+              radius={[3, 3, 0, 0]}
+              maxBarSize={24}
             />
 
             <Line
@@ -174,10 +173,11 @@ export function FleetTrendChart({ data }: FleetTrendChartProps) {
               type="monotone"
               dataKey="p95Ms"
               name="P95 Latency"
-              stroke="#a855f7"
-              strokeWidth={2.5}
-              dot={{ r: 4, fill: "#a855f7", strokeWidth: 2, stroke: "#18181b" }}
-              activeDot={{ r: 6, fill: "#c084fc" }}
+              stroke="#94a3b8"
+              strokeWidth={1.75}
+              strokeDasharray="4 4"
+              dot={{ r: 3, fill: "#94a3b8", strokeWidth: 1.5, stroke: "#0f172a" }}
+              activeDot={{ r: 5, fill: "#e2e8f0" }}
             />
           </ComposedChart>
         </ResponsiveContainer>
@@ -187,21 +187,19 @@ export function FleetTrendChart({ data }: FleetTrendChartProps) {
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border/40 pt-2 text-xs font-mono text-muted-foreground">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
-            <span className="size-2.5 rounded-sm bg-cyan-500" />
+            <span className="size-2 rounded-xs bg-[#0284c7]" />
             <span>ROSBags</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="size-2.5 rounded-sm bg-rose-500" />
+            <span className="size-2 rounded-xs bg-[#f43f5e]" />
             <span>Anomalies</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="h-0.5 w-3 bg-purple-400 inline-block" />
+            <span className="h-0.5 w-3 border-t border-dashed border-[#94a3b8] inline-block" />
             <span>P95 Latency (ms)</span>
           </div>
         </div>
-        <span className="text-[11px] text-muted-foreground/70 hidden sm:inline">
-          14-Day Statistical Window
-        </span>
+        <span className="text-[10px] text-muted-foreground/70">14-Day Statistical Window</span>
       </div>
     </div>
   )

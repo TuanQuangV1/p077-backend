@@ -6,10 +6,8 @@ import {
   LayersIcon,
   SaveIcon,
   SlidersHorizontalIcon,
-  ChevronDownIcon,
   CheckCircle2Icon,
 } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -60,22 +58,10 @@ export function AnalysisControlBar({
     }, 220)
   }
 
-  const selectedTopicLabel =
-    topicFilter === "all"
-      ? `All Topics (${lanes.length})`
-      : topicFilter
-
-  const selectedTimeLabel =
-    timeRange === "30"
-      ? "First 30s"
-      : timeRange === "60"
-      ? "First 60s"
-      : "Full Run"
-
   return (
     <div
       data-testid="thresholds-panel"
-      className="relative z-30 flex items-center justify-between gap-3 rounded-xl border border-border/80 bg-card/70 px-4 py-2 shadow-xs"
+      className="relative z-30 flex items-center justify-between"
     >
       {/* Unified Single Button with Hover Popover */}
       <div
@@ -88,29 +74,12 @@ export function AnalysisControlBar({
           variant="outline"
           onClick={() => setIsOpen((prev) => !prev)}
           onMouseEnter={openMenu}
-          className="h-8.5 gap-2.5 text-xs font-medium transition-all group-hover:bg-secondary group-hover:border-primary/40 cursor-pointer shadow-xs"
+          className="h-8 gap-2 text-xs font-medium cursor-pointer shadow-xs hover:border-primary/40"
         >
           <SlidersHorizontalIcon className="size-3.5 text-primary" />
           <span className="font-semibold text-foreground">
-            Filters & Diagnostic Controls
+            Filters & Thresholds
           </span>
-
-          <div className="flex items-center gap-1.5 pl-1 text-[11px] text-muted-foreground border-l border-border/60">
-            <span className="max-w-[120px] truncate font-mono text-[10px] text-foreground/80">
-              {selectedTopicLabel}
-            </span>
-            <span>·</span>
-            <span className="font-mono text-[10px] text-foreground/80">
-              {selectedTimeLabel}
-            </span>
-          </div>
-
-          <ChevronDownIcon
-            className={cn(
-              "size-3 text-muted-foreground transition-transform duration-200 group-hover:rotate-180",
-              isOpen && "rotate-180"
-            )}
-          />
         </Button>
 
         {/* Floating Unified Popover on Hover / Click / Focus */}
@@ -265,17 +234,9 @@ export function AnalysisControlBar({
           </div>
         </div>
       </div>
-
-      {/* Right: Engine status */}
-      <div className="flex items-center gap-2">
-        <Badge
-          variant="outline"
-          className="font-mono text-[11px] text-muted-foreground bg-muted/30 border-border px-2.5 py-1"
-        >
-          <span className="size-1.5 rounded-full bg-ok mr-1.5 inline-block" />
-          {activeRun?.stage ?? "done"} · {activeRun?.progress ?? 100}% · {lanes.length} lanes
-        </Badge>
-      </div>
+      <span className="sr-only">
+        {activeRun?.stage ?? "done"} · {activeRun?.progress ?? 100}% · {lanes.length} lanes
+      </span>
     </div>
   )
 }

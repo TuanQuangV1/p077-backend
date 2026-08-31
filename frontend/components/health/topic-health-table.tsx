@@ -185,19 +185,37 @@ export function TopicHealthTable({
 
                 return (
                   <Fragment key={topic.name}>
-                    <tr className="group hover:bg-accent/40 transition-colors">
+                    <tr
+                      onClick={() => {
+                        if (topicDetections.length > 0) {
+                          onSelectAnomaly?.(topicDetections[0].id)
+                        } else {
+                          setExpandedTopic(isExpanded ? null : topic.name)
+                        }
+                      }}
+                      className={`group hover:bg-accent/40 transition-colors cursor-pointer ${
+                        topicDetections.length > 0 ? "hover:border-primary/50" : ""
+                      }`}
+                    >
                       <td className="px-3 py-2">
-                        <button
-                          onClick={() => setExpandedTopic(isExpanded ? null : topic.name)}
-                          className="flex items-center gap-1.5 text-left hover:text-primary cursor-pointer"
-                        >
-                          {isExpanded ? (
-                            <ChevronDownIcon className="size-3" />
-                          ) : (
-                            <ChevronRightIcon className="size-3" />
-                          )}
-                          <span className="font-mono text-xs text-foreground font-medium">{topic.name}</span>
-                        </button>
+                        <div className="flex items-center gap-1.5 text-left">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setExpandedTopic(isExpanded ? null : topic.name)
+                            }}
+                            className="p-0.5 hover:bg-muted rounded"
+                          >
+                            {isExpanded ? (
+                              <ChevronDownIcon className="size-3" />
+                            ) : (
+                              <ChevronRightIcon className="size-3" />
+                            )}
+                          </button>
+                          <span className="font-mono text-xs text-foreground font-medium group-hover:text-primary transition-colors">
+                            {topic.name}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-2 py-2 text-right font-mono text-muted-foreground">
                         {topic.expectedHz}
@@ -240,8 +258,16 @@ export function TopicHealthTable({
                             color,
                             backgroundColor: `${color}10`,
                           }}
+                          title={
+                            topicDetections.length > 0
+                              ? `Click to sync timeline to ${topicDetections[0].title}`
+                              : undefined
+                          }
                         >
                           {label}
+                          {topicDetections.length > 0 && (
+                            <span className="ml-1 text-[8.5px] opacity-75">🎯</span>
+                          )}
                         </Badge>
                       </td>
                     </tr>
