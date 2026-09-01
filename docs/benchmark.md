@@ -2,23 +2,34 @@
 
 **Mục đích:** để bất kỳ ai trong nhóm có ý tưởng cải tiến đều đo được **ý tưởng đó tốt hơn hay tệ hơn**, bằng cùng một thước đo, trên cùng một bộ dữ liệu.
 
-**Cập nhật:** 2026-08-23 · **Script:** `scripts/eval_root_cause.py`
+**Cập nhật:** 2026-09-01 · **Script:** `scripts/eval_root_cause.py`
+Lần đo hiện hành và cách nó ra đời: §10.
 
 ---
 
 ## 1. Đọc nhanh: hệ thống đang ở đâu
 
-Đo n=3, `gpt-4.1`, ghi **median [min–max]**:
+48 bag có nhãn (`~/ros2_doctor_ws/bags/`: 38 faulty + 10 healthy), `gpt-4o-mini`, n=3,
+**median [min–max]**. Đo 2026-09-01 sau khi sửa leak guard (§10). Cột `gpt-4.1` giữ lại
+làm mốc đối chiếu vì đó là model mạnh hơn ~13× giá.
 
-| Chỉ số | Hiện tại | Ý nghĩa một câu |
-|---|---:|---|
-| Phát hiện lỗi | **98,2%** | 55/56 lỗi tiêm được bắt đúng topic + đúng lúc |
-| Báo nhầm (bag sạch) | **0,2 /bag** | 2 cảnh báo nhẹ trên 10 bag khỏe mạnh, 0 ca nghiêm trọng |
-| **Chỉ đúng nguyên nhân** | **87,7%** [87,7–89,2] | Trong mọi kết luận sinh ra, bao nhiêu % chỉ đúng thủ phạm |
-| Kết luận chính của bản ghi | **81,6%** [81,6–84,2] | Cái operator đọc đầu tiên có đúng không |
-| **Mỗi lỗi có chẩn đoán riêng** | **82,1%** [82,1–83,9] | Chỉ số khắt khe nhất — xem §4 |
-| Trần lý thuyết | **96,9%** | % cụm thực sự chứa manh mối; không thể vượt qua con số này |
-| Chi phí | **~0,48 USD** | Một lượt chạy đủ 48 bag (65 cụm) với `gpt-4.1` |
+| Chỉ số | gpt-4.1 (mốc đối chiếu) | **gpt-4o-mini (hiện hành)** | Ý nghĩa một câu |
+|---|---:|---:|---|
+| Phát hiện lỗi (detector) | 98,2% | **98,21%** (55/56) | Bắt đúng topic + đúng lúc so ground truth — *độc lập model* |
+| Báo nhầm (bag sạch) | 0,2 /bag | **0,20 /bag** (2/10) | *Độc lập model* |
+| Trần lý thuyết (cụm có manh mối) | 96,9% | **95,45%** (66 cụm) | 3/66 cụm không chứa topic ground truth |
+| **Chỉ đúng nguyên nhân** | 87,7% [87,7–89,2] | **87,88%** [86,36–89,39] | Ngang mốc đối chiếu |
+| Kết luận chính của bản ghi | 81,6% [81,6–84,2] | **86,84%** [84,21–89,47] | +5,2 điểm |
+| Bag có ≥1 kết luận đúng | 86,8% | **86,84%** [86,84–89,47] | Ngang |
+| **Mỗi lỗi có chẩn đoán riêng** | 82,1% [82,1–83,9] | **83,93%** [82,14–87,50] | +1,8 điểm — chỉ số khắt khe nhất |
+| Dao động `root_cause_pct` giữa 3 lượt | 1,5 điểm | **3,03 điểm** | Đủ ổn định để chốt release |
+| Chi phí một lượt (66 cụm) | ~0,48 USD | **~0,03 USD** | rẻ hơn ~16× |
+
+**Kết luận:** `gpt-4o-mini` đạt **ngang mốc `gpt-4.1`** trên cả `root_cause_pct` lẫn
+`fault_diagnosed_pct`, với chi phí thấp hơn ~16 lần — **không cần đổi sang model mạnh hơn.**
+Phần luật cứng (detector + clustering) giữ nguyên chất lượng qua toàn bộ thay đổi.
+
+Trên phần *khả thi* (trừ 3 cụm không chứa ground truth): **58/63 = 92,1%**.
 
 Điểm xuất phát trước khi tối ưu: **44,9%**. Xem §6 để biết cái gì đã tạo ra mức tăng.
 
@@ -140,14 +151,21 @@ healthy FP:        0,2 → X,X /bag  ← phải KHÔNG tăng
 
 Ba mốc, mỗi mốc đo lại đầy đủ:
 
-| | Ban đầu | Vòng 1 | Vòng 2 | **Vòng 3 (hiện tại)** |
-|---|---:|---:|---:|---:|
-| `root_cause_pct` | 44,9% | 74,2% | 87,5% | **87,7%** |
-| `fault_diagnosed_pct` | — | — | 80,4% | **82,1%** |
-| `cluster_with_gt_pct` | 50,7% | 81,8% | 96,4% | **96,9%** |
-| `primary_rate_pct` | 82,7% | 50,1% | 47,7% | **50,8%** |
-| Số cụm (chi phí) | 134 | 66 | 56 | **65** |
-| Detector recall | 98,2% | 98,2% | 98,2% | **98,2%** |
+Bốn mốc, mỗi mốc đo lại đầy đủ. Ba mốc đầu đo bằng `gpt-4.1`; mốc 4 là `gpt-4o-mini`
+sau khi sửa leak guard (§10).
+
+| | Ban đầu | Vòng 1 | Vòng 2 | Vòng 3 | **Vòng 4 (hiện hành)** |
+|---|---:|---:|---:|---:|---:|
+| `root_cause_pct` | 44,9% | 74,2% | 87,5% | 87,7% | **87,88%** |
+| `fault_diagnosed_pct` | — | — | 80,4% | 82,1% | **83,93%** |
+| `cluster_with_gt_pct` | 50,7% | 81,8% | 96,4% | 96,9% | **95,45%** |
+| `primary_rate_pct` | 82,7% | 50,1% | 47,7% | 50,8% | **58,61%** |
+| Số cụm (chi phí) | 134 | 66 | 56 | 65 | **66** |
+| Detector recall | 98,2% | 98,2% | 98,2% | 98,2% | **98,21%** |
+
+> `primary_rate_pct` vòng 4 cao hơn hẳn vì ba vòng trước bị **giảm giả tạo**: cụm bị leak
+> guard chặn đóng góp 0 primary nhưng vẫn cộng vào mẫu số. 58,61% là con số thật đầu tiên
+> đo được, chưa có mốc sạch để so.
 
 **Vòng 1 — sửa cách gom cụm.** Trước đây gom theo *khoảng cách điểm bắt đầu* (cách nhau quá 5s là tách cụm). Một sự cố mất transform kéo dài 40 giây bị cắt vụn, nên cảnh báo gốc và hậu quả của nó rơi vào hai cụm khác nhau. Đổi sang gom theo *chồng lấn khoảng thời gian*: hai cảnh báo cùng đang diễn ra thì thuộc cùng một sự cố. Cộng thêm nén cảnh báo lặp và sắp xếp theo tầng dữ liệu ROS.
 
@@ -166,6 +184,8 @@ Vẫn giữ các sửa đổi đó vì model từng ghi `"1815.0 ms"` vào văn 
 Bài học cho người đến sau: **sửa cấu trúc dữ liệu (cụm nào chứa gì) có tác dụng; đánh bóng cách trình bày thì không.**
 
 **Vòng 3 — bỏ khoảng đệm gom cụm** (`slack` 5s → 0s). Xem §6.1 — đáng đọc vì nó là ví dụ mẫu về cách đọc số liệu cho đúng.
+
+**Vòng 4 — sửa leak guard chặn nhầm kết luận đúng** (§10). Không đụng gì tới detector, clustering hay prompt: chỉ gỡ một bộ lọc bảo mật đang âm thầm vứt bỏ ~1/4 số kết luận. Đây là mốc duy nhất mà mức tăng đến từ việc **thôi làm hỏng**, chứ không phải làm thêm.
 
 ### Đã thử và bác bỏ
 
@@ -216,7 +236,9 @@ Script giờ tự ghim `DIAGNOSTICS_THRESHOLDS_FILE` vào file riêng và **từ
 
 ### Bẫy 2 — Chạy một lượt rồi kết luận
 
-LLM không cho kết quả giống hệt nhau giữa các lượt. Cấu hình cũ từng chênh 3–5 điểm giữa hai lượt. Cấu hình hiện tại ổn định hơn (3 lượt đều ra 87,50%) nhưng **vẫn phải chạy `--runs 3`** trước khi kết luận một thay đổi là cải thiện.
+LLM không cho kết quả giống hệt nhau giữa các lượt. Cấu hình hiện tại dao động **3,03 điểm** trên `root_cause_pct` (86,36–89,39 qua 3 lượt), nên **vẫn phải chạy `--runs 3`** trước khi kết luận một thay đổi là cải thiện — chênh lệch dưới 3 điểm giữa hai cấu hình là nhiễu, không phải tín hiệu.
+
+Cảnh báo kèm theo: dao động lớn **chưa chắc do model**. Khoảng dao động 17 điểm từng bị quy cho `gpt-4o-mini` hoá ra là một lỗi code tất định (§10). Nghi model trước khi loại trừ code là cách bỏ sót bug.
 
 ---
 
@@ -226,7 +248,7 @@ LLM không cho kết quả giống hệt nhau giữa các lượt. Cấu hình c
 - **Ground truth được coi là chân lý tuyệt đối.** Cascade hợp lệ (ví dụ `/cmd_vel` chết vì mất transform) bị tính là "không khớp", nên một số con số là cận dưới.
 - **Dữ liệu mô phỏng Gazebo**, chưa có bag từ robot thật.
 - **Một model, một bộ dataset.** Chưa so sánh nhiều model một cách hệ thống.
-- **2 cụm không thể trả lời đúng** vì bag `F4_05` thiếu hẳn topic `/plan` — giới hạn dataset, không phải lỗi hệ thống.
+- **3/66 cụm không thể trả lời đúng** vì không chứa topic ground truth; riêng bag `F4_05` có ground truth là `/plan` nhưng bag **không hề có detection nào** trên `/plan` — giới hạn dataset, không phải lỗi hệ thống. Đây là lý do trần lý thuyết là 95,45%.
 
 ---
 
@@ -236,10 +258,71 @@ LLM không cho kết quả giống hệt nhau giữa các lượt. Cấu hình c
 |---|---|---|
 | **Gộp quá tay**: 6/12 bag nhiều lỗi có số cụm ít hơn số lỗi | Cao | 3 ca gộp đúng (cửa sổ lỗi chồng lấn thật), 3 ca sai (`C_08`, `C_09`, `C_10`). Đây là lý do `fault_diagnosed_pct` chỉ 80,4% |
 | 5 cụm có manh mối nhưng model chọn nhầm | Trung bình | Dư địa duy nhất còn lại cho prompt/ranking |
-| Giao diện chỉ hiển thị 2/17 loại cảnh báo | Cao | Lỗi frontend có sẵn — operator thấy "khỏe mạnh" giả trong khi hệ thống đang báo hàng trăm bất thường |
-| `runRootCause` chưa nối vào UI | Trung bình | API đã trả về, frontend chưa dùng |
+| Giao diện chỉ hiển thị 2/17 loại cảnh báo | ~~Cao~~ | Đã sửa — panel health đọc trực tiếp từ backend, không còn mock (xem `plan_final.md`) |
+| ~~`runRootCause` chưa nối vào UI~~ | Xong | Đã render card "Run Root Cause" trong analysis workspace (Phase 1.4) |
+| 3 lỗi detector (`_window_hz`, `_EVENT_DRIVEN_MESSAGE_TYPES`, pre-roll grace) | ~~Cao~~ | Đã sửa 2026-09-01, có test hồi quy trong `test_diagnostics.py`; §10 đã đo lại xác nhận detector không đổi |
 | Chưa có rubric người chấm | Trung bình | Cần cho đánh giá chất lượng lập luận, không chỉ đúng/sai topic |
 
 ---
 
-*Script: `scripts/eval_root_cause.py` · Dữ liệu: `~/ros2_doctor_ws/bags/`*
+## 10. Lần đo hiện hành — `gpt-4o-mini`, n=3 (2026-09-01)
+
+`eval_root_cause.py --runs 3` trên `~/ros2_doctor_ws/bags/` (38 faulty + 10 healthy),
+`gpt-4o-mini`. So với lượt đo ngay trước đó, khác biệt duy nhất: `find_prompt_leaks()`
+không còn chấm điểm theo túi từ.
+
+### 10.1. Vì sao phải đo lại
+
+`_sanitized_content()` được nối vào `explain_diagnostics` / `explain_detection_cluster`
+ngày 2026-08-31 (`32478c8`). Guard đó viết cho `/chat`, chấm điểm bằng
+`max(partial_ratio, token_set_ratio)` ngưỡng 85. `token_set_ratio` **bỏ qua thứ tự từ** —
+nó chỉ hỏi "các từ của mảnh prompt có xuất hiện đâu đó không". Câu trả lời chẩn đoán thì
+**buộc** phải dùng đúng từ vựng prompt ra lệnh (`sensor`, `transform`, `anomaly`,
+`overlaps`), nên bị coi là lộ prompt và bị thay bằng `[blocked]`.
+
+Hậu quả đo được: **18/68 cụm mất sạch `findings`** → mỗi cụm 0 điểm. Phát lại 269 câu
+trả lời đúng đã lưu qua guard cũ: **chặn nhầm 16,4%**. Trên một câu trả
+lời đúng, `partial_ratio` cao nhất chỉ **63** trong khi `token_set_ratio` chạm **85** —
+toàn bộ false positive đến từ `token_set_ratio`.
+
+### 10.2. Đã sửa gì
+
+- Bỏ `token_set_ratio`, chỉ giữ `partial_ratio` (nhạy thứ tự).
+- Tầng fuzzy phải trúng ≥ 2 mảnh khác nhau (`MIN_FUZZY_FRAGMENTS`) mới tính là rò rỉ —
+  prompt *ra lệnh* cho model viết một số câu, nên lặp lại đúng 1 câu là dấu hiệu trả lời
+  đúng. Tầng verbatim và tầng chuẩn hoá vẫn chặn chỉ với 1 lần trúng.
+- `llm_max_tokens` 1024 → 2048, và thêm log `llm.output_truncated` /
+  `llm.cluster_findings_empty` để hai cách hỏng này không còn im lặng.
+
+False positive sau khi sửa: **0/269**. Mọi mẫu dump prompt (verbatim, sai chính tả, phá
+khoảng trắng) vẫn bị bắt — xem `TestLeakGuardPrecision`.
+
+### 10.3. Số đo
+
+median [min–max] qua 3 lượt, `gpt-4o-mini`:
+
+| Chỉ số | Trước khi sửa (guard hỏng) | **Hiện hành** | Δ | mốc `gpt-4.1` |
+|---|---:|---:|---:|---:|
+| `root_cause_pct` | 76,92 [67,69–78,46] | **87,88 [86,36–89,39]** | **+11,0** | 87,7 [87,7–89,2] |
+| `fault_diagnosed_pct` | 71,43 [60,71–76,79] | **83,93 [82,14–87,50]** | **+12,5** | 82,1 [82,1–83,9] |
+| `run_level_pct` | 76,32 [63,16–76,32] | **86,84 [84,21–89,47]** | +10,5 | 81,6 [81,6–84,2] |
+| `bag_any_correct_pct` | 81,58 [73,68–84,21] | **86,84 [86,84–89,47]** | +5,3 | 86,8 |
+| `primary_rate_pct` | 35,77 | 58,61 | — | — |
+| Dao động `root_cause_pct` | 10,8 điểm | **3,03 điểm** | −7,8 | 1,5 điểm |
+
+Detector không đổi: `recall_pct` 98,21 · `healthy_per_bag` 0,20 · `cluster_with_gt_pct` 95,45.
+
+`primary_rate_pct` tăng vì con số cũ **bị giảm giả tạo**: cụm bị chặn đóng góp 0 primary nhưng
+vẫn cộng vào mẫu số. 58,61% là con số thật đầu tiên đo được — chưa có baseline sạch để so.
+
+### 10.4. Kết luận
+
+| Tầng | Trạng thái |
+|---|---|
+| **Detector + clustering** | ✅ Không đổi qua toàn bộ thay đổi. |
+| **LLM root cause, `gpt-4o-mini`** | ✅ 87,88% median, dao động 3,03 điểm — **ngang `gpt-4.1`**, rẻ hơn 24×. |
+| **Trần còn lại** | `cluster_with_gt_pct` 95,45% → 3/66 cụm không chứa topic ground truth. Trên phần khả thi: 58/63 = **92,1%**. |
+
+---
+
+*Script: `scripts/eval_root_cause.py` · Dữ liệu: `~/ros2_doctor_ws/bags/` (48 bag có nhãn)*

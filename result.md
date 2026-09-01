@@ -1,5 +1,11 @@
 # Kết quả đánh giá LLM trên dataset thật
 
+> [!WARNING]
+> **Tài liệu lịch sử — đã bị thay thế.** Đây là biên bản đo ngày 2026-08-26. Số liệu
+> hiện hành nằm ở `docs/benchmark.md` §10 (`root_cause_pct` 87,88%). Các file
+> `data/diagnostics/per_fault_*.json` mà tài liệu này trỏ tới đã được xoá khi dọn dữ
+> liệu cũ (2026-09-01); chúng vẫn truy được trong lịch sử git.
+
 Chạy lại toàn bộ pipeline sản xuất (`detect_anomalies` → `_cluster_detections` → `explain_detection_cluster`)
 với **LLM thật**, rồi so kết luận LLM trả về với ground truth của **từng lỗi tiêm**.
 
