@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest"
 import {
+  buildTopicStats,
   computeSystemMetrics,
   formatBytes,
   formatDuration,
   isTopicHealthy,
   splitFormattedBytes,
 } from "./health-engine"
+import type { WindowSummaryRow } from "./api"
 import type { Anomaly, Rosbag, TopicStat } from "./types"
 
 describe("health-engine", () => {
@@ -91,5 +93,88 @@ describe("health-engine", () => {
     expect(metrics.sensorAvailabilityPct).toBe(50)
     expect(metrics.criticalCount).toBe(1)
     expect(metrics.mediumCount).toBe(1)
+  })
+})
+
+describe("buildTopicStats", () => {
+  const RECORDING_SEC = 215
+  const WINDOW_SEC = 5
+
+  /** One window row, with only the fields the stats builder reads. */
+  function win(topic: string, index: number, count: number, actualHz: number | null): WindowSummaryRow {
+    return {
+      window_start: new Date(index * WINDOW_SEC * 1000).toISOString(),
+      topic,
+      node: "n",
+      message_type: "sensor_msgs/msg/LaserScan",
+      count,
+      bytes: count * 100,
+      expected_hz: null,
+      actual_hz: actualHz,
+      max_gap_ms: null,
+      jitter_ms: null,
+      drift_ms: null,
+    }
+  }
+
+  it("counts an outage the window rows never mention", () => {
+    // Shape taken from run_F1_01_0: the LiDAR stops at t=66.8s, so /scan holds
+    // 21 of the recording's 43 windows and every surviving window still reads a
+    // clean ~10Hz. Averaging the rows that exist rated this NOMINAL at a 10%
+    // drop while the topic had lost 61% of its messages.
+    const rows = Array.from({ length: 21 }, (_, i) => win("/scan", i, 45, 10.0))
+
+    const [scan] = buildTopicStats(rows, RECORDING_SEC, WINDOW_SEC)
+
+    expect(scan.expectedHz).toBe(10)
+    expect(scan.hz).toBeCloseTo((21 * 45) / RECORDING_SEC, 2)
+    expect(scan.dropRate).toBeGreaterThan(0.5)
+    expect(isTopicHealthy(scan)).toBe(false)
+  })
+
+  it("does not invent a drop on a topic that never missed a window", () => {
+    // A steady topic present in every window must not be penalised by one
+    // burst window reading high: taking the max as nominal invented a 24% drop
+    // on /imu and 11% on /tf, neither of which the detector flagged.
+    const rows = Array.from({ length: 43 }, (_, i) => win("/imu", i, 1000, i === 7 ? 260 : 200))
+
+    const [imu] = buildTopicStats(rows, RECORDING_SEC, WINDOW_SEC)
+
+    expect(imu.expectedHz).toBe(200)
+    expect(imu.dropRate).toBeLessThan(0.05)
+    expect(isTopicHealthy(imu)).toBe(true)
+  })
+
+  it("ignores null rates instead of averaging them in as zero", () => {
+    // `actual_hz` is null when a window holds fewer than 2 messages. Summing
+    // those as 0 pushed /amcl_pose past the drop threshold on its own.
+    const rows = [...Array.from({ length: 20 }, (_, i) => win("/amcl_pose", i, 15, 3.0)), win("/amcl_pose", 20, 1, null)]
+
+    const [pose] = buildTopicStats(rows, RECORDING_SEC, WINDOW_SEC)
+
+    expect(pose.expectedHz).toBe(3)
+    expect(pose.messageCount).toBe(20 * 15 + 1)
+  })
+
+  it("ranks the topic that lost the most messages worst", () => {
+    // The table's ranking must agree with the detector: on run_F1_01_0 the
+    // silent LiDAR has to outrank topics that merely ran slightly slow.
+    const rows = [
+      ...Array.from({ length: 21 }, (_, i) => win("/scan", i, 45, 10.0)),
+      ...Array.from({ length: 43 }, (_, i) => win("/tf", i, 350, 70.0)),
+    ]
+
+    const stats = buildTopicStats(rows, RECORDING_SEC, WINDOW_SEC)
+    const worst = [...stats].sort((a, b) => b.dropRate - a.dropRate)[0]
+
+    expect(worst.name).toBe("/scan")
+  })
+
+  it("falls back to the window span when the bag duration is unknown", () => {
+    const rows = Array.from({ length: 10 }, (_, i) => win("/scan", i, 50, 10.0))
+
+    const [scan] = buildTopicStats(rows, 0, WINDOW_SEC)
+
+    expect(scan.hz).toBeCloseTo(500 / (10 * WINDOW_SEC), 2)
   })
 })

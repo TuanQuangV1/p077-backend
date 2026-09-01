@@ -48,6 +48,7 @@ import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { bytes, clock, compact, del, fetchWindowSummaries, fetcher, ms, post, uploadRosbag, type WindowSummaryRow } from "@/lib/api"
 import { relativeSpan } from "@/lib/anomaly-groups"
+import { buildTopicStats } from "@/lib/health-engine"
 import type { AIResult, Anomaly, AnalysisRun, LatencyWindow, LogEvent, ReviewStats, Rosbag, RunRootCause, Severity, TopicStat } from "@/lib/types"
 
 import { AnalysisHealthPanel } from "@/components/health/analysis-health-panel"
@@ -104,7 +105,10 @@ function buildTimelineLanes(
                 const to = Math.min(TIMELINE_BUCKETS - 1, Math.floor(((start + windowSec) / durationSec) * TIMELINE_BUCKETS))
                 for (let b = from; b <= to; b++) density[b] = Math.max(density[b], row.count)
             }
-            const meanHz = topicRows.reduce((sum, row) => sum + row.actual_hz, 0) / topicRows.length
+            // `actual_hz` is null on a window holding fewer than 2 messages; those
+            // must be dropped, not counted as 0Hz.
+            const laneRates = topicRows.map((row) => row.actual_hz).filter((rate): rate is number => rate != null)
+            const meanHz = laneRates.length > 0 ? laneRates.reduce((sum, rate) => sum + rate, 0) / laneRates.length : 0
             return {
                 topic,
                 messageType: topicRows[0].message_type,
@@ -116,35 +120,6 @@ function buildTimelineLanes(
         .sort((a, b) => a.topic.localeCompare(b.topic))
 
     return { lanes, durationSec, startSec }
-}
-
-/**
- * Per-topic stats for the Topic Health table, from the same window rows.
- */
-function buildTopicStats(rows: WindowSummaryRow[]): TopicStat[] {
-    const byTopic = new Map<string, WindowSummaryRow[]>()
-    for (const row of rows) {
-        const bucket = byTopic.get(row.topic)
-        if (bucket) bucket.push(row)
-        else byTopic.set(row.topic, [row])
-    }
-
-    return [...byTopic.entries()]
-        .map(([topic, topicRows]) => {
-            const rates = topicRows.map((row) => row.actual_hz)
-            const expectedHz = topicRows[0].expected_hz ?? Math.max(...rates)
-            const hz = rates.reduce((sum, rate) => sum + rate, 0) / rates.length
-            return {
-                name: topic,
-                messageType: topicRows[0].message_type,
-                messageCount: topicRows.reduce((sum, row) => sum + row.count, 0),
-                bytesTotal: topicRows.reduce((sum, row) => sum + (row.bytes ?? 0), 0),
-                hz: Number(hz.toFixed(2)),
-                expectedHz: Number(expectedHz.toFixed(2)),
-                dropRate: expectedHz > 0 ? Math.max(0, Number((1 - hz / expectedHz).toFixed(4))) : 0,
-            }
-        })
-        .sort((a, b) => a.name.localeCompare(b.name))
 }
 
 /**
@@ -267,7 +242,10 @@ export function RavConsole() {
         () => buildTimelineLanes(windowRows, TIMELINE_WINDOW_SEC, recordingOrigin, recordingSec),
         [windowRows, recordingOrigin, recordingSec],
     )
-    const topicStats = useMemo(() => buildTopicStats(windowRows), [windowRows])
+    const topicStats = useMemo(
+        () => buildTopicStats(windowRows, recordingSec, TIMELINE_WINDOW_SEC),
+        [windowRows, recordingSec],
+    )
     const latencyWindows = useMemo(
         () => buildLatencyWindows(windowRows, recordingOrigin),
         [windowRows, recordingOrigin],

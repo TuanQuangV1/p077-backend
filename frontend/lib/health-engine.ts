@@ -5,6 +5,7 @@
  * avoiding hardcoded assumptions and preventing dashboard metric duplications.
  */
 
+import type { WindowSummaryRow } from "./api"
 import type { Anomaly, HealthSummary, LogEvent, Rosbag, TopicStat } from "./types"
 
 export interface SystemMetrics {
@@ -93,6 +94,67 @@ export function formatDuration(seconds: number): string {
     return `${hours}:${String(remainMins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
   }
   return `${mins}:${String(secs).padStart(2, "0")}`
+}
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
+}
+
+/**
+ * Per-topic stats for the Topic Health table, from the exported window rows.
+ *
+ * Two properties of the export decide the formula, and getting either one wrong
+ * makes a dead topic read as healthy:
+ *
+ * - A window in which the topic published nothing produces **no row at all**,
+ *   so averaging the rows that exist skips the outage completely. On `F1_01_0`,
+ *   whose LiDAR stops for 115s, `/scan` keeps 21 of 43 windows and every
+ *   surviving one still reads a clean 10Hz — a window average rated it a 10%
+ *   drop while it had actually lost 61% of its messages, and the table showed
+ *   NOMINAL next to that topic's own `silent_node` marker. The rate is
+ *   therefore total messages over the whole recording.
+ * - `actual_hz` is `(count - 1) / span` measured *inside* one window, so the
+ *   busiest short window is the noisiest estimate rather than the nominal rate.
+ *   Taking the max invented a 24% drop on `/imu` and 11% on `/tf`, neither of
+ *   which the detector flagged. The median is what the detector calibrates on.
+ *
+ * `recordingSec` is the bag duration; the window span is the fallback when the
+ * bag record is unavailable.
+ */
+export function buildTopicStats(
+  rows: WindowSummaryRow[],
+  recordingSec: number,
+  windowSec: number,
+): TopicStat[] {
+  const byTopic = new Map<string, WindowSummaryRow[]>()
+  for (const row of rows) {
+    const bucket = byTopic.get(row.topic)
+    if (bucket) bucket.push(row)
+    else byTopic.set(row.topic, [row])
+  }
+
+  const durationSec =
+    recordingSec > 0 ? recordingSec : new Set(rows.map((row) => row.window_start)).size * windowSec
+
+  return [...byTopic.entries()]
+    .map(([topic, topicRows]) => {
+      const rates = topicRows.map((row) => row.actual_hz).filter((rate): rate is number => rate != null)
+      const expectedHz = topicRows[0].expected_hz ?? (rates.length > 0 ? median(rates) : 0)
+      const messageCount = topicRows.reduce((sum, row) => sum + row.count, 0)
+      const hz = durationSec > 0 ? messageCount / durationSec : 0
+      return {
+        name: topic,
+        messageType: topicRows[0].message_type,
+        messageCount,
+        bytesTotal: topicRows.reduce((sum, row) => sum + (row.bytes ?? 0), 0),
+        hz: Number(hz.toFixed(2)),
+        expectedHz: Number(expectedHz.toFixed(2)),
+        dropRate: expectedHz > 0 ? Math.max(0, Number((1 - hz / expectedHz).toFixed(4))) : 0,
+      }
+    })
+    .sort((a, b) => a.name.localeCompare(b.name))
 }
 
 /**

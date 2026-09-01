@@ -180,7 +180,11 @@ export interface WindowSummaryRow {
     count: number
     bytes: number
     expected_hz: number | null
-    actual_hz: number
+    // null when the window holds fewer than 2 messages: the rate is measured
+    // as (count - 1) / span, which needs at least one interval. Declaring this
+    // `number` let `sum + rate` add null as 0 and silently drag a topic's
+    // average rate down (window_export.py::_summarize).
+    actual_hz: number | null
     // null when the window has too few messages to measure: max_gap needs one
     // interval, jitter needs two. drift is null when the stream carries no
     // header stamps.
