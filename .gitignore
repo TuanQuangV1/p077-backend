@@ -30,9 +30,12 @@ secrets/
 .DS_Store
 Thumbs.db
 
-# Data — hide entire data/ except pre-seeded runs.db (kept for Render/history)
+# Data — hide entire data/. runs.db was version-controlled to ship demo history,
+# but it is application state: every local run rewrites it, so it conflicted on
+# every merge. Regenerate the demo history instead: scripts/seed_history.py.
+# Login does not depend on it — verify_credentials() checks AUTH_USERNAME /
+# AUTH_PASSWORD before the database, and the schema self-creates on first use.
 data/*
-!data/runs.db
 eval/**/runtime/*.db
 
 # Runtime-tunable detection thresholds: mutated by POST /api/v1/analysis/thresholds,
