@@ -1,0 +1,1625 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RAV-13 — Rosbag Diagnostics Platform | Slide Deck (fix/ui-1)</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --bg-dark: #07090e;
+      --bg-card: rgba(16, 22, 36, 0.75);
+      --bg-card-border: rgba(255, 255, 255, 0.08);
+      --bg-card-hover: rgba(26, 35, 56, 0.85);
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --primary: #38bdf8;
+      --primary-glow: rgba(56, 189, 248, 0.25);
+      --accent-emerald: #10b981;
+      --accent-indigo: #818cf8;
+      --accent-rose: #f43f5e;
+      --accent-amber: #f59e0b;
+      --accent-violet: #a855f7;
+      --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 20px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Ambient background lighting */
+    .ambient-glow {
+      position: fixed;
+      width: 60vw;
+      height: 60vw;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 0;
+      filter: blur(140px);
+      opacity: 0.15;
+      transition: all 1s ease;
+    }
+    .ambient-1 {
+      top: -20vw;
+      left: -10vw;
+      background: radial-gradient(circle, #38bdf8, #818cf8);
+    }
+    .ambient-2 {
+      bottom: -20vw;
+      right: -10vw;
+      background: radial-gradient(circle, #10b981, #0284c7);
+    }
+
+    /* Top Progress Bar */
+    .progress-bar-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.05);
+      z-index: 100;
+    }
+    .progress-bar {
+      height: 100%;
+      width: 10%;
+      background: linear-gradient(90deg, #38bdf8, #818cf8, #10b981);
+      transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 0 12px var(--primary);
+    }
+
+    /* Top Navigation / Status Header */
+    .deck-header {
+      position: fixed;
+      top: 12px;
+      left: 24px;
+      right: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 50;
+      pointer-events: none;
+    }
+    .deck-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      pointer-events: auto;
+    }
+    .brand-logo {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #0284c7, #38bdf8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 14px;
+      color: #030712;
+      box-shadow: 0 0 16px rgba(56, 189, 248, 0.4);
+    }
+    .brand-title {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: #e2e8f0;
+    }
+    .branch-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      color: #38bdf8;
+      padding: 3px 8px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .branch-badge::before {
+      content: '';
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      background: #38bdf8;
+      border-radius: 50%;
+      box-shadow: 0 0 6px #38bdf8;
+    }
+    .deck-status {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      pointer-events: auto;
+    }
+    .slide-counter {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text-muted);
+      background: rgba(15, 23, 42, 0.8);
+      padding: 4px 10px;
+      border-radius: 20px;
+      border: 1px solid var(--bg-card-border);
+      backdrop-filter: blur(8px);
+    }
+    .quick-btn {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid var(--bg-card-border);
+      color: var(--text-muted);
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s ease;
+      backdrop-filter: blur(8px);
+    }
+    .quick-btn:hover {
+      color: var(--text-main);
+      background: rgba(30, 41, 59, 0.9);
+      border-color: var(--primary);
+    }
+
+    /* Slides Container */
+    .presentation-container {
+      position: relative;
+      flex: 1;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      z-index: 10;
+    }
+
+    .slide {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      padding: 70px 80px 80px 80px;
+      display: flex;
+      flex-direction: column;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(18px) scale(0.985);
+      transition: opacity 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    .slide.active {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0) scale(1);
+    }
+
+    /* Slide Header */
+    .slide-tag {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--primary);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .slide-tag::after {
+      content: '';
+      width: 40px;
+      height: 1px;
+      background: var(--primary);
+      opacity: 0.4;
+    }
+    .slide-title {
+      font-size: 38px;
+      font-weight: 800;
+      letter-spacing: -0.8px;
+      line-height: 1.15;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, #ffffff 30%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .slide-subtitle {
+      font-size: 16px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+      max-width: 900px;
+      line-height: 1.5;
+    }
+
+    /* Slide Body Grid Layouts */
+    .slide-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      overflow-y: auto;
+      scrollbar-width: none;
+    }
+    .slide-body::-webkit-scrollbar {
+      display: none;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      align-items: stretch;
+    }
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      align-items: stretch;
+    }
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    /* Glass Cards */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--bg-card-border);
+      border-radius: var(--radius-md);
+      padding: 22px;
+      backdrop-filter: blur(14px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+      position: relative;
+      overflow: hidden;
+      transition: all 0.25s ease;
+    }
+    .card:hover {
+      border-color: rgba(255, 255, 255, 0.16);
+      background: var(--bg-card-hover);
+      transform: translateY(-2px);
+    }
+    .card-glow-blue::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, #38bdf8, transparent);
+    }
+    .card-glow-green::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, #10b981, transparent);
+    }
+    .card-glow-purple::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, #a855f7, transparent);
+    }
+    .card-glow-rose::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, #f43f5e, transparent);
+    }
+    .card-glow-amber::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, #f59e0b, transparent);
+    }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #f8fafc;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-desc {
+      font-size: 13.5px;
+      color: var(--text-muted);
+      line-height: 1.55;
+    }
+
+    /* Metric Badges & KPIs */
+    .metric-hero {
+      font-size: 46px;
+      font-weight: 800;
+      font-family: var(--font-mono);
+      letter-spacing: -1px;
+      line-height: 1;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+    }
+    .metric-sub {
+      font-size: 13px;
+      color: var(--text-dim);
+      font-weight: 500;
+    }
+
+    .text-emerald { color: #10b981; }
+    .text-sky { color: #38bdf8; }
+    .text-purple { color: #a855f7; }
+    .text-rose { color: #f43f5e; }
+    .text-amber { color: #f59e0b; }
+
+    /* Architecture / Flow Visuals */
+    .flow-pipeline {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 16px 0;
+      background: rgba(10, 15, 26, 0.7);
+      padding: 16px 20px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--bg-card-border);
+    }
+    .flow-node {
+      flex: 1;
+      background: rgba(22, 30, 48, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      text-align: center;
+      position: relative;
+    }
+    .flow-node.highlight {
+      border-color: rgba(56, 189, 248, 0.5);
+      background: rgba(56, 189, 248, 0.08);
+    }
+    .flow-node-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #f1f5f9;
+      margin-bottom: 4px;
+    }
+    .flow-node-sub {
+      font-size: 11px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+    }
+    .flow-arrow {
+      color: var(--text-dim);
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    /* Comparison Tables */
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin-top: 8px;
+    }
+    .compare-table th {
+      text-align: left;
+      padding: 10px 14px;
+      background: rgba(15, 23, 42, 0.8);
+      color: var(--text-muted);
+      font-weight: 600;
+      border-bottom: 1px solid var(--bg-card-border);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .compare-table td {
+      padding: 11px 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      color: #cbd5e1;
+    }
+    .compare-table tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .compare-table .val-highlight {
+      font-weight: 700;
+      color: #38bdf8;
+      font-family: var(--font-mono);
+    }
+    .compare-table .val-success {
+      font-weight: 700;
+      color: #10b981;
+      font-family: var(--font-mono);
+    }
+
+    /* Code Snippet Box */
+    .code-box {
+      background: #090c15;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.55;
+      color: #94a3b8;
+      overflow-x: auto;
+      position: relative;
+    }
+    .code-box .token-fn { color: #38bdf8; }
+    .code-box .token-str { color: #a7f3d0; }
+    .code-box .token-kw { color: #f472b6; }
+    .code-box .token-num { color: #fbbf24; }
+    .code-box .token-comment { color: #475569; font-style: italic; }
+
+    /* Bullet List with Custom Markers */
+    .feature-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .feature-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      font-size: 14px;
+      color: #cbd5e1;
+      line-height: 1.5;
+    }
+    .feature-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 12px;
+      margin-top: 1px;
+    }
+    .feature-icon-sky { background: rgba(56, 189, 248, 0.15); color: #38bdf8; }
+    .feature-icon-green { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+    .feature-icon-rose { background: rgba(244, 63, 94, 0.15); color: #f43f5e; }
+    .feature-icon-amber { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+    .feature-icon-purple { background: rgba(168, 85, 247, 0.15); color: #a855f7; }
+
+    /* Commit Badges */
+    .commit-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: #94a3b8;
+    }
+    .commit-hash {
+      color: #38bdf8;
+      font-weight: 600;
+    }
+
+    /* Bottom Navigation Controls */
+    .deck-controls {
+      position: fixed;
+      bottom: 20px;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 40px;
+      z-index: 50;
+      pointer-events: none;
+    }
+    .controls-left, .controls-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      pointer-events: auto;
+    }
+    .nav-btn {
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid var(--bg-card-border);
+      color: var(--text-main);
+      padding: 9px 18px;
+      border-radius: 30px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      backdrop-filter: blur(12px);
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    }
+    .nav-btn:hover:not(:disabled) {
+      background: rgba(30, 41, 59, 0.95);
+      border-color: var(--primary);
+      box-shadow: 0 0 16px var(--primary-glow);
+      transform: translateY(-1px);
+    }
+    .nav-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+    .key-hint {
+      font-size: 10px;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      color: #94a3b8;
+    }
+
+    /* Slide Indicator Dots */
+    .slide-dots {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      pointer-events: auto;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.2);
+      cursor: pointer;
+      transition: all 0.25s ease;
+    }
+    .dot.active {
+      width: 28px;
+      border-radius: 12px;
+      background: var(--primary);
+      box-shadow: 0 0 10px var(--primary);
+    }
+    .dot:hover:not(.active) {
+      background: rgba(255, 255, 255, 0.5);
+    }
+
+    /* Slide Overview Modal (O key) */
+    .overview-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(7, 9, 14, 0.94);
+      backdrop-filter: blur(20px);
+      z-index: 200;
+      display: none;
+      flex-direction: column;
+      padding: 50px;
+      overflow-y: auto;
+    }
+    .overview-modal.open {
+      display: flex;
+    }
+    .overview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+    }
+    .overview-title {
+      font-size: 24px;
+      font-weight: 800;
+      color: #f1f5f9;
+    }
+    .overview-close {
+      background: none;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #fff;
+      padding: 6px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .overview-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 18px;
+    }
+    .overview-card {
+      background: rgba(20, 28, 45, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 16px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      flex-direction: column;
+      height: 130px;
+    }
+    .overview-card:hover {
+      border-color: var(--primary);
+      transform: scale(1.03);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    }
+    .overview-card.current {
+      border-color: var(--primary);
+      background: rgba(56, 189, 248, 0.12);
+    }
+    .overview-card-num {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--primary);
+      margin-bottom: 6px;
+    }
+    .overview-card-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #e2e8f0;
+      line-height: 1.35;
+    }
+
+    /* Speaker Notes Drawer (N key) */
+    .notes-drawer {
+      position: fixed;
+      bottom: 65px;
+      right: 24px;
+      width: 380px;
+      max-height: 280px;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid var(--bg-card-border);
+      border-radius: var(--radius-md);
+      padding: 16px 18px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(16px);
+      z-index: 90;
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      overflow-y: auto;
+    }
+    .notes-drawer.open {
+      display: flex;
+    }
+    .notes-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      padding-bottom: 6px;
+    }
+    .notes-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--accent-amber);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .notes-content {
+      font-size: 13px;
+      color: #cbd5e1;
+      line-height: 1.5;
+    }
+
+    /* Print / PDF Styling */
+    @media print {
+      body {
+        overflow: visible;
+        height: auto;
+        background: #000;
+      }
+      .progress-bar-container, .deck-header, .deck-controls, .ambient-glow, .overview-modal, .notes-drawer {
+        display: none !important;
+      }
+      .slide {
+        position: relative;
+        opacity: 1 !important;
+        transform: none !important;
+        page-break-after: always;
+        height: 100vh;
+        width: 100vw;
+        padding: 50px !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Ambient background illumination -->
+  <div class="ambient-glow ambient-1"></div>
+  <div class="ambient-glow ambient-2"></div>
+
+  <!-- Progress Bar -->
+  <div class="progress-bar-container">
+    <div class="progress-bar" id="progressBar"></div>
+  </div>
+
+  <!-- Header / Status Bar -->
+  <header class="deck-header">
+    <div class="deck-brand">
+      <div class="brand-logo">R13</div>
+      <div>
+        <div class="brand-title">RAV-13 Diagnostics</div>
+      </div>
+      <span class="branch-badge">branch: fix/ui-1</span>
+    </div>
+
+    <div class="deck-status">
+      <span class="slide-counter" id="slideCounter">Slide 1 / 10</span>
+      <button class="quick-btn" title="Tổng quan các slide [Phím O]" onclick="toggleOverview()">⊞</button>
+      <button class="quick-btn" title="Ghi chú người thuyết trình [Phím N]" onclick="toggleNotes()">✎</button>
+      <button class="quick-btn" title="Toàn màn hình [Phím F]" onclick="toggleFullscreen()">⛶</button>
+      <button class="quick-btn" title="In / Xuất PDF [Phím P]" onclick="window.print()">⎙</button>
+    </div>
+  </header>
+
+  <!-- Presentation Slides Container -->
+  <main class="presentation-container">
+
+    <!-- ================= SLIDE 1 ================= -->
+    <section class="slide active" data-index="0" data-notes="Mở đầu thuyết trình: Nhấn mạnh RAV-13 giải quyết bài toán cốt lõi của robot tự hành AMR: chẩn đoán nguyên nhân gốc rễ (Root Cause) từ 'hộp đen' rosbag thật. Giới thiệu phiên bản trên nhánh fix/ui-1 với các cải tiến vượt bậc về UI, report export, và sự ổn định hệ thống.">
+      <div class="slide-tag">Autonomous Robotics Diagnostics</div>
+      <h1 class="slide-title">RAV-13: Nền Tảng Chẩn Đoán Sự Cố Robot Tự Hành</h1>
+      <p class="slide-subtitle">Chẩn đoán sự cố thông minh từ rosbag bằng kết hợp <strong>17 Quy tắc Vật lý Tầng Cứng</strong> & <strong>Mô hình LLM Phân tích Nhân Quả</strong>.</p>
+      
+      <div class="slide-body">
+        <div class="grid-3" style="margin-bottom: 24px;">
+          <div class="card card-glow-blue">
+            <div class="card-title text-sky">🎯 Tự động hoá 100%</div>
+            <div class="card-desc">Thay thế quy trình thủ công dùng PlotJuggler/rqt kéo timeline bằng thuật toán phân tích tự động tức thì trên file <code>.db3</code> / <code>.mcap</code>.</div>
+          </div>
+          <div class="card card-glow-purple">
+            <div class="card-title text-purple">⚡ Bóc tách Nhân Quả</div>
+            <div class="card-desc">Triệu chứng không thể che lấp nguyên nhân: Phân biệt chính xác giữa topic bị chết đầu tiên (Root Cause) và các hệ quả lan truyền dây chuyền.</div>
+          </div>
+          <div class="card card-glow-green">
+            <div class="card-title text-emerald">🛡️ Kiểm chứng Thực nghiệm</div>
+            <div class="card-desc">Đo lường khắt khe trên <strong>48 rosbag thật</strong> (56 lỗi tiêm): Đạt <strong>98.2% Recall</strong> và <strong>92.3% Root Cause Precision</strong> với chi phí siêu rẻ.</div>
+          </div>
+        </div>
+
+        <div class="card" style="background: rgba(13, 20, 36, 0.9); border-color: rgba(56, 189, 248, 0.25);">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: #38bdf8; letter-spacing: 1px;">Bản cập nhật hiện tại</span>
+              <h3 style="font-size: 17px; font-weight: 700; color: #f8fafc; margin-top: 2px;">Điểm nhấn kỹ thuật trên nhánh <code>fix/ui-1</code></h3>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <span class="commit-pill"><span class="commit-hash">31e61c4</span> fix topic cadence</span>
+              <span class="commit-pill"><span class="commit-hash">b561ba6</span> feat report export</span>
+              <span class="commit-pill"><span class="commit-hash">664bb7d</span> fix effect loop</span>
+              <span class="commit-pill"><span class="commit-hash">a9587f0</span> redesign monochrome</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= SLIDE 2 ================= -->
+    <section class="slide" data-index="1" data-notes="Nhấn mạnh 4 điểm đau của quy trình thủ công: 1. Mở PlotJuggler kéo timeline 3 phút x 8 topic; 2. Triệu chứng che lấp nguyên nhân: cmd_vel im dễ thấy nhưng chỉ là nạn nhân; 3. Số lượng đánh lừa: cmd_vel sinh 30 cảnh báo nhưng LiDAR chỉ sinh 1; 4. Kiến thức phụ thuộc cá nhân.">
+      <div class="slide-tag">Bài toán & Nhu cầu thực tế</div>
+      <h2 class="slide-title">Hộp Đen Robot & 4 Điểm Đau Của Kỹ Sư</h2>
+      <p class="slide-subtitle">Một robot tự hành (AMR) tuần tra 3 phút ghi lại hơn <strong>80.000 message</strong> trên 8 kênh. Khi robot đột ngột dừng giữa kho, câu hỏi luôn là: <em>Tại sao?</em></p>
+
+      <div class="slide-body">
+        <div class="grid-2">
+          <!-- Current Painful Workflow -->
+          <div class="card card-glow-rose">
+            <div class="card-title text-rose">❌ Quy trình truyền thống (Thủ công)</div>
+            <div class="code-box" style="margin-top: 10px; margin-bottom: 14px;">
+              Robot dừng  ➔  Copy bag 1.6 GB về máy  ➔  Mở rqt / PlotJuggler
+              ➔  Kéo timeline mắt thường  ➔  Đoán mò  ➔  Thử nghiệm lại
+            </div>
+            <ul class="feature-list">
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-rose">1</span>
+                <div><strong>Công cụ nặng, chậm chạp:</strong> Kỹ sư phải kéo thanh trượt 3 phút × 8 topic để tìm kiếm một khoảng trống gián đoạn chỉ 2 giây.</div>
+              </li>
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-rose">2</span>
+                <div><strong>Triệu chứng che khuất nguyên nhân:</strong> LiDAR chết → TF đứt → Planner gãy → <code>/cmd_vel</code> im. Bánh xe dừng là thứ dễ thấy nhất nhưng chỉ là nạn nhân cuối chuỗi!</div>
+              </li>
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-rose">3</span>
+                <div><strong>Số lượng đánh lừa phán đoán:</strong> <code>/cmd_vel</code> hấp hối sinh hàng chục cảnh báo; trong khi LiDAR nguồn gốc chỉ nổ <strong>1 cảnh báo duy nhất</strong>.</div>
+              </li>
+            </ul>
+          </div>
+
+          <!-- RAV-13 Solution -->
+          <div class="card card-glow-green">
+            <div class="card-title text-emerald">✅ Giải pháp đột phá của RAV-13</div>
+            <div class="code-box" style="margin-top: 10px; margin-bottom: 14px;">
+              Tải Bag lên  ➔  Bấm "Analyze"  ➔  Nhận ngay Root Cause & Hành động
+            </div>
+            <ul class="feature-list">
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-green">✦</span>
+                <div><strong>Luật cứng tìm bất thường:</strong> 17 detector toán học chính xác 100%, không bị ảo giác, không tốn token LLM khi đếm và đo timestamp.</div>
+              </li>
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-green">✦</span>
+                <div><strong>LLM đóng vai trò phân giải nhân quả:</strong> LLM không đếm số, chỉ đọc cấu trúc bất thường và xác định luồng tác động xuôi chiều vật lý.</div>
+              </li>
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-green">✦</span>
+                <div><strong>Nhân bản tri thức vận hành:</strong> Bất kỳ kỹ sư hiện trường nào cũng chẩn đoán chính xác ngang ngửa chuyên gia kỳ cựu chỉ trong 30 giây.</div>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= SLIDE 3 ================= -->
+    <section class="slide" data-index="2" data-notes="Giải thích cấu trúc 3 tầng: Tầng 1: 17 luật cứng đọc streaming. Tầng 2: Gom cụm theo khoảng thời gian chồng nhau và loại 26/93 cụm actuator rác. Tầng 3: LLM gán primary/consequence + 3 chốt chặn vật lý bảo vệ (đồng thời, thứ tự thời gian, và tầng chấp hành).">
+      <div class="slide-tag">Kiến trúc Hệ thống</div>
+      <h2 class="slide-title">Pipeline Xử Lý 3 Tầng & 3 Chốt Chặn Vật Lý</h2>
+      <p class="slide-subtitle">Triết lý thiết kế: <em>"Luật cứng phát hiện bất thường, LLM xếp thứ tự nhân quả, Code chốt chặn kiểm tra lại LLM"</em>.</p>
+
+      <div class="slide-body">
+        <!-- Architecture Diagram Flow -->
+        <div class="flow-pipeline">
+          <div class="flow-node highlight">
+            <div class="flow-node-title">TẦNG 1: LUẬT CỨNG</div>
+            <div class="flow-node-sub">17 Detectors (Code)</div>
+            <div style="font-size: 11px; color: #38bdf8; margin-top: 4px;">0 Token · 100% Tái lập</div>
+          </div>
+          <div class="flow-arrow">➔</div>
+          <div class="flow-node">
+            <div class="flow-node-title">TẦNG 2: GOM CỤM</div>
+            <div class="flow-node-sub">Overlap Clustering</div>
+            <div style="font-size: 11px; color: #a855f7; margin-top: 4px;">Lọc 28% cụm rác Actuator</div>
+          </div>
+          <div class="flow-arrow">➔</div>
+          <div class="flow-node highlight" style="border-color: rgba(244, 63, 94, 0.4);">
+            <div class="flow-node-title">TẦNG 3: LLM NHÂN QUẢ</div>
+            <div class="flow-node-sub">Causal JSON Reasoning</div>
+            <div style="font-size: 11px; color: #f43f5e; margin-top: 4px;">Chỉ 67 calls / 539 lỗi</div>
+          </div>
+          <div class="flow-arrow">➔</div>
+          <div class="flow-node" style="border-color: rgba(16, 185, 129, 0.4);">
+            <div class="flow-node-title">3 CHỐT CHẶN BẢO VỆ</div>
+            <div class="flow-node-sub">Safety Code Validation</div>
+            <div style="font-size: 11px; color: #10b981; margin-top: 4px;">Bác bỏ kết luận phi vật lý</div>
+          </div>
+        </div>
+
+        <div class="grid-3" style="margin-top: 12px;">
+          <div class="card card-glow-blue">
+            <div class="card-title text-sky">Chốt chặn 1: Đồng thời (Simultaneity)</div>
+            <div class="card-desc">Nếu hai bất thường nổ cách nhau chỉ <strong>10–30 mili-giây</strong>, hệ thống cấm gán nhân–quả vì đây là hiện tượng sập đồng thời.</div>
+          </div>
+          <div class="card card-glow-rose">
+            <div class="card-title text-rose">Chốt chặn 2: Thứ tự Thời gian (Causal)</div>
+            <div class="card-desc">Bác bỏ triệt để trường hợp LLM gọi A là hệ quả của B trong khi A xảy ra <em>trước</em> B (tự động hỏi lại model kèm timestamp đối chất).</div>
+          </div>
+          <div class="card card-glow-green">
+            <div class="card-title text-emerald">Chốt chặn 3: Tầng Chấp hành (Actuator)</div>
+            <div class="card-desc">Cấm gán <code>/cmd_vel</code> là Root Cause nếu tồn tại bất thường ở tầng cảm biến hoặc TF xuất hiện trước nó (chặn 84% sai số ban đầu).</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= SLIDE 4 ================= -->
+    <section class="slide" data-index="3" data-notes="Giới thiệu dataset: 48 rosbag thật (38 bag lỗi, 10 bag sạch) với 56 lỗi tiêm. Giải thích 3 phương pháp tiêm trong Gazebo Nav2 TurtleBot3: Cầu nối message (sim-time), Pkill node thật, và Lệch QoS. Phân loại 14 loại lỗi thuộc 6 nhóm F1-F6.">
+      <div class="slide-tag">Thực nghiệm Ground Truth</div>
+      <h2 class="slide-title">Bộ Dữ Liệu Thực Tế: 14 Loại Lỗi Robot Chuẩn Hoá</h2>
+      <p class="slide-subtitle">Không thể kiểm chứng nếu không có đáp án: Hệ thống được đo đạc trên <strong>48 rosbag thật</strong> từ mô phỏng Gazebo Nav2 TurtleBot3 phản ứng vật lý thực tế.</p>
+
+      <div class="slide-body">
+        <div class="grid-4" style="margin-bottom: 16px;">
+          <div class="card" style="text-align: center; padding: 16px;">
+            <div class="metric-hero text-sky" style="justify-content: center;">48</div>
+            <div class="metric-sub">Bản ghi Rosbag (1.6 GB)</div>
+          </div>
+          <div class="card" style="text-align: center; padding: 16px;">
+            <div class="metric-hero text-rose" style="justify-content: center;">56</div>
+            <div class="metric-sub">Lỗi tiêm có Ground Truth</div>
+          </div>
+          <div class="card" style="text-align: center; padding: 16px;">
+            <div class="metric-hero text-purple" style="justify-content: center;">14/14</div>
+            <div class="metric-sub">Dạng hỏng hóc ROS bao phủ</div>
+          </div>
+          <div class="card" style="text-align: center; padding: 16px;">
+            <div class="metric-hero text-emerald" style="justify-content: center;">10</div>
+            <div class="metric-sub">Bag sạch kiểm định báo nhầm</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <table class="compare-table">
+            <thead>
+              <tr>
+                <th>Nhóm lỗi</th>
+                <th>Tên phân loại</th>
+                <th>Bản chất trong thực tế</th>
+                <th>Cơ chế tiêm vào Robot</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong class="text-sky">F1 · Tần suất</strong></td>
+                <td><code>topic_dead</code>, <code>frequency_drop</code>, <code>burst</code></td>
+                <td>Driver LiDAR crash, đứt cáp, CPU quá tải nhịp không kịp</td>
+                <td>Cầu nối gián đoạn, bỏ bớt 75% tin, xả dồn một cục</td>
+              </tr>
+              <tr>
+                <td><strong class="text-purple">F2 · Đồng hồ</strong></td>
+                <td><code>clock_drift</code>, <code>timestamp_jump</code>, <code>backwards</code></td>
+                <td>Cảm biến không sync NTP/PTP, nhảy cóc mốc thời gian</td>
+                <td>Dịch dần hoặc nhảy stamp trong header gói tin</td>
+              </tr>
+              <tr>
+                <td><strong class="text-amber">F3 · Toạ độ TF</strong></td>
+                <td><code>tf_gap</code>, <code>tf_conflict</code>, <code>tf_loop</code></td>
+                <td>Gãy chuỗi map→odom→base, launch trùng node, URDF sai vòng</td>
+                <td>Chặn cạnh TF, phát chèn toạ độ sai lệch</td>
+              </tr>
+              <tr>
+                <td><strong class="text-rose">F4 · Node Cấp cao</strong></td>
+                <td><code>node_crash</code>, <code>node_restart</code></td>
+                <td>OOM-kill, segfault, supervisor khởi động lại</td>
+                <td><code>pkill -9</code> node Nav2 thật, lifecycle toggle</td>
+              </tr>
+              <tr>
+                <td><strong class="text-emerald">F5 & F6 · Payload/QoS</strong></td>
+                <td><code>payload_nan</code>, <code>out_of_range</code>, <code>qos_mismatch</code></td>
+                <td>Quang trắc LiDAR hỏng, sai hệ số scale, lệch độ tin cậy QoS</td>
+                <td>Bơm 30% NaN, hạ publisher xuống Best Effort</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= SLIDE 5 ================= -->
+    <section class="slide" data-index="4" data-notes="Nhấn mạnh các chỉ số thực nghiệm n=3: 98.2% recall, 0.2 cảnh báo/bag sạch, 92.3% root cause accuracy. Đặc biệt phát hiện: gpt-4o-mini ngang gpt-4.1 nhưng chi phí giảm 17 lần (0.024$ so với 0.40$). Nhờ 3 chốt chặn code làm 'chiếc nạng', model rẻ đạt hiệu năng đỉnh cao.">
+      <div class="slide-tag">Kết quả Benchmark Thực Nghiệm</div>
+      <h2 class="slide-title">Benchmark Đo Đạc Khắt Khe & Phát Hiện Đắt Giá</h2>
+      <p class="slide-subtitle">Chạy trọn vẹn pipeline sản xuất trên 48 bag thật, n = 3 lượt đối chiếu ground truth tự động.</p>
+
+      <div class="slide-body">
+        <div class="grid-2">
+          <!-- KPI Metrics Cards -->
+          <div class="card card-glow-green">
+            <div class="card-title text-emerald">📊 Chỉ số Thực tế (GPT-4o-mini, n = 3)</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 14px;">
+              <div>
+                <div class="metric-hero text-emerald">98.2%</div>
+                <div class="metric-sub">Recall phát hiện (55/56 lỗi)</div>
+              </div>
+              <div>
+                <div class="metric-hero text-sky">0.2</div>
+                <div class="metric-sub">Báo nhầm / bag sạch (2/10 bag)</div>
+              </div>
+              <div>
+                <div class="metric-hero text-purple">92.3%</div>
+                <div class="metric-sub">Chỉ đúng Root Cause gốc</div>
+              </div>
+              <div>
+                <div class="metric-hero text-amber">87.5%</div>
+                <div class="metric-sub">Chẩn đoán riêng từng lỗi độc lập</div>
+              </div>
+            </div>
+            <div style="margin-top: 16px; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px; font-size: 12px; color: var(--text-muted);">
+              ✦ Trần lý thuyết (cụm có chứa topic đúng): <strong>96.9%</strong>. Độ ổn định giữa 3 lượt: <strong>53/56 lỗi đúng cả 3 lượt</strong>.
+            </div>
+          </div>
+
+          <!-- The Great Finding: 4o-mini vs 4.1 -->
+          <div class="card card-glow-blue">
+            <div class="card-title text-sky">💡 Phát hiện kinh tế: GPT-4o-mini vs GPT-4.1</div>
+            <table class="compare-table" style="margin-top: 12px;">
+              <thead>
+                <tr>
+                  <th>Tiêu chí đánh giá</th>
+                  <th>Bản cũ (GPT-4.1)</th>
+                  <th>Hiện tại (GPT-4o-mini)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Đúng Root Cause gốc</td>
+                  <td>87.7% [87.7–89.2]</td>
+                  <td class="val-success">92.3% [89.2–92.3]</td>
+                </tr>
+                <tr>
+                  <td>Chẩn đoán riêng từng lỗi</td>
+                  <td>82.1% [82.1–83.9]</td>
+                  <td class="val-success">87.5% [83.9–87.5]</td>
+                </tr>
+                <tr>
+                  <td><strong>Chi phí trọn 48 bag</strong></td>
+                  <td>~0.40 USD</td>
+                  <td class="val-highlight">0.024 USD (Giảm 17 LẦN)</td>
+                </tr>
+                <tr>
+                  <td>Thời gian chạy LLM</td>
+                  <td>~36 phút</td>
+                  <td class="val-highlight">~12 phút (Nhanh gấp 3)</td>
+                </tr>
+              </tbody>
+            </table>
+            <div style="margin-top: 14px; font-size: 12.5px; color: #cbd5e1; line-height: 1.5;">
+              📌 <strong>Ý nghĩa thực tế:</strong> Tiền bỏ thêm cho model siêu đắt không mua được độ chính xác — nó chỉ giảm bớt lần hỏi lại. Bộ 3 chốt chặn code chính là "chiếc nạng" vững chắc giúp model nhẹ đạt hiệu năng cấp công nghiệp!
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= SLIDE 6 ================= -->
+    <section class="slide" data-index="5" data-notes="Trình bày cụ thể các công việc và thành tựu đã thực hiện trên nhánh fix/ui-1: 1. Fix effect loop tự hủy làm mất anomaly; 2. Bỏ lớp mock, kết nối thẳng backend; 3. Thêm tính năng Report Export (PDF, CSV, JSON); 4. Sửa bảng Topic Cadence; 5. Siết chặt bảo mật JWT và CSP.">
+      <div class="slide-tag">Trọng Tâm Nhánh fix/ui-1</div>
+      <h2 class="slide-title">Các Cải Tiến Đột Phá & Sửa Lỗi Trên <code>fix/ui-1</code></h2>
+      <p class="slide-subtitle">Nhánh <code>fix/ui-1</code> giải quyết triệt để các vấn đề giao diện, trải nghiệm người dùng, export dữ liệu và ổn định kết nối backend.</p>
+
+      <div class="slide-body">
+        <div class="grid-3">
+          <!-- UI Bug Fixes -->
+          <div class="card card-glow-rose">
+            <div class="card-title text-rose">
+              <span>🔧 Khắc phục Lỗi UI Trọng yếu</span>
+            </div>
+            <ul class="feature-list" style="margin-top: 10px;">
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-rose">✓</span>
+                <div><strong>Fix race condition tự huỷ anomaly:</strong> Sửa lỗi React 19 Effect cleanup trong <code>llm-deep-dive-panel.tsx</code> khiến dữ liệu anomaly bị xoá sạch và treo loading.</div>
+              </li>
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-rose">✓</span>
+                <div><strong>Fix bảng Topic Cadence:</strong> Xử lý lỗi bỏ sót quãng thời gian topic ngừng publish trước khi kết thúc bag trong <code>topic-health-table.tsx</code>.</div>
+              </li>
+            </ul>
+          </div>
+
+          <!-- New Feature: Report Export -->
+          <div class="card card-glow-green">
+            <div class="card-title text-emerald">
+              <span>📄 Xuất Báo Cáo Đa Định Dạng</span>
+            </div>
+            <ul class="feature-list" style="margin-top: 10px;">
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-green">✓</span>
+                <div><strong>Export Per-bag & Fleet-wide:</strong> Tích hợp module <code>report-export.ts</code> xuất báo cáo chẩn đoán ra <strong>PDF, CSV, và JSON</strong>.</div>
+              </li>
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-green">✓</span>
+                <div><strong>Đầy đủ bằng chứng:</strong> File xuất đính kèm timeline, severity, topic ảnh hưởng và khuyến nghị hành động cụ thể từ AI.</div>
+              </li>
+            </ul>
+          </div>
+
+          <!-- Architecture & Security -->
+          <div class="card card-glow-purple">
+            <div class="card-title text-purple">
+              <span>🛡️ Siết Chặt Kiến Trúc & Bảo Mật</span>
+            </div>
+            <ul class="feature-list" style="margin-top: 10px;">
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-purple">✓</span>
+                <div><strong>Bỏ hoàn toàn Mock:</strong> Frontend giao tiếp 100% qua REST API backend thật với xử lý lỗi trực quan và CSP chuẩn mực.</div>
+              </li>
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-purple">✓</span>
+                <div><strong>Hardening Auth & Leak Guard:</strong> Đảm bảo cách ly dữ liệu theo owner, sửa Leak Guard không chặn nhầm kết luận chẩn đoán hợp lệ.</div>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 16px; background: rgba(15, 23, 42, 0.65);">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div>
+              <div style="font-size: 14px; font-weight: 700; color: #f1f5f9;">🎨 Thiết kế Bảng Màu Monochrome Đồng Bộ</div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">Tối giản hoá toàn bộ palette giao diện theo tiêu chuẩn Tailwind v4 & shadcn/ui cao cấp, tăng độ tương phản và loại bỏ màu sắc gây nhiễu cho kỹ sư.</div>
+            </div>
+            <span class="commit-pill"><span class="commit-hash">a9587f0</span> frontend refactor</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= SLIDE 7 ================= -->
+    <section class="slide" data-index="6" data-notes="Mô tả các thành phần giao diện chính: RAV Console quản lý dataset, Timeline Canvas trực quan, Health Gauge đa chiều, Deep-dive Panel giải thích Root Cause, và Human Review Queue (HITL).">
+      <div class="slide-tag">Trải Nghiệm Sản Phẩm</div>
+      <h2 class="slide-title">Giao Diện Web Console & Bộ Công Cụ Chẩn Đoán</h2>
+      <p class="slide-subtitle">Trải nghiệm vận hành liền mạch: Từ quản lý dữ liệu đến phân tích chuyên sâu và phê duyệt đề xuất của AI.</p>
+
+      <div class="slide-body">
+        <div class="grid-4">
+          <div class="card card-glow-blue">
+            <div class="card-title text-sky">🗂️ Dataset Registry</div>
+            <div class="card-desc" style="font-size: 13px;">
+              - Tải lên an toàn chống zip-slip.<br/>
+              - Hỗ trợ định dạng <code>.db3</code>, <code>.mcap</code>.<br/>
+              - Chọn nhiều bag và bấm <em>"Analyze Selected"</em> cùng lúc.
+            </div>
+          </div>
+
+          <div class="card card-glow-purple">
+            <div class="card-title text-purple">📈 Timeline Canvas</div>
+            <div class="card-desc" style="font-size: 13px;">
+              - Heatmap mật độ message theo thời gian.<br/>
+              - Đánh dấu chính xác vị trí phát sinh bất thường.<br/>
+              - Zoom / filter theo từng topic chuyên biệt.
+            </div>
+          </div>
+
+          <div class="card card-glow-amber">
+            <div class="card-title text-amber">🩺 Health Gauge</div>
+            <div class="card-desc" style="font-size: 13px;">
+              - Điểm sức khoẻ tổng thể 0–100.<br/>
+              - Trọng số tính theo worst severity, thời lượng sự cố và số lỗi critical.<br/>
+              - Cảnh báo tức thì nếu điểm &lt; 70.
+            </div>
+          </div>
+
+          <div class="card card-glow-green">
+            <div class="card-title text-emerald">🤝 Human Review (HITL)</div>
+            <div class="card-desc" style="font-size: 13px;">
+              - Kỹ sư xác nhận hoặc bác bỏ kết luận của AI.<br/>
+              - Ghi lại lý do phục vụ đánh giá.<br/>
+              - Nền tảng huấn luyện lại luật và prompt trong tương lai.
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 18px; padding: 18px;">
+          <div style="display: flex; gap: 20px; align-items: center;">
+            <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(56, 189, 248, 0.15); display: flex; align-items: center; justify-content: center; font-size: 24px; color: #38bdf8; flex-shrink: 0;">🔍</div>
+            <div>
+              <div style="font-size: 15px; font-weight: 700; color: #f8fafc;">LLM Deep-Dive Panel — Đập tan sự phức tạp</div>
+              <div style="font-size: 13px; color: var(--text-muted); margin-top: 4px; line-height: 1.5;">
+                Hiển thị bảng bằng chứng rõ ràng: Topic nào là <strong>Primary</strong> (Nguyên nhân gốc), topic nào là <strong>Consequence</strong> (Hệ quả lan truyền). Kèm theo đoạn văn xuôi tóm tắt dễ hiểu và danh sách 3 bước hành động kỹ thuật để sửa lỗi.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= SLIDE 8 ================= -->
+    <section class="slide" data-index="7" data-notes="Trình bày trung thực về các giới hạn hiện tại: 1. Câu văn xuôi đôi khi lệch bảng bằng chứng (chênh 30ms đồng thời); 2. Gom cụm quá tay (4 ca gộp nhầm C_01, C_08, C_10 do bắc cầu); 3. Giới hạn dữ liệu bag không mang nguyên nhân vật lý phần cứng; 4. Lỗi dữ liệu benchmark F4_05 không có topic /plan.">
+      <div class="slide-tag">Hạn Chế & Thách Thức</div>
+      <h2 class="slide-title">Ranh Giới Kỹ Thuật & Bài Học Thực Tế</h2>
+      <p class="slide-subtitle">Sự trung thực trong kỹ thuật: Nhìn thẳng vào những giới hạn của dữ liệu rosbag và thuật toán gom cụm.</p>
+
+      <div class="slide-body">
+        <div class="grid-2">
+          <!-- Limitations -->
+          <div class="card card-glow-rose">
+            <div class="card-title text-rose">⚠️ Các Giới Hạn Đã Đo Được</div>
+            <ul class="feature-list" style="margin-top: 12px;">
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-rose">1</span>
+                <div><strong>Gom cụm quá tay (Bắc cầu chuỗi):</strong> 4/56 lỗi bị trượt do gộp cụm (C_01, C_08, C_10). Một cú đứt TF dài 110s vô tình bắc cầu nuốt trọn sự cố LiDAR cách đó 5 giây.</div>
+              </li>
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-rose">2</span>
+                <div><strong>Câu văn xuôi có thể lệch bằng chứng:</strong> Chốt chặn sửa được vai trò trong bảng bằng chứng, nhưng câu văn xuôi do model sinh tự do đôi khi vẫn kết luận nhân quả cho 2 sự kiện xảy ra cách nhau chỉ 30 ms.</div>
+              </li>
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-rose">3</span>
+                <div><strong>Nguyên nhân dữ liệu vs Nguyên nhân vật lý:</strong> Rosbag chỉ ghi message, không ghi CPU hay phần cứng. Hệ thống chỉ ra được <em>"/scan hỏng do NaN"</em>, không thể phán đoán <em>"photodiode bị cháy"</em>.</div>
+              </li>
+            </ul>
+          </div>
+
+          <!-- Mitigation in fix/ui-1 and beyond -->
+          <div class="card card-glow-blue">
+            <div class="card-title text-sky">🛡️ Cơ Chế Che Chắn & Khắc Phục</div>
+            <ul class="feature-list" style="margin-top: 12px;">
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-sky">✦</span>
+                <div><strong>Bảng bằng chứng giữ độc lập từng dòng:</strong> Dù câu tóm tắt bị gộp, 9/10 lỗi dùng chung cụm vẫn xuất hiện đầy đủ dòng riêng trong bảng chẩn đoán để kỹ sư tra cứu.</div>
+              </li>
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-sky">✦</span>
+                <div><strong>Chặn cầu nối tầng chấp hành:</strong> Không cho <code>/cmd_vel</code> làm cầu nối gom cụm. Gom trên sensor và TF trước rồi mới gắn actuator vào sau.</div>
+              </li>
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-sky">✦</span>
+                <div><strong>Tách cụm dài:</strong> Tự động tách nếu hai bất thường critical cách nhau hơn 30 giây dù có khoảng chồng nhau.</div>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= SLIDE 9 ================= -->
+    <section class="slide" data-index="8" data-notes="Trình bày lộ trình phát triển rõ ràng: Ngắn hạn (đồng bộ câu văn từ JSON cấu trúc, bản đồ topic->node), Trung hạn (thư viện sự cố CBR, thử nghiệm robot thật ngoài đời, streaming chẩn đoán online), Dài hạn (vòng feedback tự học, sinh script sửa lỗi tự động).">
+      <div class="slide-tag">Tương Lai & Phát Triển</div>
+      <h2 class="slide-title">Lộ Trình Phát Triển Sản Phẩm (Roadmap)</h2>
+      <p class="slide-subtitle">Từ nền tảng khám nghiệm sau sự cố (Post-mortem) tiến tới chẩn đoán thời gian thực trên robot thực tế.</p>
+
+      <div class="slide-body">
+        <div class="grid-3">
+          <!-- Short-term -->
+          <div class="card card-glow-blue">
+            <div class="card-title text-sky">🚀 Ngắn Hạn (Q3/2026)</div>
+            <ul class="feature-list" style="margin-top: 10px;">
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-sky">1</span>
+                <div><strong>Văn xuôi sinh từ JSON cấu trúc:</strong> Bắt buộc model sinh bảng nhân quả trước, rồi mới tạo câu tóm tắt để triệt tiêu mâu thuẫn.</div>
+              </li>
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-sky">2</span>
+                <div><strong>Cung cấp bản đồ <code>topic → node</code>:</strong> Khai báo node sở hữu topic giúp chỉ thẳng đích danh node sập thay vì đoán từ topic.</div>
+              </li>
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-sky">3</span>
+                <div><strong>Nạp log <code>/rosout</code>:</strong> Đọc log hệ thống để phát hiện các vết tích OOM-kill hoặc segfault.</div>
+              </li>
+            </ul>
+          </div>
+
+          <!-- Mid-term -->
+          <div class="card card-glow-purple">
+            <div class="card-title text-purple">⚡ Trung Hạn (Q4/2026)</div>
+            <ul class="feature-list" style="margin-top: 10px;">
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-purple">4</span>
+                <div><strong>Thư viện Sự Cố (Case Library):</strong> Đối chiếu bag mới với các mẫu lỗi trong quá khứ trước khi gọi LLM (giảm thêm 50% chi phí).</div>
+              </li>
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-purple">5</span>
+                <div><strong>Thử nghiệm trên Robot Thật:</strong> Kiểm định và tinh chỉnh ngưỡng trên đội robot AMR chạy trong môi trường nhà máy thật.</div>
+              </li>
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-purple">6</span>
+                <div><strong>Chẩn đoán Trực Tuyến:</strong> Chạy tầng luật trực tiếp trên luồng dữ liệu sống để cảnh báo trước khi robot dừng hẳn.</div>
+              </li>
+            </ul>
+          </div>
+
+          <!-- Long-term -->
+          <div class="card card-glow-green">
+            <div class="card-title text-emerald">🌟 Dài Hạn (2027)</div>
+            <ul class="feature-list" style="margin-top: 10px;">
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-green">7</span>
+                <div><strong>Tự động Tinh chỉnh (Self-Tuning):</strong> Tận dụng hàng đợi Human Review để cập nhật ngưỡng và prompt hoàn toàn tự động.</div>
+              </li>
+              <li class="feature-item">
+                <span class="feature-icon feature-icon-green">8</span>
+                <div><strong>Remediation Scripts:</strong> Không chỉ dừng ở gợi ý — sinh sẵn lệnh bash / ROS 2 config cụ thể để kỹ sư áp dụng chỉ bằng một click.</div>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= SLIDE 10 ================= -->
+    <section class="slide" data-index="9" data-notes="Tổng kết Demo Day: Khẳng định tính sẵn sàng của sản phẩm trên nhánh fix/ui-1. Kêu gọi trải nghiệm trực tiếp hệ thống đang chạy tại localhost:3000 và localhost:8000.">
+      <div class="slide-tag">Tổng Kết & Kêu Gọi Hành Động</div>
+      <h2 class="slide-title">Sẵn Sàng Cho Vận Hành Thực Tế</h2>
+      <p class="slide-subtitle">Rút ngắn thời gian chẩn đoán sự cố robot từ <strong>2 giờ xuống còn 30 giây</strong>.</p>
+
+      <div class="slide-body">
+        <div class="grid-2">
+          <div class="card card-glow-green" style="display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+              <div class="card-title text-emerald" style="font-size: 20px;">🏆 Giá Trị Cốt Lõi Đạt Được</div>
+              <ul class="feature-list" style="margin-top: 16px;">
+                <li class="feature-item">
+                  <span class="feature-icon feature-icon-green">✓</span>
+                  <div><strong>Chuẩn xác tuyệt đối:</strong> 98.2% Recall, 92.3% Root Cause, chỉ 0.2 cảnh báo nhầm/bag sạch.</div>
+                </li>
+                <li class="feature-item">
+                  <span class="feature-icon feature-icon-green">✓</span>
+                  <div><strong>Kinh tế vượt bậc:</strong> Chỉ <strong>$0.024</strong> cho 48 bản ghi lớn — sẵn sàng mở rộng quy mô toàn fleet hàng ngàn robot.</div>
+                </li>
+                <li class="feature-item">
+                  <span class="feature-icon feature-icon-green">✓</span>
+                  <div><strong>Nhánh <code>fix/ui-1</code> hoàn thiện:</strong> Giao diện sắc nét, xuất báo cáo PDF/CSV/JSON chuẩn mực, bảo mật siết chặt.</div>
+                </li>
+              </ul>
+            </div>
+
+            <div style="margin-top: 20px; padding: 12px; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 8px;">
+              <span style="font-size: 13px; color: #38bdf8; font-weight: 600;">"Luật cứng tìm bất thường — LLM chỉ xếp thứ tự nhân quả."</span>
+            </div>
+          </div>
+
+          <div class="card card-glow-blue" style="display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+              <div class="card-title text-sky" style="font-size: 20px;">🚀 Môi Trường Trực Tuyến Đang Chạy</div>
+              <p class="card-desc" style="margin-top: 8px; margin-bottom: 16px;">Hệ thống đang hoạt động sẵn sàng để demo trực tiếp:</p>
+              
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                <a href="http://localhost:3000" target="_blank" style="text-decoration: none;" class="card" style="padding: 12px; border-color: rgba(56, 189, 248, 0.3);">
+                  <div style="font-size: 13px; font-weight: 700; color: #38bdf8;">🌐 Frontend Web Console</div>
+                  <div style="font-size: 11px; color: var(--text-dim); font-family: var(--font-mono);">http://localhost:3000</div>
+                </a>
+                <a href="http://localhost:8000/docs" target="_blank" style="text-decoration: none;" class="card" style="padding: 12px; border-color: rgba(16, 185, 129, 0.3);">
+                  <div style="font-size: 13px; font-weight: 700; color: #10b981;">⚡ Backend FastAPI & Swagger Docs</div>
+                  <div style="font-size: 11px; color: var(--text-dim); font-family: var(--font-mono);">http://localhost:8000/docs</div>
+                </a>
+              </div>
+            </div>
+
+            <div style="margin-top: 20px; text-align: center; color: var(--text-dim); font-size: 12px;">
+              Dự án RAV-13 · VinAI Cohort 3 Demo Day · Mã đề tài P-077
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Bottom Navigation Bar -->
+  <footer class="deck-controls">
+    <div class="controls-left">
+      <button class="nav-btn" id="prevBtn" onclick="prevSlide()" title="Slide trước [Phím Mũi tên Trái hoặc PageUp]">
+        <span>← Trước</span>
+        <span class="key-hint">Left</span>
+      </button>
+      <button class="nav-btn" id="nextBtn" onclick="nextSlide()" title="Slide kế tiếp [Phím Mũi tên Phải hoặc Space]">
+        <span>Tiếp theo →</span>
+        <span class="key-hint">Space</span>
+      </button>
+    </div>
+
+    <div class="slide-dots" id="dotsContainer"></div>
+
+    <div class="controls-right">
+      <span style="font-size: 12px; color: var(--text-dim); font-family: var(--font-mono);">Phím tắt: ← → F N O</span>
+    </div>
+  </footer>
+
+  <!-- Slide Overview Grid Modal (O key) -->
+  <div class="overview-modal" id="overviewModal">
+    <div class="overview-header">
+      <div class="overview-title">Tổng Quan 10 Slide Thuyết Trình</div>
+      <button class="overview-close" onclick="toggleOverview()">Đóng (ESC / O)</button>
+    </div>
+    <div class="overview-grid" id="overviewGrid"></div>
+  </div>
+
+  <!-- Speaker Notes Drawer (N key) -->
+  <div class="notes-drawer" id="notesDrawer">
+    <div class="notes-header">
+      <span class="notes-label">💡 Ghi chú Người thuyết trình</span>
+      <button style="background:none; border:none; color:#94a3b8; cursor:pointer;" onclick="toggleNotes()">✕</button>
+    </div>
+    <div class="notes-content" id="notesContent"></div>
+  </div>
+
+  <script>
+    // State management
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const totalSlides = slides.length;
+    let currentSlide = 0;
+
+    const progressBar = document.getElementById('progressBar');
+    const slideCounter = document.getElementById('slideCounter');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const dotsContainer = document.getElementById('dotsContainer');
+    const overviewModal = document.getElementById('overviewModal');
+    const overviewGrid = document.getElementById('overviewGrid');
+    const notesDrawer = document.getElementById('notesDrawer');
+    const notesContent = document.getElementById('notesContent');
+
+    // Initialize dots & overview grid
+    function initNavigation() {
+      dotsContainer.innerHTML = '';
+      overviewGrid.innerHTML = '';
+
+      slides.forEach((slide, idx) => {
+        // Dot
+        const dot = document.createElement('div');
+        dot.className = `dot ${idx === 0 ? 'active' : ''}`;
+        dot.title = `Slide ${idx + 1}`;
+        dot.addEventListener('click', () => goToSlide(idx));
+        dotsContainer.appendChild(dot);
+
+        // Overview card
+        const card = document.createElement('div');
+        card.className = `overview-card ${idx === 0 ? 'current' : ''}`;
+        const titleText = slide.querySelector('.slide-title')?.innerText || `Slide ${idx + 1}`;
+        const tagText = slide.querySelector('.slide-tag')?.innerText || '';
+        card.innerHTML = `
+          <div class="overview-card-num">#${idx + 1} · ${tagText}</div>
+          <div class="overview-card-title">${titleText}</div>
+        `;
+        card.addEventListener('click', () => {
+          goToSlide(idx);
+          toggleOverview();
+        });
+        overviewGrid.appendChild(card);
+      });
+
+      updateSlideUI();
+    }
+
+    // Go to slide
+    function goToSlide(idx) {
+      if (idx < 0 || idx >= totalSlides) return;
+      
+      slides[currentSlide].classList.remove('active');
+      currentSlide = idx;
+      slides[currentSlide].classList.add('active');
+
+      updateSlideUI();
+    }
+
+    function nextSlide() {
+      if (currentSlide < totalSlides - 1) {
+        goToSlide(currentSlide + 1);
+      }
+    }
+
+    function prevSlide() {
+      if (currentSlide > 0) {
+        goToSlide(currentSlide - 1);
+      }
+    }
+
+    function updateSlideUI() {
+      // Update counter
+      slideCounter.innerText = `Slide ${currentSlide + 1} / ${totalSlides}`;
+
+      // Update progress bar
+      const progressPct = ((currentSlide + 1) / totalSlides) * 100;
+      progressBar.style.width = `${progressPct}%`;
+
+      // Update buttons state
+      prevBtn.disabled = currentSlide === 0;
+      nextBtn.disabled = currentSlide === totalSlides - 1;
+
+      // Update dots
+      Array.from(dotsContainer.children).forEach((dot, i) => {
+        dot.classList.toggle('active', i === currentSlide);
+      });
+
+      // Update overview cards
+      Array.from(overviewGrid.children).forEach((card, i) => {
+        card.classList.toggle('current', i === currentSlide);
+      });
+
+      // Update notes
+      const notes = slides[currentSlide].getAttribute('data-notes') || 'Không có ghi chú cho slide này.';
+      notesContent.innerHTML = notes;
+    }
+
+    // Toggle Overview
+    function toggleOverview() {
+      overviewModal.classList.toggle('open');
+    }
+
+    // Toggle Notes
+    function toggleNotes() {
+      notesDrawer.classList.toggle('open');
+    }
+
+    // Toggle Fullscreen
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+          console.error(`Error enabling fullscreen: ${err.message}`);
+        });
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        }
+      }
+    }
+
+    // Keyboard controls
+    window.addEventListener('keydown', (e) => {
+      // If modal is open, ESC closes it
+      if (e.key === 'Escape' && overviewModal.classList.contains('open')) {
+        toggleOverview();
+        return;
+      }
+
+      switch (e.key) {
+        case 'ArrowRight':
+        case 'ArrowDown':
+        case ' ':
+        case 'PageDown':
+          nextSlide();
+          break;
+        case 'ArrowLeft':
+        case 'ArrowUp':
+        case 'PageUp':
+        case 'Backspace':
+          prevSlide();
+          break;
+        case 'Home':
+          goToSlide(0);
+          break;
+        case 'End':
+          goToSlide(totalSlides - 1);
+          break;
+        case 'f':
+        case 'F':
+          toggleFullscreen();
+          break;
+        case 'o':
+        case 'O':
+          toggleOverview();
+          break;
+        case 'n':
+        case 'N':
+          toggleNotes();
+          break;
+        case 'p':
+        case 'P':
+          if (e.ctrlKey || e.metaKey) return; // let default print trigger
+          window.print();
+          break;
+      }
+    });
+
+    // Touch swipe gesture support
+    let touchStartX = 0;
+    let touchEndX = 0;
+
+    window.addEventListener('touchstart', (e) => {
+      touchStartX = e.changedTouches[0].screenX;
+    }, false);
+
+    window.addEventListener('touchend', (e) => {
+      touchEndX = e.changedTouches[0].screenX;
+      handleSwipe();
+    }, false);
+
+    function handleSwipe() {
+      const swipeDistance = touchEndX - touchStartX;
+      if (Math.abs(swipeDistance) > 40) {
+        if (swipeDistance < 0) {
+          nextSlide();
+        } else {
+          prevSlide();
+        }
+      }
+    }
+
+    // Initialize on load
+    initNavigation();
+  </script>
+</body>
+</html>
