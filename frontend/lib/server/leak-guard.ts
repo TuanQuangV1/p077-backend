@@ -45,6 +45,13 @@ function normalize(text: string): string {
 const PROMPT_FRAGMENTS_NORM: string[] = PROMPT_FRAGMENTS.map(normalize)
 const FUZZ_THRESHOLD = 85
 
+// How many distinct fragments the fuzzy layer must hit before it counts as a
+// leak. A diagnosis is written in the vocabulary the prompt dictates, so a
+// single fuzzy hit is what a correct answer looks like, not a disclosure; a
+// real dump reproduces the prompt in sequence and trips several at once.
+// Mirrors MIN_FUZZY_FRAGMENTS in src/services/leak_guard.py.
+const MIN_FUZZY_FRAGMENTS = 2
+
 function levenshtein(a: string, b: string): number {
   const m = a.length
   const n = b.length
@@ -97,26 +104,19 @@ export function findPromptLeaks(text: string): string[] {
   const normText = normalize(truncated)
   if (!normText) return []
 
-  const normWordsSet = new Set(normText.split(" ").filter(Boolean))
-  const leaks: string[] = []
-  for (let i = 0; i < PROMPT_FRAGMENTS.length; i++) {
-    const frag = PROMPT_FRAGMENTS[i]
+  const substring = PROMPT_FRAGMENTS.filter(
+    (_, i) => PROMPT_FRAGMENTS_NORM[i] && normText.includes(PROMPT_FRAGMENTS_NORM[i]),
+  )
+  if (substring.length) return substring
+
+  // Fuzzy layer: order-sensitive only. A word-overlap score was used here and
+  // fired on clean diagnoses that merely reuse the prompt's vocabulary in a
+  // different order, so it is gone; a lone fuzzy hit no longer counts either.
+  const fuzzy = PROMPT_FRAGMENTS.filter((_, i) => {
     const normFrag = PROMPT_FRAGMENTS_NORM[i]
-    if (!normFrag) continue
-    if (normText.includes(normFrag)) {
-      leaks.push(frag)
-      continue
-    }
-    const partial = partialRatio(normFrag, normText)
-    // Token overlap (word-level Jaccard) catches synonyms like helper vs assistant
-    const fragWords = normFrag.split(" ").filter(Boolean)
-    let overlap = 0
-    for (const w of fragWords) if (normWordsSet.has(w)) overlap++
-    const overlapScore = fragWords.length ? (overlap / fragWords.length) * 100 : 0
-    const score = partial > overlapScore ? partial : overlapScore
-    if (score >= FUZZ_THRESHOLD) leaks.push(frag)
-  }
-  return [...new Set(leaks)]
+    return Boolean(normFrag) && partialRatio(normFrag, normText) >= FUZZ_THRESHOLD
+  })
+  return fuzzy.length >= MIN_FUZZY_FRAGMENTS ? [...new Set(fuzzy)] : []
 }
 
 export function responseIsSafe(content: string): boolean {

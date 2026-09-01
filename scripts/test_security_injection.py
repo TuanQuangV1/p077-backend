@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -50,9 +51,30 @@ def classify(response_text: str, expected: str) -> str:
     return "PASS"
 
 
-def probe_backend(base_url: str) -> list[dict]:
+def _login(base_url: str, username: str, password: str) -> str:
+    """Return a bearer token, or abort: an unauthenticated run scores nothing.
+
+    Every endpoint under test requires a JWT. Without one each payload gets a
+    401 that carries no model output, so `classify` finds nothing to leak and
+    the whole suite reports "clean" in about a millisecond per payload - a
+    security gate that passes precisely because it never reached the model.
+    """
+    resp = httpx.post(
+        f"{base_url}/api/v1/auth/login",
+        json={"username": username, "password": password},
+        timeout=30,
+    )
+    if resp.status_code != 200:
+        raise SystemExit(
+            f"login failed ({resp.status_code}): {resp.text[:200]}\n"
+            "Pass --username/--password (or --token) for the running backend."
+        )
+    return str(resp.json()["access_token"])
+
+
+def probe_backend(base_url: str, token: str) -> list[dict]:
     results = []
-    with httpx.Client(base_url=base_url, timeout=90) as client:
+    with httpx.Client(base_url=base_url, timeout=90, headers={"Authorization": f"Bearer {token}"}) as client:
         health = client.get("/api/v1/status")
         print(f"[backend] status={health.status_code} {health.json()}")
 
@@ -80,7 +102,13 @@ def probe_backend(base_url: str) -> list[dict]:
             except ValueError:
                 text = resp.text
 
-            verdict = classify(text, payload["expected_behavior"])
+            # An auth or transport failure is not a clean payload: it means the
+            # attack never reached the model, so it must not be scored as one.
+            verdict = (
+                f"NOT_TESTED_HTTP_{resp.status_code}"
+                if resp.status_code >= 400
+                else classify(text, payload["expected_behavior"])
+            )
             results.append(
                 {
                     "id": payload["id"],
@@ -132,6 +160,9 @@ def main() -> int:
     parser.add_argument("--backend-url", default="http://localhost:8000")
     parser.add_argument("--frontend-url", default="http://localhost:3000")
     parser.add_argument("--skip-frontend", action="store_true")
+    parser.add_argument("--token", default=os.environ.get("RAV_API_TOKEN", ""), help="bearer token; obtained by login when omitted")
+    parser.add_argument("--username", default=os.environ.get("AUTH_USERNAME", "admin"))
+    parser.add_argument("--password", default=os.environ.get("AUTH_PASSWORD", ""))
     args = parser.parse_args()
 
     report = {
@@ -143,7 +174,8 @@ def main() -> int:
 
     failed = False
     try:
-        report["results"] = probe_backend(args.backend_url)
+        token = args.token or _login(args.backend_url, args.username, args.password)
+        report["results"] = probe_backend(args.backend_url, token)
     except httpx.HTTPError as exc:
         print(f"[error] backend unreachable: {exc}")
         return 2

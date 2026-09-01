@@ -63,16 +63,26 @@ def _normalize(text: str) -> str:
 
 PROMPT_FRAGMENTS_NORM: list[str] = [_normalize(f) for f in PROMPT_FRAGMENTS]
 
-# Fuzzy threshold: partial_ratio >= 85 catches typos, extra spaces, synonyms
-# like "helper" vs "assistant" (88) while avoiding FP on generic phrases (80).
+# Fuzzy threshold: partial_ratio >= 85 catches typos and mangled whitespace
+# while avoiding false positives on generic phrasing (80).
 FUZZ_THRESHOLD = 85
 
+# How many distinct fragments the fuzzy layer must hit before it counts as a
+# leak. A diagnosis is written in the vocabulary this prompt dictates, so a
+# single fuzzy hit is what a *correct* answer looks like, not a disclosure:
+# replayed over 67 known-good cluster explanations, one fuzzy hit withheld 3 of
+# them for echoing "they are simultaneous symptoms of one shared event" - a
+# sentence the cluster prompt orders the model to write. A real dump reproduces
+# the prompt in sequence and trips several fragments at once. Exact and
+# normalized substring hits still count on their own.
+MIN_FUZZY_FRAGMENTS = 2
+
 try:
-    from rapidfuzz import fuzz as _rf_fuzz  # type: ignore
+    from rapidfuzz import fuzz as _rf_fuzz
 
     _HAS_RAPIDFUZZ = True
 except ImportError:  # pragma: no cover - fallback for environments without rapidfuzz
-    import difflib as _difflib  # type: ignore
+    import difflib as _difflib
 
     _HAS_RAPIDFUZZ = False
     _rf_fuzz = None  # type: ignore
@@ -92,14 +102,44 @@ def find_secret_leaks(text: str) -> list[str]:
     return [match.group(0) for match in _COMBINED_SECRET_PATTERN.finditer(truncated)]
 
 
+def _fuzzy_score(norm_frag: str, norm_text: str) -> float:
+    """Order-sensitive similarity of a fragment against the reply text.
+
+    Deliberately not a bag-of-words measure. ``token_set_ratio`` was used here
+    and scored 85+ on clean diagnoses purely because they reuse the prompt's own
+    vocabulary ("sensor", "transform", "anomaly", "overlaps") in a different
+    order - it withheld 11 of 67 known-good cluster explanations, while
+    ``partial_ratio`` on those same replies peaked at 63.
+    """
+    if _HAS_RAPIDFUZZ:
+        # rapidfuzz is Rust-backed, ~0.3ms per fragment on 20k text
+        return float(_rf_fuzz.partial_ratio(norm_frag, norm_text))
+    # difflib fallback (slower, pure python): approximate partial_ratio by
+    # scanning windows of the fragment's length for the best ratio.
+    best = 0.0
+    frag_len = len(norm_frag)
+    step = max(1, frag_len // 4)
+    for i in range(0, max(1, len(norm_text) - frag_len + 1), step):
+        window = norm_text[i : i + frag_len]
+        ratio = _difflib.SequenceMatcher(None, norm_frag, window).ratio() * 100
+        if ratio > best:
+            best = ratio
+            if best >= FUZZ_THRESHOLD:
+                break
+    return best
+
+
 def find_prompt_leaks(text: str) -> list[str]:
     """Return system-prompt fragments found in an LLM response (fuzzy-aware).
 
     Three layers, fastest first:
     1. Exact verbatim substring (original behaviour).
     2. Normalized substring (handles extra spaces, punctuation, case).
-    3. Fuzzy partial_ratio via rapidfuzz (handles typos, synonyms like
-       "helper" vs "assistant") — truncated to ``MAX_LEAK_SCAN_LEN``.
+    3. Fuzzy ``partial_ratio`` (handles typos and mangled whitespace),
+       requiring ``MIN_FUZZY_FRAGMENTS`` distinct hits - see that constant for
+       why one fuzzy hit is a correct answer rather than a disclosure.
+
+    Scanning is truncated to ``MAX_LEAK_SCAN_LEN``.
     """
     if not text:
         return []
@@ -111,52 +151,26 @@ def find_prompt_leaks(text: str) -> list[str]:
     if exact_hits:
         return exact_hits
 
-    # Layer 2+3: normalized + fuzzy
     norm_text = _normalize(truncated)
     if not norm_text:
         return []
 
-    leaks: list[str] = []
-    for frag, norm_frag in zip(PROMPT_FRAGMENTS, PROMPT_FRAGMENTS_NORM, strict=False):
-        if not norm_frag:
-            continue
-        # Normalized exact substring (catches extra spaces/punctuation)
-        if norm_frag in norm_text:
-            leaks.append(frag)
-            continue
-        # Fuzzy: max of partial_ratio (typos, extra spaces) and token_set_ratio (synonyms)
-        score: float
-        if _HAS_RAPIDFUZZ:
-            # rapidfuzz is Rust-backed, ~0.3ms per fragment on 20k text
-            partial = float(_rf_fuzz.partial_ratio(norm_frag, norm_text))  # type: ignore
-            token_set = float(_rf_fuzz.token_set_ratio(norm_frag, norm_text))  # type: ignore
-            score = partial if partial > token_set else token_set
-        else:
-            # difflib fallback (slower, pure python) — use SequenceMatcher ratio
-            # Approximate partial by scanning windows of fragment length
-            best = 0.0
-            frag_len = len(norm_frag)
-            # Scan windows of similar char length for best ratio
-            step = max(1, frag_len // 4)
-            for i in range(0, max(1, len(norm_text) - frag_len + 1), step):
-                window = norm_text[i : i + frag_len]
-                r = _difflib.SequenceMatcher(None, norm_frag, window).ratio() * 100  # type: ignore
-                if r > best:
-                    best = r
-                    if best >= FUZZ_THRESHOLD:
-                        break
-            score = best
-        if score >= FUZZ_THRESHOLD:
-            leaks.append(frag)
+    # Layer 2: normalized substring (extra spaces, punctuation, case)
+    substring_hits = [
+        frag
+        for frag, norm_frag in zip(PROMPT_FRAGMENTS, PROMPT_FRAGMENTS_NORM, strict=False)
+        if norm_frag and norm_frag in norm_text
+    ]
+    if substring_hits:
+        return substring_hits
 
-    # De-duplicate while preserving order
-    seen: set[str] = set()
-    deduped: list[str] = []
-    for frag in leaks:
-        if frag not in seen:
-            seen.add(frag)
-            deduped.append(frag)
-    return deduped
+    # Layer 3: fuzzy, and only when corroborated by a second fragment
+    fuzzy_hits = [
+        frag
+        for frag, norm_frag in zip(PROMPT_FRAGMENTS, PROMPT_FRAGMENTS_NORM, strict=False)
+        if norm_frag and _fuzzy_score(norm_frag, norm_text) >= FUZZ_THRESHOLD
+    ]
+    return fuzzy_hits if len(fuzzy_hits) >= MIN_FUZZY_FRAGMENTS else []
 
 
 def response_is_safe(content: str) -> bool:

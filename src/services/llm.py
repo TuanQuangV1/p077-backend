@@ -209,8 +209,10 @@ def resolved_model_name(settings: Settings) -> str:
 
 
 _LLM_HEALTH_CACHE_TTL_SEC = 60.0
-_llm_health_cache: dict[str, Any] | None = None
-_llm_health_cache_at: float = 0.0
+# Mutable container rather than two module globals rebound under `global`,
+# matching the pattern in run_store._init_state.
+_llm_health_cache: list[dict[str, Any] | None] = [None]
+_llm_health_cache_at: list[float] = [0.0]
 
 
 def check_llm_health(force: bool = False) -> dict[str, Any]:
@@ -222,24 +224,24 @@ def check_llm_health(force: bool = False) -> dict[str, Any]:
     `_LLM_HEALTH_CACHE_TTL_SEC` so polling this from the UI doesn't spend a
     token on every request.
     """
-    global _llm_health_cache, _llm_health_cache_at  # noqa: PLW0603 - module-level health cache
     now = time.monotonic()
-    if not force and _llm_health_cache is not None and now - _llm_health_cache_at < _LLM_HEALTH_CACHE_TTL_SEC:
-        return _llm_health_cache
+    cached = _llm_health_cache[0]
+    if not force and cached is not None and now - _llm_health_cache_at[0] < _LLM_HEALTH_CACHE_TTL_SEC:
+        return cached
 
     settings = get_settings()
     try:
         validate_llm_config()
     except ValueError as exc:
         result: dict[str, Any] = {
-            "provider": getattr(settings, "llm_provider", "unknown"),
-            "model": resolved_model_name(settings) if 'settings' in locals() else "unknown",
+            "provider": settings.llm_provider,
+            "model": resolved_model_name(settings),
             "ok": False,
             "latencyMs": 0,
             "error": str(exc),
         }
-        _llm_health_cache = result
-        _llm_health_cache_at = now
+        _llm_health_cache[0] = result
+        _llm_health_cache_at[0] = now
         return result
 
     # Minimal prompt to test reachability without spending many tokens
@@ -260,7 +262,7 @@ def check_llm_health(force: bool = False) -> dict[str, Any]:
             "error": None,
             "reply": result_msg["message"].get("content", "")[:200],
         }
-    except Exception as exc:
+    except (httpx.HTTPError, NotImplementedError, ValueError) as exc:
         latency_ms = int((time.monotonic() - start) * 1000)
         result = {
             "provider": settings.llm_provider,
@@ -269,8 +271,8 @@ def check_llm_health(force: bool = False) -> dict[str, Any]:
             "latencyMs": latency_ms,
             "error": str(exc),
         }
-    _llm_health_cache = result
-    _llm_health_cache_at = now
+    _llm_health_cache[0] = result
+    _llm_health_cache_at[0] = now
     return result
 
 
@@ -347,11 +349,32 @@ def chat_completion(
             latency_ms = int((time.perf_counter() - started) * 1000)
             if settings.llm_provider == "anthropic":
                 message, prompt_tokens, completion_tokens = _message_from_anthropic_response(body)
+                truncated = body.get("stop_reason") == "max_tokens"
             else:
                 usage = body.get("usage") or {}
                 message = _message_from_completion(body)
                 prompt_tokens = int(usage.get("prompt_tokens", 0))
                 completion_tokens = int(usage.get("completion_tokens", 0))
+                truncated = bool((body.get("choices") or [{}])[0].get("finish_reason") == "length")
+            if truncated:
+                # A reply cut at the cap is unparseable JSON, so `_parse_findings`
+                # returns nothing and the cluster silently loses every verdict.
+                # Without this line that looks identical to a model that simply
+                # answered badly.
+                logger.warning(
+                    "llm.output_truncated",
+                    extra={
+                        "diagnostics": {
+                            "event": "llm.output_truncated",
+                            "level": "warning",
+                            "details": {
+                                "model": model,
+                                "max_tokens": settings.llm_max_tokens,
+                                "completion_tokens": completion_tokens,
+                            },
+                        }
+                    },
+                )
             logger.info(
                 "llm.chat_completion",
                 extra={
@@ -364,6 +387,7 @@ def chat_completion(
                             "latency_ms": latency_ms,
                             "prompt_tokens": prompt_tokens,
                             "completion_tokens": completion_tokens,
+                            "truncated": truncated,
                             "attempt": attempt + 1,
                         },
                     }
@@ -480,6 +504,49 @@ def explain_diagnostics(summary: dict[str, Any]) -> dict[str, str | list[str]]:
     return _parse_explanation(_sanitized_content(result["message"].get("content") or ""))
 
 
+def _causal_order_correction(
+    rows: list[dict[str, Any]],
+    findings: dict[int, dict[str, str]],
+    violations: list[int],
+) -> str:
+    """Phrase the impossible ordering back to the model, citing its own numbers."""
+    by_index = {int(row["index"]): row for row in rows}
+    primary_starts = [
+        (float(by_index[index]["start_sec"]), str(by_index[index]["topic"]))
+        for index, finding in findings.items()
+        if finding.get("role") == "primary" and index in by_index
+    ]
+    earliest_start, earliest_topic = min(primary_starts)
+    listed = "; ".join(
+        f'index {index} ({by_index[index]["topic"]}) starts at {float(by_index[index]["start_sec"]):.3f}s'
+        for index in violations
+    )
+    return (
+        f"Your answer marks these as consequences: {listed}. The earliest anomaly you marked "
+        f"primary is {earliest_topic} at {earliest_start:.3f}s, so each of them begins before "
+        "anything you named as its cause. A consequence cannot start before its cause. Re-answer "
+        "with the same JSON keys, fixing both the findings roles and the root_cause sentence so "
+        "the ordering matches the start_sec values you were given."
+    )
+
+
+def _causal_order_note(
+    rows: list[dict[str, Any]],
+    violations: list[int],
+) -> str:
+    """A code-written sentence flagging prose that still contradicts the timings."""
+    by_index = {int(row["index"]): row for row in rows}
+    listed = ", ".join(
+        f'{by_index[index]["topic"]} (starts {float(by_index[index]["start_sec"]):.3f}s)'
+        for index in violations
+    )
+    return (
+        f" Automated correction: {listed} begins before every anomaly named above as its cause, "
+        "so it is reported as an independent primary; treat the ordering stated in this "
+        "paragraph with caution."
+    )
+
+
 def explain_detection_cluster(
     detections: list[dict[str, Any]],
     recording: Mapping[str, float] | None = None,
@@ -514,53 +581,84 @@ def explain_detection_cluster(
     ]
     result = chat_completion(messages)
     content = _sanitized_content(result["message"].get("content") or "")
-    prompt_tokens = result["prompt_tokens"]
-    completion_tokens = result["completion_tokens"]
-    latency_ms = result["latency_ms"]
+    parsed_findings = _parse_findings(content, len(rows))
+    if rows and not parsed_findings:
+        # Every per-anomaly verdict is gone: the reply was withheld by the leak
+        # guard, truncated at the token cap, or was not JSON. The cluster still
+        # returns a shape the caller accepts, so this is the only place the loss
+        # is visible - a whole incident scoring nothing used to look like a
+        # correct answer with no findings.
+        logger.warning(
+            "llm.cluster_findings_empty",
+            extra={
+                "diagnostics": {
+                    "event": "llm.cluster_findings_empty",
+                    "level": "warning",
+                    "details": {
+                        "rows": len(rows),
+                        "topics": sorted({str(row["topic"]) for row in rows}),
+                        "withheld_by_leak_guard": content.startswith("[blocked]"),
+                    },
+                }
+            },
+        )
+    row_findings = _enforce_simultaneity(rows, parsed_findings)
 
-    row_findings = _parse_findings(content, len(rows))
-    violations = _find_causal_violations(rows, row_findings)
+    prompt_tokens = int(result["prompt_tokens"])
+    completion_tokens = int(result["completion_tokens"])
+    latency_ms = float(result["latency_ms"])
 
+    # An anomaly that starts before everything blamed for it is proof the model
+    # read the timings wrong, not a matter of judgement — so ask once more with
+    # its own numbers quoted back. Rewriting the roles in code (below) fixes the
+    # evidence table but leaves the freeform prose contradicting it, which is
+    # what an operator actually reads. Measured on 38 bags this fires on 3 of 65
+    # clusters, so the extra round trip costs about 5% of a run.
+    violations = _causal_order_violations(rows, row_findings)
     if violations:
-        c_row, p_row = violations[0]
-        retry_prompt = (
-            f"In your reply, index {c_row['index']} ({c_row['topic']}) starts at "
-            f"{float(c_row['start_sec']):.3f}s. The earliest anomaly you marked primary is "
-            f"{p_row['topic']} at {float(p_row['start_sec']):.3f}s. "
-            f"A consequence cannot start before its cause. Re-answer with the correct causal ordering and root cause."
+        retry = chat_completion(
+            [
+                *messages,
+                {"role": "assistant", "content": content},
+                {"role": "user", "content": _causal_order_correction(rows, row_findings, violations)},
+            ]
         )
-        retry_messages = [
-            *messages,
-            {"role": "assistant", "content": content},
-            {"role": "user", "content": retry_prompt},
-        ]
-        retry_result = chat_completion(retry_messages)
-        content = _sanitized_content(retry_result["message"].get("content") or "")
-        row_findings = _parse_findings(content, len(rows))
-        prompt_tokens += retry_result["prompt_tokens"]
-        completion_tokens += retry_result["completion_tokens"]
-        latency_ms += retry_result["latency_ms"]
-
-    still_violated = _find_causal_violations(rows, row_findings)
-
-    # Simultaneity first, then causal order, then the layer gate
-    row_findings = _enforce_simultaneity(rows, row_findings)
-    row_findings = _enforce_causal_order(rows, row_findings)
-    row_findings = _gate_actuator_primary(rows, row_findings)
-
-    parsed = _parse_explanation(content)
-    if still_violated:
-        c_row, _ = still_violated[0]
-        correction_note = (
-            f"Automated correction: {c_row['topic']} started at "
-            f"{float(c_row['start_sec']):.3f}s, before any primary anomaly, "
-            f"so it has been marked primary."
+        retry_content = _sanitized_content(retry["message"].get("content") or "")
+        retry_findings = _enforce_simultaneity(rows, _parse_findings(retry_content, len(rows)))
+        prompt_tokens += int(retry["prompt_tokens"])
+        completion_tokens += int(retry["completion_tokens"])
+        latency_ms += float(retry["latency_ms"])
+        retry_violations = _causal_order_violations(rows, retry_findings)
+        logger.info(
+            "llm.causal_order_retry",
+            extra={
+                "diagnostics": {
+                    "event": "llm.causal_order_retry",
+                    "violating_indices": violations,
+                    "resolved": not retry_violations,
+                }
+            },
         )
-        explanation_text = parsed.get("explanation", "")
-        parsed["explanation"] = f"{explanation_text}\n\n[{correction_note}]" if explanation_text else correction_note
+        if not retry_violations:
+            content, row_findings, violations = retry_content, retry_findings, []
+        else:
+            content, row_findings, violations = retry_content, retry_findings, retry_violations
 
+    # The layer gate runs last: it encodes which way data can physically flow,
+    # which outranks a sub-second onset tie. Run the other way round,
+    # simultaneity promotes the actuator straight back to primary — exactly the
+    # case where a controller and the transform it reads died 10-30ms apart and
+    # timing alone cannot say which caused which. It no longer undoes
+    # `_enforce_causal_order`, because an upstream anomaly that starts after the
+    # actuator no longer demotes it.
+    row_findings = _gate_actuator_primary(rows, _enforce_causal_order(rows, row_findings))
+    explanation = _parse_explanation(content)
+    if violations:
+        explanation["explanation"] = (
+            str(explanation.get("explanation", "")) + _causal_order_note(rows, violations)
+        ).strip()
     return {
-        **parsed,
+        **explanation,
         "findings": _expand_findings(row_findings, row_positions),
         "usage": {
             "prompt_tokens": prompt_tokens,
@@ -568,57 +666,6 @@ def explain_detection_cluster(
             "latency_ms": latency_ms,
         },
     }
-
-
-def _find_causal_violations(
-    rows: list[dict[str, Any]],
-    findings: dict[int, dict[str, str]],
-) -> list[tuple[dict[str, Any], dict[str, Any]]]:
-    """Identify consequence anomalies that started earlier than every primary anomaly."""
-    row_by_index = {int(r["index"]): r for r in rows}
-    primary_rows = [
-        row_by_index[idx]
-        for idx, f in findings.items()
-        if f.get("role") == "primary" and idx in row_by_index
-    ]
-    if not primary_rows:
-        return []
-    earliest_primary = min(primary_rows, key=lambda r: float(r["start_sec"]))
-    earliest_primary_start = float(earliest_primary["start_sec"])
-    violations: list[tuple[dict[str, Any], dict[str, Any]]] = []
-    for idx, f in findings.items():
-        if f.get("role") == "consequence" and idx in row_by_index:
-            r = row_by_index[idx]
-            if float(r["start_sec"]) < earliest_primary_start - _SIMULTANEOUS_WINDOW_SEC:
-                violations.append((r, earliest_primary))
-    return violations
-
-
-def _enforce_causal_order(
-    rows: list[dict[str, Any]],
-    findings: dict[int, dict[str, str]],
-) -> dict[int, dict[str, str]]:
-    """Promote a consequence that started before every primary anomaly.
-
-    If a topic failed earlier than all anomalies marked 'primary', it physically
-    cannot be a consequence of them. Promote it to 'primary'.
-    """
-    row_by_index = {int(r["index"]): r for r in rows}
-    primary_starts = [
-        float(row_by_index[idx]["start_sec"])
-        for idx, f in findings.items()
-        if f.get("role") == "primary" and idx in row_by_index
-    ]
-    if not primary_starts:
-        return findings
-    earliest_primary = min(primary_starts)
-    corrected = dict(findings)
-    for idx, f in findings.items():
-        if f.get("role") == "consequence" and idx in row_by_index:
-            start = float(row_by_index[idx]["start_sec"])
-            if start < earliest_primary - _SIMULTANEOUS_WINDOW_SEC:
-                corrected[idx] = {**f, "role": "primary"}
-    return corrected
 
 
 def _shape_cluster_payload(
@@ -642,8 +689,15 @@ def _shape_cluster_payload(
     """
     grouped: dict[tuple[str, str], list[int]] = {}
     for position, detection in enumerate(detections):
-        key = (str(detection.get("topic", "/unknown")), str(detection.get("kind", "unknown")))
-        grouped.setdefault(key, []).append(position)
+        topic = str(detection.get("topic", "/unknown"))
+        # The detector reports overlapping timing rules as one event (one
+        # physical gap is one incident for the operator's count, the health
+        # score and the UI). The model is a different consumer: measured on 38
+        # real bags, collapsing them left 62% of clusters holding a single row,
+        # with nothing to compare against, and per-fault diagnosis fell from
+        # 49/56 to 47/56. Every rule that fired is restored here as its own row.
+        for kind in detection.get("evidence", {}).get("rules") or [detection.get("kind", "unknown")]:
+            grouped.setdefault((topic, str(kind)), []).append(position)
 
     ordered_keys = sorted(
         grouped,
@@ -692,12 +746,74 @@ def _expand_findings(
     row_findings: dict[int, dict[str, str]],
     row_positions: list[list[int]],
 ) -> dict[int, dict[str, str]]:
-    """Map per-row verdicts back onto 1-based positions in the original detections."""
+    """Map per-row verdicts back onto 1-based positions in the original detections.
+
+    One detection can stand behind several rows (a merged timing event is shown
+    to the model as the rules that fired), and those rows can come back with
+    different roles. `primary` wins: the detection is the origin if any view of
+    it was judged to be, and demoting it to a consequence of itself would drop
+    the cluster's only conclusion.
+    """
     findings: dict[int, dict[str, str]] = {}
     for row_index, finding in row_findings.items():
         for position in row_positions[row_index - 1]:
+            existing = findings.get(position + 1)
+            if existing is not None and existing.get("role") == "primary":
+                continue
             findings[position + 1] = finding
     return findings
+
+def _causal_order_violations(
+    rows: list[dict[str, Any]],
+    findings: dict[int, dict[str, str]],
+) -> list[int]:
+    """Return the indices the model called consequences of something later than themselves.
+
+    An anomaly qualifies only when it starts more than ``_SIMULTANEOUS_WINDOW_SEC``
+    before *every* anomaly marked primary, which makes the claimed ordering
+    physically impossible rather than merely doubtful.
+    """
+    starts = {int(row["index"]): float(row["start_sec"]) for row in rows}
+    primary_starts = [
+        starts[index]
+        for index, finding in findings.items()
+        if finding.get("role") == "primary" and index in starts
+    ]
+    if not primary_starts:
+        return []
+    cutoff = min(primary_starts) - _SIMULTANEOUS_WINDOW_SEC
+    return sorted(
+        index
+        for index, finding in findings.items()
+        if finding.get("role") == "consequence" and index in starts and starts[index] < cutoff
+    )
+
+
+def _enforce_causal_order(
+    rows: list[dict[str, Any]],
+    findings: dict[int, dict[str, str]],
+) -> dict[int, dict[str, str]]:
+    """Promote an anomaly that began before every anomaly claimed as its cause.
+
+    A consequence cannot start before its cause. The prompt states the rule and
+    the model still breaks it: on `F4_01` it marked `/cmd_vel` (silent from 304s
+    to the end of the recording) a consequence of a `/tf` conflict that only
+    began at 331s, and cited both timings in its own explanation while doing so.
+    `_gate_actuator_primary` cannot repair that case because it only demotes.
+
+    Only a strictly impossible ordering is corrected: the anomaly must start
+    more than ``_SIMULTANEOUS_WINDOW_SEC`` before *every* primary, so genuine
+    cascades and near-ties are left exactly as the model labelled them. Like
+    `_enforce_simultaneity`, this rewrites structured roles only — the freeform
+    prose keeps whatever ordering the model wrote.
+    """
+    violations = _causal_order_violations(rows, findings)
+    if not violations:
+        return findings
+    return {
+        **findings,
+        **{index: {**findings[index], "role": "primary"} for index in violations},
+    }
 
 
 def _gate_actuator_primary(
@@ -713,15 +829,20 @@ def _gate_actuator_primary(
 
     The rule is conditional, not a blanket ban — `/cmd_vel` really is the
     injected fault in some recordings. It only applies while a sensor or
-    transform anomaly overlaps the actuator's own active span and started no
-    later than the actuator; an actuator failing on its own keeps its primary role.
+    transform anomaly overlaps the actuator's own active span *and* began no
+    later than the actuator did: a fault cannot be caused by something that
+    started after it. Overlap alone demoted the actuator in two measured bags
+    where `/cmd_vel` went silent tens of seconds before the transform conflict
+    it was blamed on (`F4_01`: silent at 304s, `/tf` conflict at 331s), so the
+    layer priority was overruling the one piece of evidence that settles
+    direction. An actuator failing first, or on its own, keeps its primary role.
     """
-    upstream_rows = [
-        row
+    upstream_spans = [
+        (float(row["start_sec"]), float(row["end_sec"]))
         for row in rows
         if _topic_layer(str(row["topic"])) <= _TRANSFORM_LAYER
     ]
-    if not upstream_rows:
+    if not upstream_spans:
         return findings
 
     corrected = dict(findings)
@@ -733,11 +854,11 @@ def _gate_actuator_primary(
         if _topic_layer(str(row["topic"])) != _ACTUATOR_LAYER:
             continue
         start, end = float(row["start_sec"]), float(row["end_sec"])
-        for up in upstream_rows:
-            up_start, up_end = float(up["start_sec"]), float(up["end_sec"])
-            if start <= up_end and end >= up_start and up_start <= start + _SIMULTANEOUS_WINDOW_SEC:
-                corrected[index] = {**finding, "role": "consequence"}
-                break
+        if any(
+            start <= up_end and end >= up_start and up_start <= start + _SIMULTANEOUS_WINDOW_SEC
+            for up_start, up_end in upstream_spans
+        ):
+            corrected[index] = {**finding, "role": "consequence"}
     return corrected
 
 
