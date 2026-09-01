@@ -11,8 +11,16 @@ services:
         value: 3.11.9
       - key: APP_ENV
         value: production
+      # Explicit allowlist — comma-separated frontend origins, no wildcard.
+      # `*` is rejected at startup in production (it still echoes every Origin
+      # under allow_credentials). Set the real value in the Render dashboard,
+      # e.g. https://<app>.vercel.app,https://<custom-domain>
       - key: CORS_ORIGINS
-        value: "*"
+        sync: false
+      # Optional: regex for Vercel preview deploys, e.g.
+      # https://p077-[a-z0-9-]+\.vercel\.app
+      - key: CORS_ORIGIN_REGEX
+        sync: false
       - key: OPENAI_API_KEY
         sync: false
       - key: MODEL_NAME
@@ -21,7 +29,10 @@ services:
         value: INFO
       - key: AUTH_USERNAME
         value: admin
+      # Set in the Render dashboard — never commit real credentials.
+      # JWT_SECRET: min 32 chars (openssl rand -hex 32). Without it a
+      # production deploy fails closed with 503 on every protected route.
       - key: AUTH_PASSWORD
-        value: test-pass
+        sync: false
       - key: JWT_SECRET
-        value: dev-insecure-jwt-secret-change-me-32-chars-minimum-length
+        sync: false

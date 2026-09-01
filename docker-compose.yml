@@ -1,4 +1,9 @@
 services:
+  # Local "run the built images" stack. Runs in development mode so a fresh
+  # checkout works with `cp .env.example .env && docker compose up` — an empty
+  # JWT_SECRET then bypasses auth instead of failing closed with 503. The real
+  # production deploy uses docker-compose.prod.yml (APP_ENV=production, secrets
+  # from env/production.env). Add `--profile dev` for hot-reload variants.
   backend:
     build:
       context: .
@@ -9,7 +14,7 @@ services:
     env_file:
       - .env
     environment:
-      APP_ENV: production
+      APP_ENV: development
       APP_HOST: 0.0.0.0
       APP_PORT: 8000
       CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000

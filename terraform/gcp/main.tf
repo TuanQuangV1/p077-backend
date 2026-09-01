@@ -122,6 +122,11 @@ resource "google_project_iam_member" "iap_tunnel" {
 }
 
 # 5. Firewall rules (default VPC)
+# NOTE: 80/443 are open to the whole internet. That is expected for a public web
+# app, but it means the instance is directly exposed — before this stack backs a
+# real deployment, put it behind a CDN/WAF (Cloudflare, GCLB + Cloud Armor) and
+# restrict source_ranges to the load balancer's ranges. Tracked in
+# plan_final.md as deferred item #19.
 resource "google_compute_firewall" "http" {
   name    = "${local.name_prefix}-http"
   network = "default"

@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.32"
+          python-version: "3.11"
+          enable-cache: true
+
+      - name: Sync dependencies (frozen)
+        # --extra dev pulls the lint/type/test tools ([project.optional-dependencies]);
+        # the default `dev` dependency-group (hypothesis) comes in automatically.
+        run: uv sync --frozen --extra dev
+
+      - name: requirements.txt is in sync with uv.lock
+        run: |
+          uv export --frozen --no-hashes --no-dev --no-emit-project -o requirements.txt
+          git diff --exit-code -- requirements.txt \
+            || { echo "::error::requirements.txt is stale — run: uv export --frozen --no-hashes --no-dev --no-emit-project -o requirements.txt"; exit 1; }
+
+      - name: Ruff
+        run: uv run ruff check src/ tests/
+
+      - name: Mypy
+        run: uv run mypy src/
+
+      - name: Pytest
+        run: uv run pytest
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm lint
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    # Playwright needs a live backend + LLM key; keep it non-blocking until the
+    # workflow provisions those. Remove continue-on-error once it is wired.
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e

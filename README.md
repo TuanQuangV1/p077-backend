@@ -50,8 +50,8 @@ Phương pháp & lịch sử các vòng tối ưu: [docs/benchmark.md](docs/benc
 | Backend | Python 3.11+, FastAPI, Pydantic v2, uvicorn, httpx, numpy |
 | Frontend | Next.js 16 (App Router), React 19, TypeScript, shadcn/ui, Tailwind CSS v4, Recharts, SWR |
 | Testing | pytest + pytest-asyncio + pytest-cov, Vitest, Playwright |
-| Infrastructure | Terraform (Azure Container Apps, Azure Container Registry, Azure Storage File Share) |
-| CI/CD | GitHub Actions (`staging.yml`, `production.yml`, `ci.yml`) |
+| Deploy | Render (backend blueprint `render.yaml`) + Vercel (frontend). Self-host tuỳ chọn: `docker-compose.prod.yml` + nginx + `terraform/gcp/` |
+| CI/CD | GitHub Actions (`.github/workflows/ci.yml` — backend + frontend gate trên mọi PR) |
 
 ## 📁 Cấu trúc dự án
 
@@ -66,210 +66,112 @@ Phương pháp & lịch sử các vòng tối ưu: [docs/benchmark.md](docs/benc
 │   ├── models/schemas.py        # Pydantic models
 │   ├── config.py                # Settings từ .env (pydantic-settings)
 │   └── main.py                  # FastAPI app
-├── frontend/
-│   ├── app/                     # Next.js App Router (console, runs, dashboard...)
-│   ├── components/              # RAV Console, analysis UI, shadcn/ui
-│   └── lib/                     # api client, types, mock store
-├── terraform/                   # Infrastructure as Code (AzureRM Provider)
-│   ├── main.tf                  # Resource Group, ACR, Azure Storage Share, Azure Container Apps
-│   ├── variables.tf             # Biến cấu hình (azure_location, app_name, ports)
-│   ├── outputs.tf               # Azure Container App FQDNs, ACR login server
-│   ├── providers.tf             # AzureRM Provider configuration
-│   └── environments/            # File cấu hình riêng biệt cho Staging & Production
-├── env/                         # Mẫu cấu hình môi trường biệt lập
-│   ├── staging.env.example      # Variable mẫu cho Staging
-│   └── production.env.example   # Variable mẫu cho Production
-├── nginx/                       # Reverse proxy SSL/TLS & API routing config
-├── .github/workflows/
-│   ├── staging.yml              # CI/CD tự động deploy Azure Staging khi merge vào develop
-│   ├── production.yml           # CI/CD tự động deploy Azure Production khi merge vào main
-│   └── ci.yml                   # CI PR Gatekeeper Tests
-├── data/                        # Local storage data & thresholds
-├── tests/                       # Pytest test suite
-└── Dockerfile                   # Multi-stage Docker build
+│   ├── app/                     # Next.js App Router (console, dashboard, login, error/loading boundaries)
+│   │   └── api/                 # route handlers proxying to the FastAPI backend
+│   ├── components/              # RAV Console, analysis + health UI, shadcn/ui
+│   └── lib/                     # api client (resolveApiUrl), types
+├── render.yaml                  # Render backend blueprint
+├── nginx/nginx.conf             # Reverse proxy (SSL, security headers, rate-limit) for self-host
+├── terraform/gcp/               # Optional GCP infra (main.tf, environments/)
+├── .github/workflows/ci.yml     # Backend + frontend CI gate
+├── scripts/seed_*.py            # Generate synthetic rosbag datasets into data/
+├── data/                        # Local dataset storage + SQLite (git-ignored except runs.db)
+├── tests/                       # pytest suite
+└── Dockerfile                   # Multi-stage build (backend + frontend targets)
 ```
 
 ---
 
-## 🚀 Deployment & CI/CD Guide (Microsoft Azure)
+## 🚀 Chạy Local & Deployment
 
-### 🌐 1. Kiến Trúc Deployment Azure
+### 💻 1. Chạy Local
 
-Hệ thống được triển khai trên hạ tầng **Microsoft Azure** với 2 môi trường biệt lập (**Staging** và **Production**):
+#### Option A: Uvicorn + Node (khuyến nghị cho dev)
+```bash
+# Backend (uv — nhanh, deterministic)
+uv sync --extra dev            # hoặc: python -m venv .venv && pip install -e ".[dev]"
+cp .env.example .env           # JWT_SECRET rỗng → dev bỏ qua auth
+uv run uvicorn src.main:app --reload --port 8000
 
-```mermaid
-graph TD
-    DEV[Developer Code] --> FEATURE[Feature Branch: feature/*]
-    FEATURE --> PR_DEV[Pull Request / Merge]
-    PR_DEV --> BRANCH_DEV[Branch: develop]
-    BRANCH_DEV --> CI_STG[GitHub Actions: staging.yml]
-    CI_STG --> AZ_STG[Azure Login & Docker Push to ACR]
-    AZ_STG --> TF_STG[Terraform Apply Staging]
-    TF_STG --> DEPLOY_STG[Deploy to Azure Container Apps STAGING]
-    DEPLOY_STG --> HEALTH_STG[Health Check: https://app-ai20krosbag-staging-backend.eastus.azurecontainerapps.io/health]
-
-    BRANCH_DEV --> PR_MAIN[Pull Request / Merge]
-    PR_MAIN --> BRANCH_MAIN[Branch: main]
-    BRANCH_MAIN --> CI_PROD[GitHub Actions: production.yml]
-    CI_PROD --> AZ_PROD[Azure Login & Docker Push to ACR]
-    AZ_PROD --> TF_PROD[Terraform Apply Production]
-    TF_PROD --> DEPLOY_PROD[Deploy to Azure Container Apps PRODUCTION]
-    DEPLOY_PROD --> HEALTH_PROD[Health Check: https://app-ai20krosbag-production-backend.eastus.azurecontainerapps.io/health]
-```
-
-#### Ánh Xạ Dịch Vụ Hạ Tầng:
-- **Compute Platform**: **Azure Container Apps (ACA)** — serverless container execution với auto-scaling & ingress HTTP/HTTPS.
-- **Container Registry**: **Azure Container Registry (ACR)** — lưu trữ & bảo mật các Docker image Backend & Frontend.
-- **Persistent Data Volume**: **Azure Files Share** — mount trực tiếp vào Container App tại `/app/data` bảo toàn dữ liệu SQLite (`runs.db`) và rosbag upload.
-- **Logging**: **Azure Log Analytics Workspace** — thu thập log ứng dụng tập trung.
-
----
-
-### 💻 2. Cách Chạy Local
-
-#### Option A: Uvicorn + Node (Khuyến nghị cho Dev)
-```powershell
-# 1. Backend:
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
-Copy-Item .env.example .env
-uvicorn src.main:app --reload --port 8000
-
-# 2. Frontend:
+# Frontend (chạy trong frontend/)
 cd frontend
 pnpm install
-pnpm dev
+pnpm dev                       # http://localhost:3000, proxy /api/v1 → :8000
 ```
 
-#### Option B: Docker Compose (Local)
+Seed dữ liệu mô phỏng để có gì đó phân tích:
 ```bash
-# Development (Hot reload):
-docker compose --profile dev up --build
-# Production (sau khi đổi ngôn ngữ / frontend):
-# Xóa volume dev cũ để tránh stale .next rồi build lại determinist:
-docker compose down
-docker volume rm P-077_frontend_next 2>$null; docker volume rm P-077_frontend_node_modules 2>$null
-docker compose up -d --build --force-recreate
+uv run python scripts/seed_10_datasets.py
 ```
 
-# Production: deploy tự động lên VM GCP qua CI/CD khi merge vào `main`
-# (xem .github/workflows/gcp-deploy.yml và scripts/gcp/deploy.sh)
+#### Option B: Docker Compose
+```bash
+docker compose up --build              # dev-mode (APP_ENV=development, không cần secret)
+docker compose --profile dev up        # + hot-reload
 ```
+
+### ✅ 2. Kiểm tra trước khi push
+
+```bash
+make check-all        # backend (ruff + mypy + pytest) + frontend (tsc + vitest + build)
+```
+GitHub Actions (`.github/workflows/ci.yml`) chạy đúng các bước này trên mọi PR.
+
+### 🌐 3. Deployment
+
+| Thành phần | Nền tảng | Cấu hình |
+|---|---|---|
+| Backend | **Render** | `render.yaml` blueprint — `pip install -r requirements.txt && pip install -e .`, `uvicorn src.main:app`. Đặt `JWT_SECRET`, `AUTH_PASSWORD`, `CORS_ORIGINS`, `OPENAI_API_KEY` trong Render dashboard (`sync: false`) |
+| Frontend | **Vercel** | Next.js, `NEXT_PUBLIC_API_URL` / `API_PROXY_TARGET` trỏ về Render backend |
+| Self-host (tuỳ chọn) | VPS + nginx | `docker-compose.prod.yml` + `nginx/nginx.conf` (đã có security headers + rate-limit); `terraform/gcp/` cho hạ tầng |
+
+**Bắt buộc khi deploy production:** `JWT_SECRET` ≥ 32 ký tự (thiếu → 503 fail-closed), `CORS_ORIGINS` là allowlist tường minh (`"*"` bị từ chối lúc khởi động).
 
 ---
 
-### 🧪 3. Quy Trình Deploy Staging (Azure)
+### 🔑 4. Biến môi trường
 
-Deployment cho Staging diễn ra **hoàn toàn tự động** khi code được merge vào nhánh `develop`.
+Xem `.env.example` (khớp 1-1 với `src/config.py`). Các biến quan trọng khi deploy:
 
-#### Các bước thực hiện thủ công bằng Terraform:
-```bash
-# Đăng nhập Azure CLI
-az login
-
-cd terraform
-# Khởi tạo Terraform Azure Provider
-terraform init
-
-# Kiểm tra kế hoạch thay đổi hạ tầng Staging trên Azure
-terraform plan -var-file=environments/staging.tfvars
-
-# Apply hạ tầng Staging
-terraform apply -var-file=environments/staging.tfvars -auto-approve
-```
-
----
-
-### 🏭 4. Quy Trình Deploy Production (Azure)
-
-Deployment cho Production diễn ra **hoàn toàn tự động** khi code từ `develop` được merge vào nhánh `main`.
-
-#### Các bước thực hiện thủ công bằng Terraform:
-```bash
-cd terraform
-# Khởi tạo & Apply hạ tầng Production trên Azure
-terraform init
-terraform plan -var-file=environments/production.tfvars
-terraform apply -var-file=environments/production.tfvars -auto-approve
-```
-
----
-
-### 🔄 5. Quy Trình Rollback Trên Azure Container Apps
-
-Trong trường hợp có sự cố phiên bản mới:
-
-#### Rollback Instant Revision (Ứng cứu sự cố < 1 phút):
-Azure Container Apps tự động lưu vết toàn bộ các Revision trước đó. Để chuyển sang Revision ổn định cũ:
-```bash
-# Xem danh sách revisions hiện tại
-az containerapp revision list --name app-ai20krosbag-production-backend --resource-group rg-ai20krosbag-production -o table
-
-# Switch 100% traffic về revision cũ
-az containerapp revision set-mode --name app-ai20krosbag-production-backend --resource-group rg-ai20krosbag-production --mode single
-az containerapp revision activate --name app-ai20krosbag-production-backend --resource-group rg-ai20krosbag-production --revision <previous_revision_name>
-```
-
----
-
-### 🔑 6. Danh Mục Biến Môi Trường (Environment Variables)
-
-| Biến Môi Trường | Mô Tả | Mặc Định Staging | Mặc Định Production |
+| Biến | Mô tả | Dev | Production |
 |---|---|---|---|
-| `APP_ENV` | Môi trường ứng dụng | `staging` | `production` |
-| `APP_PORT` | Port lắng nghe Backend | `8000` | `8000` |
-| `CORS_ORIGINS` | Tên miền CORS được phép | `https://staging.yourdomain.com` | `https://yourdomain.com` |
-| `JWT_SECRET` | Secret HS256 cho JWT (≥32 ký tự) | Staging Secret | Production Secret |
-| `AUTH_USERNAME` | Username login | `admin` | `admin` (đổi prod) |
-| `AUTH_PASSWORD` | Password login (hoặc `AUTH_PASSWORD_HASH` bcrypt) | `test-pass` | Production Secret |
-| `JWT_EXPIRE_MINUTES` | TTL JWT | `60` | `60` |
-| `LOGIN_RATE_LIMIT_MAX` | Login rate limit | `5` | `5` |
-| `RUN_DB_PATH` | File đường dẫn SQLite | `data/runs.db` | `data/runs.db` |
-| `OPENAI_API_KEY` | Key gọi LLM | Staging Key | Production Key |
-| `LOG_LEVEL` | Cấp độ ghi Log | `DEBUG` | `INFO` |
+| `APP_ENV` | `development` \| `staging` \| `production` | `development` | `production` |
+| `JWT_SECRET` | HS256 secret ≥ 32 ký tự (`openssl rand -hex 32`) | rỗng → bypass auth | **bắt buộc** (thiếu → 503) |
+| `AUTH_USERNAME` / `AUTH_PASSWORD` | Tài khoản login | `admin` / `test-pass` | đổi mật khẩu mạnh |
+| `CORS_ORIGINS` | Allowlist origin, phẩy ngăn cách | `http://localhost:3000` | domain thật (`"*"` bị từ chối) |
+| `OPENAI_API_KEY` + `MODEL_NAME` | LLM (id model, không phải display name) | tuỳ chọn | cần cho AI thật |
+| `RUN_DB_PATH` / `RUN_DB_WAL` | SQLite runs/anomalies/review/auth | `data/runs.db` | `data/runs.db`, `RUN_DB_WAL=1` |
+| `MAX_UPLOAD_BYTES` | Giới hạn upload rosbag | `1GiB` | tăng cho bag nhiều GB |
 
-> **Lưu ý auth:** `API_AUTH_TOKEN` đã deprecated, thay bằng 100% JWT. `POST /api/v1/auth/login|signup|verify` public, còn lại yêu cầu `Authorization: Bearer <JWT>`. Dev/Test `JWT_SECRET=""` bypass open, **Production thiếu `JWT_SECRET` → `503` fail-closed** (`routes.py:get_current_user`). `docker-compose.yml` hardcode `APP_ENV=production` nên `.env` phải có `JWT_SECRET`.
+> `API_AUTH_TOKEN` đã bỏ (100% JWT). `POST /api/v1/auth/{login,signup,verify}` public, còn lại cần `Authorization: Bearer <JWT>`. `docker compose up` chạy dev-mode nên không cần secret.
 
 ---
 
-### 🔀 7. Quy Trình Thử Nghiệm CI/CD Flow Chi Tiết
+### 🔄 5. Rollback
 
-1. **Feature Branch Work**:
-   ```bash
-   git checkout -b feature/terraform-deploy-model
-   git add .
-   git commit -m "feat: migrate terraform infrastructure to azure container apps"
-   git push origin feature/terraform-deploy-model
-   ```
-
-2. **Deploy STAGING (Merge vào `develop`)**:
-   - Tạo PR từ `feature/terraform-deploy-model` vào `develop`.
-   - Workflow `.github/workflows/staging.yml` tự động chạy test, push Docker image lên ACR `acrai20krosbagstaging.azurecr.io`, apply Terraform Azure và verify healthcheck.
-
-3. **Deploy PRODUCTION (Merge vào `main`)**:
-   - Tạo PR từ `develop` vào `main`.
-   - Workflow `.github/workflows/production.yml` tự động chạy testsuite, push Docker image lên ACR `acrai20krosbagprod.azurecr.io`, apply Terraform Azure và verify healthcheck.
+- **Render**: dashboard → service → "Rollback" về deploy trước, hoặc redeploy commit cũ.
+- **Vercel**: dashboard → Deployments → "Promote to Production" bản cũ.
 
 ---
 
 ## 🧪 Testing
 
-```powershell
-# Backend (venv):
-.\.venv\Scripts\Activate.ps1
-pytest tests -q  # strict JWT: conftest tự set JWT_SECRET=test-jwt-secret-... nên không cần .env key
+```bash
+# Tất cả (backend + frontend) — đúng những gì CI chạy
+make check-all
 
-# Auth strict mode: client tự inject JWT, unauth_client để assert 401/503
-# Ví dụ lấy token thủ công:
-# curl -X POST http://localhost:8000/api/v1/auth/login -H "Content-Type: application/json" -d '{"username":"admin","password":"test-pass"}'
-# curl http://localhost:8000/api/v1/datasets -H "Authorization: Bearer <token>"
+# Chỉ backend
+uv run pytest                    # 463 test, gate coverage 80% (routes.py ~86%)
+uv run ruff check src/ tests/
+uv run mypy src/
 
-# Lint
-ruff check src tests
-
-# Frontend: unit + typecheck
-npm run frontend:lint
+# Chỉ frontend (từ frontend/)
+cd frontend && pnpm lint && pnpm test && pnpm build
 ```
 
-> Người khác clone về chạy `pytest` **không cần key** vì `tests/conftest.py` tự set `JWT_SECRET` strict và `client` auto-JWT. Chỉ khi chạy `docker compose up` (prod) hoặc gọi API thật mới cần `JWT_SECRET`/`AUTH_*` trong `.env`.
+> `tests/conftest.py` tự set `JWT_SECRET` strict và `client` auto-inject JWT nên
+> clone về chạy `pytest` **không cần key**. `unauth_client` dùng để assert
+> `401/503`. Chỉ deploy thật mới cần `JWT_SECRET`/`AUTH_*`/`OPENAI_API_KEY`.
+>
+> `pnpm test` phải chạy trong `frontend/` — chạy ở root sẽ nhặt nhầm file
+> Playwright `e2e/*.spec.ts`.

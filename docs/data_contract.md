@@ -2,6 +2,12 @@
 
 Single source of truth for all JSON shapes produced by the rule engine and consumed by the API, LLM explainer, and frontend.
 
+> **Nguồn dữ liệu:** toàn bộ rosbag trong `data/` hiện là **synthetic** — sinh
+> bởi `scripts/seed_*.py` với lỗi được inject có chủ đích để test rule engine.
+> Chưa chạy với rosbag thật. Pipeline (`iter_bag_messages` → `detect_anomalies`)
+> không phân biệt nguồn: một bag thật upload qua `POST /api/v1/datasets/upload`
+> đi qua đúng đường đó.
+
 ## Shape 0: Dataset Item
 
 Output of `GET /api/v1/datasets` and the upload endpoint. Backed by
