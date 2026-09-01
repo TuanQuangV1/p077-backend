@@ -3,12 +3,35 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import {
-    ActivityIcon, ArrowRightIcon, BotIcon, CircleAlertIcon,
-    CpuIcon, DatabaseIcon, DownloadIcon, FileTextIcon, GaugeIcon,
-    PlayIcon, RefreshCwIcon, SearchIcon, ServerIcon, ShieldCheckIcon,
-    SkipBackIcon, SkipForwardIcon, Trash2Icon, UploadIcon,
+    ActivityIcon, ArrowRightIcon, BotIcon, ChevronDownIcon, CircleAlertIcon,
+    CopyIcon, CpuIcon, DatabaseIcon, DownloadIcon, FileCodeIcon, FileSpreadsheetIcon,
+    FileTextIcon, GaugeIcon, PlayIcon, PrinterIcon, RefreshCwIcon, SearchIcon,
+    ServerIcon, ShieldCheckIcon, SkipBackIcon, SkipForwardIcon, Trash2Icon, UploadIcon,
 } from "lucide-react"
 import { toast } from "sonner"
+
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuGroup,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+    copyReportJson,
+    downloadReportJson,
+    exportReportCsv,
+    exportReportPdf,
+    exportSingleBagAnomaliesPdf,
+    exportSingleBagAnomaliesCsv,
+    downloadSingleBagAnomaliesJson,
+    exportAllBagsAnomaliesPdf,
+    exportAllBagsAnomaliesCsv,
+    downloadAllBagsAnomaliesJson,
+    type RunAnomalyDetail,
+} from "@/lib/report-export"
 
 import { AIConclusion } from "@/components/ai-conclusion"
 import { AnalysisControlBar } from "@/components/analysis/analysis-control-bar"
@@ -680,6 +703,8 @@ const pct = (value: number | null) => (value === null ? "--" : `${Math.round(val
 function ReportsEnhanced({ activeRun }: { activeRun: AnalysisRun | null }) {
     const [stats, setStats] = useState<ReviewStats | null>(null)
     const [failed, setFailed] = useState(false)
+    const [exportingRunId, setExportingRunId] = useState<string | null>(null)
+    const [exportingAll, setExportingAll] = useState(false)
 
     const load = (isCancelled: () => boolean = () => false) => {
         fetcher<ReviewStats>("/api/review/stats")
@@ -695,9 +720,107 @@ function ReportsEnhanced({ activeRun }: { activeRun: AnalysisRun | null }) {
     if (failed) return <SectionCard title="Agent Diagnostic Precision" description="Human-in-the-Loop audit verdict aggregates"><p className="py-8 text-sm text-muted-foreground">Unable to load review statistics.</p></SectionCard>
     if (!stats) return <SectionCard title="Agent Diagnostic Precision" description="Human-in-the-Loop audit verdict aggregates"><p className="py-8 text-sm text-muted-foreground">Loading audit statistics...</p></SectionCard>
 
-    const copyJson = () => {
-        navigator.clipboard?.writeText(json(stats))
-        toast.success("Copied precision report JSON")
+    const handleCopyJson = () => {
+        if (!stats) return
+        if (copyReportJson(stats)) {
+            toast.success("Copied precision report JSON to clipboard")
+        }
+    }
+
+    const handleDownloadJson = () => {
+        if (!stats) return
+        downloadReportJson(stats)
+        toast.success("Downloaded precision JSON report file")
+    }
+
+    const handleExportCsv = () => {
+        if (!stats) return
+        if (exportReportCsv(stats)) {
+            toast.success("Downloaded precision CSV report file")
+        } else {
+            toast.info("No run data available to export")
+        }
+    }
+
+    const handleExportPdf = () => {
+        if (!stats) return
+        exportReportPdf(stats)
+    }
+
+    const handleExportSingleBag = async (run: ReviewStats["runs"][number], format: "pdf" | "csv" | "json") => {
+        setExportingRunId(run.runId)
+        try {
+            const detail = await fetcher<{ anomalies: Anomaly[]; runRootCause?: RunRootCause | null }>(`/api/runs/${run.runId}`)
+            const data: RunAnomalyDetail = {
+                run: { runId: run.runId, rosbagName: run.rosbagName },
+                anomalies: detail.anomalies || [],
+                runRootCause: detail.runRootCause,
+            }
+
+            if (format === "pdf") {
+                exportSingleBagAnomaliesPdf(data)
+            } else if (format === "csv") {
+                if (exportSingleBagAnomaliesCsv(data)) {
+                    toast.success(`Exported ${data.anomalies.length} anomalies for ${run.rosbagName}`)
+                } else {
+                    toast.info(`No anomalies detected in ${run.rosbagName}`)
+                }
+            } else if (format === "json") {
+                downloadSingleBagAnomaliesJson(data)
+                toast.success(`Exported anomaly JSON for ${run.rosbagName}`)
+            }
+        } catch {
+            toast.error(`Unable to load anomalies for ${run.rosbagName}`)
+        } finally {
+            setExportingRunId(null)
+        }
+    }
+
+    const handleExportAllAnomalies = async (format: "pdf" | "csv" | "json") => {
+        if (!stats || stats.runs.length === 0) {
+            toast.info("No runs available to export")
+            return
+        }
+        setExportingAll(true)
+        try {
+            const results = await Promise.all(
+                stats.runs.map(async (r) => {
+                    try {
+                        const detail = await fetcher<{ anomalies: Anomaly[]; runRootCause?: RunRootCause | null }>(`/api/runs/${r.runId}`)
+                        return {
+                            run: { runId: r.runId, rosbagName: r.rosbagName },
+                            anomalies: detail.anomalies || [],
+                            runRootCause: detail.runRootCause,
+                        } as RunAnomalyDetail
+                    } catch {
+                        return {
+                            run: { runId: r.runId, rosbagName: r.rosbagName },
+                            anomalies: [],
+                            runRootCause: null,
+                        } as RunAnomalyDetail
+                    }
+                })
+            )
+
+            const totalAnomalies = results.reduce((sum, r) => sum + r.anomalies.length, 0)
+
+            if (format === "pdf") {
+                exportAllBagsAnomaliesPdf(results)
+            } else if (format === "csv") {
+                if (exportAllBagsAnomaliesCsv(results)) {
+                    toast.success(`Exported ${totalAnomalies} anomalies across ${results.length} bags to CSV`)
+                } else {
+                    toast.info("No anomalies found across analyzed bags")
+                }
+            } else if (format === "json") {
+                downloadAllBagsAnomaliesJson(results)
+                toast.success(`Exported ${totalAnomalies} anomalies across ${results.length} bags to JSON`)
+            }
+        } catch {
+            toast.error("Unable to load fleet anomalies for export")
+        } finally {
+            setExportingAll(false)
+        }
     }
 
     return <>
@@ -711,12 +834,69 @@ function ReportsEnhanced({ activeRun }: { activeRun: AnalysisRun | null }) {
 
         {/* Per-Run Table */}
         <SectionCard
-            title="Per-Run Diagnostic Precision"
-            description="Human expert verdicts recorded for each diagnostic run"
+            title="Per-Run Diagnostic Precision & Anomalies"
+            description="Human expert verdicts and anomaly exports recorded for each diagnostic run"
             actions={
                 <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => load()} className="cursor-pointer"><RefreshCwIcon data-icon="inline-start" />Refresh</Button>
-                    <Button variant="outline" size="sm" onClick={copyJson} className="cursor-pointer"><DownloadIcon data-icon="inline-start" />JSON</Button>
+                    <Button variant="outline" size="sm" onClick={() => load()} className="cursor-pointer">
+                        <RefreshCwIcon data-icon="inline-start" />
+                        Refresh
+                    </Button>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger render={
+                            <Button variant="outline" size="sm" className="cursor-pointer gap-1.5 font-mono" disabled={exportingAll}>
+                                {exportingAll ? <RefreshCwIcon className="size-3.5 animate-spin" /> : <DownloadIcon className="size-3.5" data-icon="inline-start" />}
+                                Export All Errors
+                                <ChevronDownIcon className="size-3 text-muted-foreground ml-0.5" />
+                            </Button>
+                        } />
+                        <DropdownMenuContent align="end" className="w-64 font-sans">
+                            <DropdownMenuGroup>
+                                <DropdownMenuLabel className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                                    All Detected Errors
+                                </DropdownMenuLabel>
+                                <DropdownMenuItem onClick={() => handleExportAllAnomalies("pdf")} className="cursor-pointer gap-2.5 py-2">
+                                    <PrinterIcon className="size-4 text-primary" />
+                                    <div className="flex flex-col">
+                                        <span className="text-xs font-medium">Export All Errors (PDF)</span>
+                                        <span className="text-[10px] text-muted-foreground">Fleet-wide consolidated report</span>
+                                    </div>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleExportAllAnomalies("csv")} className="cursor-pointer gap-2.5 py-2">
+                                    <FileSpreadsheetIcon className="size-4 text-emerald-500" />
+                                    <div className="flex flex-col">
+                                        <span className="text-xs font-medium">Export All Errors (CSV)</span>
+                                        <span className="text-[10px] text-muted-foreground">Single spreadsheet of all anomalies</span>
+                                    </div>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleExportAllAnomalies("json")} className="cursor-pointer gap-2.5 py-2">
+                                    <FileCodeIcon className="size-4 text-amber-500" />
+                                    <div className="flex flex-col">
+                                        <span className="text-xs font-medium">Export All Errors (JSON)</span>
+                                        <span className="text-[10px] text-muted-foreground">Structured payload of all failures</span>
+                                    </div>
+                                </DropdownMenuItem>
+                            </DropdownMenuGroup>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuGroup>
+                                <DropdownMenuLabel className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                                    Precision Audit Summary
+                                </DropdownMenuLabel>
+                                <DropdownMenuItem onClick={handleExportPdf} className="cursor-pointer gap-2.5 py-1.5 text-xs">
+                                    <PrinterIcon className="size-3.5 text-muted-foreground" />
+                                    <span>Audit Table (PDF)</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={handleExportCsv} className="cursor-pointer gap-2.5 py-1.5 text-xs">
+                                    <FileSpreadsheetIcon className="size-3.5 text-muted-foreground" />
+                                    <span>Audit Table (CSV)</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={handleCopyJson} className="cursor-pointer gap-2.5 py-1.5 text-xs">
+                                    <CopyIcon className="size-3.5 text-muted-foreground" />
+                                    <span>Copy Audit JSON</span>
+                                </DropdownMenuItem>
+                            </DropdownMenuGroup>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 </div>
             }
         >
@@ -731,6 +911,7 @@ function ReportsEnhanced({ activeRun }: { activeRun: AnalysisRun | null }) {
                             <th className="pb-2 text-right">Rejected</th>
                             <th className="pb-2 text-right">Edited</th>
                             <th className="pb-2 text-right">Precision</th>
+                            <th className="pb-2 text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-border/40">
@@ -746,6 +927,45 @@ function ReportsEnhanced({ activeRun }: { activeRun: AnalysisRun | null }) {
                                 <td className="py-3 text-right font-mono text-xs text-foreground">{run.rejected}</td>
                                 <td className="py-3 text-right font-mono text-xs text-foreground">{run.edited}</td>
                                 <td className="py-3 text-right font-mono text-xs font-semibold text-foreground">{pct(run.accuracy)}</td>
+                                <td className="py-3 text-right">
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger render={
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-7 px-2 text-xs font-mono gap-1 text-muted-foreground hover:text-foreground cursor-pointer"
+                                                disabled={exportingRunId === run.runId}
+                                            >
+                                                {exportingRunId === run.runId ? (
+                                                    <RefreshCwIcon className="size-3 animate-spin" />
+                                                ) : (
+                                                    <DownloadIcon className="size-3" />
+                                                )}
+                                                <span>Errors</span>
+                                                <ChevronDownIcon className="size-2.5 opacity-60 ml-0.5" />
+                                            </Button>
+                                        } />
+                                        <DropdownMenuContent align="end" className="w-52 font-sans">
+                                            <DropdownMenuGroup>
+                                                <DropdownMenuLabel className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground truncate max-w-[190px]">
+                                                    {run.rosbagName}
+                                                </DropdownMenuLabel>
+                                                <DropdownMenuItem onClick={() => handleExportSingleBag(run, "pdf")} className="cursor-pointer gap-2 py-1.5 text-xs">
+                                                    <PrinterIcon className="size-3.5 text-primary" />
+                                                    <span>Export Anomalies PDF</span>
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => handleExportSingleBag(run, "csv")} className="cursor-pointer gap-2 py-1.5 text-xs">
+                                                    <FileSpreadsheetIcon className="size-3.5 text-emerald-500" />
+                                                    <span>Export Anomalies CSV</span>
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => handleExportSingleBag(run, "json")} className="cursor-pointer gap-2 py-1.5 text-xs">
+                                                    <FileCodeIcon className="size-3.5 text-amber-500" />
+                                                    <span>Export Anomalies JSON</span>
+                                                </DropdownMenuItem>
+                                            </DropdownMenuGroup>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </td>
                             </tr>
                         ))}
                     </tbody>

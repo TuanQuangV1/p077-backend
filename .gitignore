@@ -100,3 +100,4 @@ terraform/gcp/.terraform/
 nginx/certs/
 .opencode/plans/
 .superpowers/
+*.exe
