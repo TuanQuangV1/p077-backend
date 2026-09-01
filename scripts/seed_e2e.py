@@ -47,6 +47,10 @@ LOG_MSGTYPE = "rcl_interfaces/msg/Log"
 
 LOG_FATAL = 50
 
+# Khoảng cách LiDAR dùng cho fixture gate2 — chỉ để bag khác byte với bag
+# dataset; vẫn nằm trong [range_min, range_max] nên detector xử lý y hệt.
+GATE2_SCAN_RANGE = 0.75
+
 TARGETS = {
     "gate2-healthy": FIXTURE_DIR / "healthy_01_0.mcap",
     "gate2-anomaly": FIXTURE_DIR / "F1_02_0.mcap",
@@ -64,7 +68,7 @@ def _hz_stamps(start: float, count: int, interval: float) -> list[float]:
     return [round(start + i * interval, 6) for i in range(count)]
 
 
-def _builders(typestore) -> dict[str, object]:
+def _builders(typestore, scan_range: float = 0.5) -> dict[str, object]:
     header_cls = typestore.get_msgdef("std_msgs/msg/Header").cls
     time_cls = typestore.get_msgdef("builtin_interfaces/msg/Time").cls
     point_cls = typestore.get_msgdef("geometry_msgs/msg/Point").cls
@@ -92,7 +96,7 @@ def _builders(typestore) -> dict[str, object]:
             scan_time=0.1,
             range_min=0.1,
             range_max=50.0,
-            ranges=np.array([0.5] * 501, dtype=np.float32),
+            ranges=np.array([scan_range] * 501, dtype=np.float32),
             intensities=np.array([], dtype=np.float32),
         )
 
@@ -121,8 +125,8 @@ def _builders(typestore) -> dict[str, object]:
     return {"laser": laser, "odom": odom, "log": log_entry}
 
 
-def build_healthy(typestore) -> list[tuple[str, str, list[tuple[int, bytes]]]]:
-    b = _builders(typestore)
+def build_healthy(typestore, scan_range: float = 0.5) -> list[tuple[str, str, list[tuple[int, bytes]]]]:
+    b = _builders(typestore, scan_range)
     scan = [(int(t * 1e9), typestore.serialize_cdr(b["laser"](t), SCAN_MSGTYPE)) for t in _hz_stamps(0.1, 1799, 0.1)]
     odom = [(int(t * 1e9), typestore.serialize_cdr(b["odom"](t), ODOM_MSGTYPE)) for t in _hz_stamps(0.1, 1799, 0.1)]
     return [
@@ -131,8 +135,8 @@ def build_healthy(typestore) -> list[tuple[str, str, list[tuple[int, bytes]]]]:
     ]
 
 
-def build_faulty(typestore) -> list[tuple[str, str, list[tuple[int, bytes]]]]:
-    b = _builders(typestore)
+def build_faulty(typestore, scan_range: float = 0.5) -> list[tuple[str, str, list[tuple[int, bytes]]]]:
+    b = _builders(typestore, scan_range)
     scan_10 = _hz_stamps(0.1, 450, 0.1)
     scan_drop = _hz_stamps(45.4, 224, 0.4)
     scan_resume = _hz_stamps(134.7, 453, 0.1)
@@ -180,8 +184,15 @@ def main() -> int:
         print(f"rosbags typestore unavailable: {exc}", file=sys.stderr)
         return 1
 
+    # Bag của gate2 phải KHÁC BYTE với bag dataset: backend khử trùng lặp theo
+    # nội dung, nên khi hai bên giống hệt nhau thì lần upload trong gate2.spec
+    # trả về chính dataset đã seed (`h01`) thay vì tạo bản ghi mới, và test chờ
+    # dòng `healthy_01_0.mcap` sẽ không bao giờ thấy. Chỉ đổi giá trị `ranges`:
+    # cùng số message, cùng mốc thời gian, cùng hành vi detector.
     healthy = build_healthy(typestore)
     faulty = build_faulty(typestore)
+    gate2_healthy = build_healthy(typestore, scan_range=GATE2_SCAN_RANGE)
+    gate2_faulty = build_faulty(typestore, scan_range=GATE2_SCAN_RANGE)
 
     # Remove any leftover two-bag "dataset" folder from previous seeds: it
     # registered as a dataset whose analysis merged both bags.
@@ -189,8 +200,8 @@ def main() -> int:
     if legacy_dataset.is_dir():
         shutil.rmtree(legacy_dataset)
 
-    write_bag(typestore, TARGETS["gate2-healthy"], healthy)
-    write_bag(typestore, TARGETS["gate2-anomaly"], faulty)
+    write_bag(typestore, TARGETS["gate2-healthy"], gate2_healthy)
+    write_bag(typestore, TARGETS["gate2-anomaly"], gate2_faulty)
     write_bag(typestore, TARGETS["dataset-h01"], healthy)
     write_bag(typestore, TARGETS["dataset-f02"], faulty)
 

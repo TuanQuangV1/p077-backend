@@ -21,14 +21,15 @@ test("dashboard renders stat tiles and recent runs", async ({ page }) => {
 test("dashboard exposes the full sidebar navigation", async ({ page }) => {
     await page.goto("/")
 
+    // Nguồn sự thật: NAV trong frontend/components/app-sidebar.tsx
     for (const label of [
-        "Overview",
-        "ROSBags",
-        "Diagnostics",
+        "Fleet Overview",
+        "ROSBag Registry",
+        "Diagnostics Workspace",
         "Human Review",
-        "LLM Inference",
-        "Reports",
-        "Architecture",
+        "LLM Observability",
+        "Diagnostic Reports",
+        "System Architecture",
     ]) {
         await expect(page.getByRole("link", { name: label })).toBeVisible()
     }

@@ -21,13 +21,6 @@ test.describe("auth - unauth redirect", () => {
 test.describe("auth - login", () => {
     test.use({ storageState: { cookies: [], origins: [] } })
 
-    test("autofill demo fills admin/test-pass", async ({ page }) => {
-        await page.goto("/login")
-        await page.getByTestId("login-autofill").click()
-        await expect(page.getByTestId("login-username")).toHaveValue("admin")
-        await expect(page.getByTestId("login-password")).toHaveValue("test-pass")
-    })
-
     test("login success with admin/test-pass", async ({ page }) => {
         await page.goto("/login")
         await page.getByTestId("login-username").fill("admin")
@@ -61,14 +54,6 @@ test.describe("auth - login", () => {
 
 test.describe("auth - signup", () => {
     test.use({ storageState: { cookies: [], origins: [] } })
-
-    test("autofill demo on signup", async ({ page }) => {
-        await page.goto("/signup")
-        await page.getByTestId("signup-autofill").click()
-        await expect(page.getByTestId("signup-username")).toHaveValue("admin")
-        await expect(page.getByTestId("signup-password")).toHaveValue("test-pass")
-        await expect(page.getByTestId("signup-confirm")).toHaveValue("test-pass")
-    })
 
     test("signup success creates new user and logs in", async ({ page }) => {
         const username = `e2e_${Date.now()}`
@@ -116,7 +101,7 @@ test.describe("auth - signup", () => {
         await page.getByTestId("signup-password").fill("abc123")
         await page.getByTestId("signup-confirm").fill("xyz789")
         await page.getByTestId("signup-submit").click()
-        await expect(page.getByText(/passwords do not match|do not match/i).first()).toBeVisible()
+        await expect(page.getByText(/does not match/i).first()).toBeVisible()
     })
 
     test("signup short username/password 422", async ({ page }) => {

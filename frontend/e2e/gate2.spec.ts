@@ -10,7 +10,9 @@ test.describe.configure({ mode: "serial" })
 test.setTimeout(120_000)
 
 async function uploadAndAnalyze(page: import("@playwright/test").Page, file: string, name: string) {
-  await page.goto("/datasets")
+  // Xem ghi chú trong upload.spec.ts: phải chờ hydrate xong mới nạp file.
+  await page.goto("/datasets", { waitUntil: "networkidle" })
+  await expect(page.getByRole("button", { name: /Upload ROSBag/i })).toBeVisible()
   await page.setInputFiles("#file-upload-input", file)
   await expect(page.getByText(/ROSBag uploaded successfully|already exists/i).first()).toBeVisible()
 
@@ -27,7 +29,10 @@ async function uploadAndAnalyze(page: import("@playwright/test").Page, file: str
 test("Gate 2 healthy upload renders a green result without detections", async ({ page }) => {
   await uploadAndAnalyze(page, HEALTHY, "healthy_01_0.mcap")
 
-  await expect(page.getByText("HEALTH 100").or(page.getByText("HS 100"))).toBeVisible()
+  // Điểm health hiển thị ở dải "Operational Reliability Scale" trong
+  // health-gauge.tsx: `Index: <score> / 100`. Nhãn "HEALTH 100"/"HS 100"
+  // của bản cũ không còn tồn tại trong UI.
+  await expect(page.getByText(/Index:\s*100\s*\/\s*100/)).toBeVisible()
   await expect(page.getByText("0 anomalies").or(page.getByText("0 detections")).first()).toBeVisible()
   await expect(page.getByText("NOMINAL").first()).toBeVisible()
 })
@@ -37,11 +42,14 @@ test("Gate 2 anomaly upload renders detection and labelled LLM fallback", async 
 
   await expect(page.getByText("Severe publish rate drop on /scan").first()).toBeVisible()
   await expect(page.getByText("LLM Synthesis Available").first()).toBeVisible()
-  await expect(page.getByText("canned-fallback").first()).toBeVisible({ timeout: 30_000 })
+  // Backend trả model "canned-fallback" khi LLM không tới được, nhưng UI hiển
+  // thị nó thành nhãn dễ đọc (ai-conclusion.tsx:115) chứ không in chuỗi thô.
+  await expect(page.getByText(/Rule-based fallback/i).first()).toBeVisible({ timeout: 30_000 })
 })
 
 test("Gate 2 invalid upload shows the backend validation error and stays usable", async ({ page }) => {
-  await page.goto("/datasets")
+  await page.goto("/datasets", { waitUntil: "networkidle" })
+  await expect(page.getByRole("button", { name: /Upload ROSBag/i })).toBeVisible()
   await page.setInputFiles("#file-upload-input", INVALID)
 
   await expect(page.getByText(/Upload failed.*\.txt/i)).toBeVisible()

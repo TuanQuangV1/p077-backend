@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
-import { login, signup, verifyToken, getAuthToken } from "@/lib/api"
+import { login, verifyToken, getAuthToken } from "@/lib/api"
 
 export function LoginForm() {
   const router = useRouter()
@@ -72,45 +72,6 @@ export function LoginForm() {
       clearTimeout(t)
     }
   }, [router])
-
-  const handleAutofill = async () => {
-    const demoUser = "admin"
-    const demoPass = "test-pass"
-    setUsername(demoUser)
-    setPassword(demoPass)
-    setFieldErrors({})
-    toast.info("Autofilled demo credentials — signing in...")
-    setLoading(true)
-    try {
-      try {
-        const data = await login(demoUser, demoPass)
-        if (rememberMe) {
-          localStorage.setItem("rav_remembered_username", demoUser)
-        }
-        toast.success("Authentication successful", { description: `Welcome back, ${data.username}!` })
-        router.push("/")
-        return
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : ""
-        const isNotFound = /not found|invalid credentials|401/i.test(msg)
-        if (!isNotFound) throw err
-        await signup(demoUser, demoPass, demoPass)
-        const data2 = await login(demoUser, demoPass)
-        if (rememberMe) {
-          localStorage.setItem("rav_remembered_username", demoUser)
-        }
-        toast.success("Account provisioned & authenticated", { description: `Welcome, ${data2.username}!` })
-        router.push("/")
-        return
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Authentication failed"
-      setFieldErrors({ general: "Invalid credentials: Check username or password." })
-      toast.error(msg, { description: "Verify AUTH_PASSWORD in .env is configured correctly." })
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

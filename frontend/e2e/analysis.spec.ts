@@ -9,7 +9,7 @@ test("analysis workspace shows detections and timeline", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "Diagnostics Workspace" })).toBeVisible()
     await expect(page.getByText(/lanes/i)).toBeVisible()
     await expect(page.getByText(/Detected Faults|Faults/i).first()).toBeVisible()
-    await expect(page.getByText(/Message Timeline/i).first()).toBeVisible()
+    await expect(page.getByText(/Timeline & Anomaly Heatmap/i).first()).toBeVisible()
     await windowsPromise
     await expect(page.locator("ul li button").first()).toBeVisible({ timeout: 30_000 })
 })

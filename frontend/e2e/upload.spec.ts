@@ -5,7 +5,11 @@ import path from "path"
 const FIXTURE = path.join(__dirname, "fixtures", "trip_upload.db3")
 
 test("upload a real .db3 through the UI and list it", async ({ page }) => {
-    await page.goto("/datasets")
+    // Chờ hydrate xong rồi mới nạp file: setInputFiles chạy trước khi React gắn
+    // onChange thì input nhận file nhưng không ai xử lý - không upload, không
+    // toast, và test đỏ ngẫu nhiên tuỳ máy nhanh chậm.
+    await page.goto("/datasets", { waitUntil: "networkidle" })
+    await expect(page.getByRole("button", { name: /Upload ROSBag/i })).toBeVisible()
 
     await page.setInputFiles("#file-upload-input", FIXTURE)
 
