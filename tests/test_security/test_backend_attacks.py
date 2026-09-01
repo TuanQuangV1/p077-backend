@@ -191,10 +191,7 @@ def test_symlink_inside_data_dir_does_not_escape_deletion(tmp_path, monkeypatch)
     data_root = tmp_path / "data"
     dataset = data_root / "symtest"
     dataset.mkdir(parents=True)
-    try:
-        (dataset / "escape.db3").symlink_to(victim)
-    except OSError:
-        pytest.skip("Symlink creation not permitted in this environment")
+    (dataset / "escape.db3").symlink_to(victim)
 
     monkeypatch.setattr(experiments, "DATA_DIR", data_root)
     experiments.delete_experiment("symtest")

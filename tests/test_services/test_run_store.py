@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sqlite3
+
 import pytest
 
 from src.services import run_store
@@ -221,3 +223,30 @@ def test_hilt_iterations_persist_after_save(monkeypatch, tmp_path) -> None:
     # New connection (simulated by calling list again)
     iterations = run_store.list_hilt_iterations("run_1", "anomaly_001")
     assert len(iterations) == 2
+
+
+def test_migrate_tolerates_already_applied_column(tmp_path) -> None:
+    """Re-running the owner migration on a current schema must not raise."""
+    conn = sqlite3.connect(tmp_path / "runs.db")
+    conn.executescript(run_store._SCHEMA)
+    run_store._migrate(conn)
+    run_store._migrate(conn)  # second pass: column already there
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
+    assert "owner" in cols
+    conn.close()
+
+
+class _FlakyConn(sqlite3.Connection):
+    def execute(self, sql, *args, **kwargs):  # type: ignore[override]
+        if sql.strip().upper().startswith("UPDATE RUNS SET OWNER"):
+            raise sqlite3.OperationalError("database is locked")
+        return super().execute(sql, *args, **kwargs)
+
+
+def test_migrate_reraises_a_real_failure(tmp_path) -> None:
+    """A migration error that is not 'already applied' must propagate, not pass."""
+    conn = sqlite3.connect(tmp_path / "runs.db", factory=_FlakyConn)
+    conn.executescript(run_store._SCHEMA)
+    with pytest.raises(sqlite3.OperationalError, match="locked"):
+        run_store._migrate(conn)
+    conn.close()

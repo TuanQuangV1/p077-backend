@@ -53,9 +53,6 @@ def test_cdr_extract_throughput_benchmark() -> None:
     elapsed = time.perf_counter() - start
     rate = iterations / elapsed
 
-    # Assert processing rate (tracer/coverage reduces throughput from ~50k to ~20k msg/sec)
-    import sys
-    min_rate = 15000 if sys.gettrace() is not None else 30000
-    assert rate > min_rate, f"CDR decode throughput was {rate:.1f} msg/sec, expected > {min_rate:,} msg/sec"
-    max_elapsed = 0.5 if sys.gettrace() is not None else 0.25
-    assert elapsed < max_elapsed, f"Decoding {iterations} took {elapsed:.4f}s, expected < {max_elapsed}s"
+    # Assert processing rate is at least 30,000 msg/sec (well within fast-path threshold)
+    assert rate > 30000, f"CDR decode throughput was {rate:.1f} msg/sec, expected > 30,000 msg/sec"
+    assert elapsed < 0.25, f"Decoding {iterations} took {elapsed:.4f}s, expected < 0.25s"

@@ -6,12 +6,11 @@ survives restarts and tests stay isolated. Optional API-token auth and
 in-memory rate limiting protect the public endpoints.
 """
 
-import asyncio
 import datetime
 import functools
-import json
 import logging
 import os
+import json
 import time
 from collections import Counter, defaultdict
 from collections.abc import Iterator
@@ -19,9 +18,14 @@ from itertools import chain
 from pathlib import Path
 from typing import Any
 
+import jwt
+
+from src.services import auth as auth_service
+
+import asyncio
+
 import anyio
 import httpx
-import jwt
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -67,6 +71,8 @@ from src.models.schemas import (
     LogoutResponse,
     ReviewItem,
     ReviewListResponse,
+    ReviewRuleStat,
+    ReviewRuleStatsResponse,
     ReviewStatsResponse,
     ReviewStatsRun,
     RunListResponse,
@@ -75,7 +81,6 @@ from src.models.schemas import (
     SignupResponse,
     VerifyResponse,
 )
-from src.services import auth as auth_service
 from src.services import run_store
 from src.services.analysis import (
     _anomaly_summaries,
@@ -83,12 +88,13 @@ from src.services.analysis import (
     _configured_model,
     _kind_labels,
     _pending_run_from_dataset,
+    recording_bounds,
     run_analysis,
     select_run_root_cause,
 )
 from src.services.bag_stream import iter_bag_messages
 from src.services.diagnostics import detect_anomalies, parse_mcap_file
-from src.services.diagnostics_config import get_diagnostics_thresholds, save_diagnostics_thresholds
+from src.services.diagnostics_config import merge_diagnostics_thresholds, save_diagnostics_thresholds
 from src.services.health import (
     DEEP_DIVE_TRIGGER_THRESHOLD,
     build_deep_dive_prompt,
@@ -132,6 +138,13 @@ _LOGIN_RATE_LIMIT_WINDOW_SEC = float(os.environ.get("LOGIN_RATE_LIMIT_WINDOW_SEC
 _login_rate_limiter = SlidingWindowRateLimiter(_LOGIN_RATE_LIMIT_MAX, _LOGIN_RATE_LIMIT_WINDOW_SEC)
 
 
+# Environments that must never run with auth disabled. `staging` used to fall
+# on the permissive side of `app_env != "production"`, which meant a staging
+# deploy that forgot JWT_SECRET served every protected route unauthenticated,
+# attributing each request to the `admin` owner.
+_AUTH_REQUIRED_ENVS = frozenset({"production", "staging"})
+
+
 def _extract_bearer_token(authorization: str | None) -> str | None:
     if not authorization:
         return None
@@ -147,7 +160,7 @@ def get_current_user(authorization: str | None = Header(default=None)) -> str:
     jwt_secret = getattr(settings, "jwt_secret", "")
     app_env = getattr(settings, "app_env", "development")
     if not jwt_secret:
-        if app_env != "production":
+        if app_env not in _AUTH_REQUIRED_ENVS:
             return "admin"
         raise HTTPException(status_code=503, detail="JWT_SECRET not configured")
 
@@ -193,7 +206,7 @@ def _require_llm_auth(authorization: str | None = Header(default=None)) -> None:
     jwt_secret = getattr(settings, "jwt_secret", "")
     app_env = getattr(settings, "app_env", "development")
     # Fail closed in production when JWT secret is not properly configured
-    if app_env == "production" and not jwt_secret:
+    if app_env in _AUTH_REQUIRED_ENVS and not jwt_secret:
         raise HTTPException(
             status_code=503,
             detail="LLM endpoints require JWT_SECRET to be configured",
@@ -331,7 +344,7 @@ async def login(
     """
     settings = get_settings()
     # In production require JWT_SECRET to be configured properly
-    if settings.app_env == "production" and not settings.jwt_secret:
+    if settings.app_env in _AUTH_REQUIRED_ENVS and not settings.jwt_secret:
         raise HTTPException(status_code=503, detail="JWT_SECRET not configured")
 
     # In dev/test if no password configured at all, allow login with default admin/admin?
@@ -381,7 +394,7 @@ async def signup(
     - Rate-limit 5 req/min/IP như login
     """
     settings = get_settings()
-    if settings.app_env == "production" and not settings.jwt_secret:
+    if settings.app_env in _AUTH_REQUIRED_ENVS and not settings.jwt_secret:
         raise HTTPException(status_code=503, detail="JWT_SECRET not configured")
 
     if payload.password != payload.confirm_password:
@@ -493,12 +506,10 @@ def _resolve_diagnostics_file_path(file_path: str) -> Path:
     return resolved
 
 
-def _enrich_analysis_fields(
-    _exps: list[dict[str, Any]], owner: str | None
-) -> dict[str, dict[str, Any]]:
+def _enrich_analysis_fields(owner: str | None) -> dict[str, dict[str, Any]]:
     """Build rosbagId -> latest run map for analysisStatus enrichment."""
     try:
-        runs = run_store.list_runs(owner)  # type: ignore[arg-type]
+        runs = run_store.list_runs(owner)
     except Exception:
         return {}
     latest: dict[str, dict[str, Any]] = {}
@@ -512,7 +523,7 @@ def _enrich_analysis_fields(
 def _load_datasets(owner: str | None = None) -> list[DatasetItem]:
     """Scan data/ subfolders for rosbag datasets (cached by :func:`list_experiments`)."""
     exps = list_experiments(owner)
-    latest_by_bag = _enrich_analysis_fields(exps, owner)
+    latest_by_bag = _enrich_analysis_fields(owner)
     items: list[DatasetItem] = []
     for exp in exps:
         run = latest_by_bag.get(exp["id"])
@@ -777,8 +788,11 @@ async def delete_dataset(dataset_id: str, owner: str = Depends(get_current_user)
 
 
 @router.get("/runs", response_model=RunListResponse)
-async def list_runs(limit: int = Query(default=50, ge=1, le=500)) -> RunListResponse:
-    """List analysis runs, newest first, with their real LLM usage per run.
+async def list_runs(
+    limit: int = Query(default=50, ge=1, le=500),
+    owner: str = Depends(get_current_user),
+) -> RunListResponse:
+    """List the current user's analysis runs, newest first, with real LLM usage.
 
     Backs the LLM Observability console tab (`model`, `totalLatencyMs`,
     `promptTokens`, `completionTokens`, `costUsd` per run) — replaces the
@@ -787,11 +801,12 @@ async def list_runs(limit: int = Query(default=50, ge=1, le=500)) -> RunListResp
 
     Args:
         limit: Maximum number of runs to return.
+        owner: Current user (from JWT).
 
     Returns:
         ``RunListResponse`` with the matching runs and the true total count.
     """
-    runs = await anyio.to_thread.run_sync(run_store.list_runs)
+    runs = await anyio.to_thread.run_sync(run_store.list_runs, owner)
     return RunListResponse(items=[AnalysisRun(**run) for run in runs[:limit]], total=len(runs))
 
 
@@ -912,7 +927,7 @@ async def create_analysis(
     if not match:
         raise HTTPException(status_code=404, detail="dataset not found")
 
-    # In production the analysis can take 40-800s (detect + LLM) - never block the
+    # In production the analysis can take 40-800s (detect + LLM) — never block the
     # HTTP worker that the frontend proxy waits on. Queue a placeholder run and
     # finish in BackgroundTasks. In test/dev keep the old synchronous contract so
     # existing tests that assert ``status == succeeded`` immediately still pass.
@@ -972,7 +987,10 @@ async def get_thresholds() -> DiagnosticsThresholdsResponse:
     Returns:
         ``DiagnosticsThresholdsResponse`` with all thresholds in effect.
     """
-    thresholds = await anyio.to_thread.run_sync(get_diagnostics_thresholds)
+    # `get_diagnostics_thresholds` returns only the persisted delta (see
+    # `save_diagnostics_thresholds`'s docstring) — merge it onto the code
+    # defaults to report the full effective set, not just overridden keys.
+    thresholds = await anyio.to_thread.run_sync(merge_diagnostics_thresholds)
     logger.debug(
         "diagnostics.thresholds.read",
         extra={
@@ -1044,10 +1062,15 @@ async def get_analysis(run_id: str, owner: str = Depends(get_current_user)) -> A
 
         ai_results = [AIResultSummary(**_coerce_ai(result)) for result in persisted_ai]
     else:
-        # Recording bounds are not persisted with the run, so this rebuild path
-        # sends absolute timestamps where the original analysis sent relative
-        # ones. It only fires for runs whose AI results are missing.
-        ai_results = _build_ai_results(run_id, detections)
+        # Only fires for runs whose AI results are missing. The recording bounds
+        # are recovered from the detections' own two clocks so the model is
+        # prompted in relative seconds, matching the `tRelSec` its evidence rows
+        # carry — otherwise one panel narrates 425.1s beside evidence at 66.8s.
+        ai_results = _build_ai_results(
+            run_id,
+            detections,
+            recording_bounds(detections, rosbag.durationSec if rosbag else None),
+        )
     health = compute_health_summary(detections, total_messages=rosbag.messageCount if rosbag else 0)
     root_cause = select_run_root_cause(detections, ai_results)
     return AnalysisDetailResponse(
@@ -1199,6 +1222,35 @@ async def review_queue(
     )
     items = [ReviewItem(**item) for item in rows]
     return ReviewListResponse(items=items, total=len(items))
+
+
+@router.get("/review/rule-stats", response_model=ReviewRuleStatsResponse)
+async def review_rule_statistics(owner: str = Depends(get_current_user)) -> ReviewRuleStatsResponse:
+    """Which detection rules reviewers reject most often (per-owner).
+
+    Closes the loop on human review: verdicts were recorded but never read
+    back, so nobody could tell which rule to tune. Rows are ordered worst
+    accuracy first. Only decided items are counted — a pending item carries no
+    judgement, and counting it would make an unreviewed rule look accurate.
+
+    Returns:
+        ``ReviewRuleStatsResponse`` with one row per rule kind and the total
+        number of decided items behind them.
+    """
+    rows = await anyio.to_thread.run_sync(run_store.review_rule_stats, owner)
+    items = [
+        ReviewRuleStat(
+            kind=row["kind"],
+            topics=row["topics"],
+            decided=row["decided"],
+            approved=row["approved"],
+            rejected=row["rejected"],
+            edited=row["edited"],
+            accuracy=round(row["accuracy"], 4),
+        )
+        for row in rows
+    ]
+    return ReviewRuleStatsResponse(items=items, decided=sum(item.decided for item in items))
 
 
 @router.get("/review/stats", response_model=ReviewStatsResponse)

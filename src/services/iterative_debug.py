@@ -263,6 +263,13 @@ def run_iterative_debug_loop(
 ) -> dict[str, Any]:
     """Run the full iterative debug loop until completion or escalation.
 
+    NOTE: this batch entry point records a **placeholder** engineer verdict
+    (``test_pass=False``, ``"awaiting engineer test"``) on every iteration —
+    there is no human in this loop. It exists to exercise the trigger/escalation
+    logic end to end. The interactive path where a real verdict is supplied is
+    ``POST /api/v1/hilt/iterate`` (``routes.hilt_iterate``), which passes the
+    engineer's ``test_pass``/``test_comment`` straight into ``record_test``.
+
     Args:
         run_id: Analysis run ID.
         anomaly_id: Anomaly ID to debug.

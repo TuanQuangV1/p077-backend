@@ -2,12 +2,17 @@
 
 - Credentials from Settings.auth_username / auth_password / auth_password_hash
 - JWT creation/verification via PyJWT (HS256)
-- In-memory blacklist for logout (jti -> exp)
+- Signup users and the logout blacklist are persisted in SQLite
+  (``run_store``) so they survive a restart. The rate limiter is still
+  in-memory, which only holds for a single instance.
 """
 
 from __future__ import annotations
 
+import contextlib
 import hmac
+import logging
+import secrets
 import time
 import uuid
 from typing import Any
@@ -16,41 +21,48 @@ import jwt
 from passlib.context import CryptContext
 
 from src.config import get_settings
-import contextlib
+from src.services import run_store
+
+logger = logging.getLogger(__name__)
 
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# jti -> exp_timestamp
-_BLACKLIST: dict[str, float] = {}
 
-# username -> password_hash (for fake signup, in-memory only)
-_USERS: dict[str, str] = {}
+JWT_SECRET_MIN_LENGTH = 32
 
-
-def _cleanup_blacklist() -> None:
-    now = time.time()
-    expired = [jti for jti, exp in _BLACKLIST.items() if exp < now]
-    for jti in expired:
-        _BLACKLIST.pop(jti, None)
+# Signing key used only when JWT_SECRET is unset, which is a dev/test-only
+# state: `get_current_user` bypasses auth entirely in that case, so no token
+# needs to survive a restart. Generated per process rather than hardcoded —
+# the previous literal was published verbatim in .env.example, so anyone could
+# mint a valid token for any deployment that copied it.
+_EPHEMERAL_JWT_SECRET = secrets.token_urlsafe(48)
 
 
 def _get_jwt_secret() -> str:
     secret = get_settings().jwt_secret
-    if secret:
-        return secret
-    # Fallback for dev/test when not configured — deterministic for tests
-    # Production callers should set JWT_SECRET; auth verification will handle 503
-    return "dev-insecure-jwt-secret-change-me-32-chars-minimum-length"
+    if not secret:
+        return _EPHEMERAL_JWT_SECRET
+    if len(secret) < JWT_SECRET_MIN_LENGTH:
+        raise ValueError(
+            f"JWT_SECRET must be at least {JWT_SECRET_MIN_LENGTH} characters "
+            f"(got {len(secret)}); generate one with: openssl rand -hex 32"
+        )
+    return secret
 
 
 def hash_password(password: str) -> str:
-    return _pwd_context.hash(password)
+    # passlib ships no type stubs, so its return type is Any.
+    return str(_pwd_context.hash(password))
 
 
 def verify_password(plain: str, hashed: str) -> bool:
     try:
-        return _pwd_context.verify(plain, hashed)
-    except Exception:
+        return bool(_pwd_context.verify(plain, hashed))
+    except (ValueError, TypeError) as exc:
+        # Malformed / unrecognised hash string (not a bcrypt digest). Treated as
+        # a failed match; logged at debug so a corrupted stored hash is
+        # traceable without leaking it.
+        logger.debug("verify_password: unusable hash (%s)", type(exc).__name__)
         return False
 
 
@@ -67,41 +79,42 @@ def _verify_env_credentials(username: str, password: str) -> bool:
         return verify_password(password, settings.auth_password_hash)
     expected_pass = settings.auth_password
     if not expected_pass:
-        if settings.app_env == "production":
-            return False
+        # No password configured: deny in every environment. JWT needs a
+        # password, and an empty one must never authenticate.
         return False
     return hmac.compare_digest(password, expected_pass)
+
+
+# Bcrypt hash of a value no one can supply, used to keep the failure path's
+# timing indistinguishable from the success path.
+_DUMMY_HASH = _pwd_context.hash(secrets.token_urlsafe(32))
 
 
 def verify_credentials(username: str, password: str) -> bool:
     # First check env admin
     if _verify_env_credentials(username, password):
         return True
-    # Then check fake signup users
-    hashed = _USERS.get(username)
-    if hashed is None:
+    # Then check registered users. Verify against a dummy hash when the
+    # username is unknown: returning early skipped bcrypt entirely, and the
+    # timing difference let an attacker enumerate which usernames exist.
+    record = run_store.get_auth_user(username)
+    if record is None:
+        verify_password(password, _DUMMY_HASH)
         return False
-    return verify_password(password, hashed)
+    return verify_password(password, record["password_hash"])
 
 
 def register_user(username: str, password: str) -> bool:
-    """Register a new fake user. Returns False if username already exists."""
-    if username in _USERS:
-        return False
-    # Also prevent shadowing env admin username
+    """Register a new user. Returns False if the username is taken."""
+    # Prevent shadowing the env admin username.
     settings = get_settings()
     if hmac.compare_digest(username, settings.auth_username):
         return False
-    _USERS[username] = hash_password(password)
-    return True
+    return run_store.create_auth_user(username, hash_password(password))
 
 
 def clear_users() -> None:  # for tests
-    _USERS.clear()
-
-
-def list_users() -> dict[str, str]:
-    return dict(_USERS)
+    run_store.clear_auth_users()
 
 
 def create_access_token(username: str) -> tuple[str, str, int]:
@@ -126,28 +139,20 @@ def decode_token(token: str) -> dict[str, Any]:
     """Verify JWT and return payload. Raises jwt exceptions on failure."""
     settings = get_settings()
     secret = _get_jwt_secret()
-    _cleanup_blacklist()
     payload = jwt.decode(token, secret, algorithms=[settings.jwt_algorithm], leeway=30)
     jti = payload.get("jti")
-    if jti and jti in _BLACKLIST:
+    if jti and run_store.is_jti_blacklisted(str(jti)):
         raise jwt.InvalidTokenError("token has been revoked")
     return payload
 
 
 def blacklist_token(jti: str, exp: float) -> None:
-    _cleanup_blacklist()
-    _BLACKLIST[jti] = exp
+    run_store.blacklist_jti(jti, exp)
 
 
 def is_blacklisted(jti: str) -> bool:
-    _cleanup_blacklist()
-    return jti in _BLACKLIST
+    return run_store.is_jti_blacklisted(jti)
 
 
 def clear_blacklist() -> None:  # for tests
-    _BLACKLIST.clear()
-
-
-def clear_all_auth_state() -> None:  # for tests - clear both blacklist and users
-    _BLACKLIST.clear()
-    _USERS.clear()
+    run_store.clear_jwt_blacklist()

@@ -55,6 +55,7 @@ _KIND_TITLES_VI = {
     "tf_missing_gap": "Khoảng trống TF trên {topic}",
     "tf_drift_jump": "Nhảy khung TF trên {topic}",
     "tf_conflict": "Xung đột phát hành TF trên {topic}",
+    "tf_cycle": "Vòng lặp cây TF trên {topic}",
 }
 
 _KIND_TITLES_EN = {
@@ -75,6 +76,7 @@ _KIND_TITLES_EN = {
     "tf_missing_gap": "TF broadcast gap on {topic}",
     "tf_drift_jump": "TF frame re-parenting on {topic}",
     "tf_conflict": "TF conflicting publishers on {topic}",
+    "tf_cycle": "TF tree loop on {topic}",
 }
 
 def _kind_titles() -> dict[str, str]:
@@ -101,6 +103,7 @@ _KIND_LABELS_VI = {
     "tf_missing_gap": "Khoảng trống TF",
     "tf_drift_jump": "Nhảy TF",
     "tf_conflict": "Xung đột TF",
+    "tf_cycle": "Vòng lặp cây TF",
 }
 
 _KIND_LABELS_EN = {
@@ -121,6 +124,7 @@ _KIND_LABELS_EN = {
     "tf_missing_gap": "TF broadcast gap",
     "tf_drift_jump": "TF frame jump",
     "tf_conflict": "TF conflicting publishers",
+    "tf_cycle": "TF tree loop",
 }
 
 def _kind_labels() -> dict[str, str]:
@@ -263,6 +267,7 @@ def _anomaly_summaries(run_id: str, detections: list[dict[str, Any]]) -> list[di
             "max_nan_ratio",
             "max_out_of_range_ratio",
             "max_jump_m",
+            "cycle",
             "drift_rate_ms_per_sec",
             "direction",
             "pattern",
@@ -289,6 +294,34 @@ def _anomaly_summaries(run_id: str, detections: list[dict[str, Any]]) -> list[di
     return summaries
 
 
+def recording_bounds(
+    detections: list[dict[str, Any]], duration_sec: float | None
+) -> dict[str, float] | None:
+    """Recover a run's recording bounds from its persisted detections.
+
+    Every detection carries both clocks — absolute `tSec` and the `tRelSec`
+    stamped against the stream start — so their difference *is* the origin,
+    exactly, without re-reading the bag. Callers that rebuild AI results from
+    storage have no `detect_anomalies` summary to hand; without an origin
+    `_shape_cluster_payload` falls back to 0 and prompts the model with absolute
+    seconds, so its narrative cites 425.1s beside evidence rows reading 66.8s.
+
+    Returns None when the origin is not recoverable (detections predating
+    `tRelSec`, or disagreeing on where the recording starts) or the duration is
+    unknown — the caller then keeps the old unanchored behaviour rather than
+    inventing a span.
+    """
+    origins = {
+        round(float(d["tSec"]) - float(d["tRelSec"]), 3)
+        for d in detections
+        if "tSec" in d and "tRelSec" in d
+    }
+    if len(origins) != 1 or duration_sec is None:
+        return None
+    origin = origins.pop()
+    return {"start_sec": origin, "end_sec": origin + float(duration_sec)}
+
+
 def _canned_explanation(detection: dict[str, Any]) -> dict[str, Any]:
     """Build a deterministic explanation for one detection, used when the LLM is unavailable."""
     kind = detection.get("kind", "unknown")
@@ -297,24 +330,24 @@ def _canned_explanation(detection: dict[str, Any]) -> dict[str, Any]:
     if is_vi:
         canned = {
             "frequency_gap": (
-                f"Phát hiện khoảng trống phát dữ liệu trên {topic}.",
-                "Nghẽn luồng xử lý hoặc bộ đệm truyền thông tạm dừng phát tin.",
+                f"Phát hiện khoảng trống phát hành thường xuyên trên {topic}.",
+                "Luồng phát của node bị nghẽn hoặc bộ đệm truyền dẫn làm gián đoạn việc xuất bản.",
             ),
             "message_drop_burst": (
-                f"Phát hiện chùm tin bị mất trên {topic}.",
-                "Mất gói theo cụm do tràn bộ đệm truyền thông hoặc nghẽn mạng.",
+                f"Phát hiện cụm mất gói tin trên {topic}.",
+                "Một khoảng trống dài giữa hai bản tin cho thấy gói tin bị rơi hoặc bị gộp.",
             ),
             "timestamp_jitter": (
-                f"Phát hiện rung nhịp thời gian trên {topic}.",
-                "Nhịp phát tin lệch khỏi tần số danh định vượt ngưỡng cho phép.",
+                f"Phát hiện jitter dấu thời gian trên {topic}.",
+                "Nhịp phát hành dao động vượt ngưỡng so với tần suất danh định.",
             ),
             "silent_node": (
                 f"Phát hiện node im lặng trên topic {topic}.",
-                "Node ngừng phát tin trong toàn bộ cửa sổ quan sát.",
+                "Node đã ngừng phát hành trong toàn bộ cửa sổ quan sát.",
             ),
             "clock_drift": (
                 f"Phát hiện trôi đồng hồ trên {topic}.",
-                "Thời gian đóng dấu header lệch so với thời gian ghi rosbag.",
+                "Dấu thời gian trong header lệch so với thời gian ghi của bag.",
             ),
             "unknown": (
                 f"Phát hiện mẫu bất thường trên {topic}.",
@@ -337,7 +370,7 @@ def _canned_explanation(detection: dict[str, Any]) -> dict[str, Any]:
         ),
         "message_drop_burst": (
             f"Burst of dropped messages detected on {topic}.",
-            "Burst packet loss or transport buffer overflow occurred.",
+            "A single long inter-message interval indicates dropped or coalesced messages.",
         ),
         "timestamp_jitter": (
             f"Timestamp jitter detected on {topic}.",
@@ -397,9 +430,13 @@ def _finding_detail(explanation: dict[str, Any], finding: dict[str, str] | None)
 def _evidence_item(
     detection: dict[str, Any], explanation: dict[str, Any], finding: dict[str, str] | None
 ) -> EvidenceItem:
+    # Relative time, matching the `start_sec` values the LLM was prompted with
+    # (see `llm._shape_cluster_payload`): its narrative cites the onset as
+    # 66.75s, so an evidence row stamped with the absolute 425.133s reads as a
+    # different event sitting in the same panel.
     return EvidenceItem(
         topic=detection.get("topic", "/unknown"),
-        tSec=float(detection.get("tSec", 0.0)),
+        tSec=float(detection.get("tRelSec", detection.get("tSec", 0.0))),
         detail=_finding_detail(explanation, finding),
     )
 
@@ -654,7 +691,13 @@ def select_run_root_cause(
         severity = str(detection.get("severity", "low"))
         if _SEVERITY_ORDER.get(severity, 0) > _SEVERITY_ORDER.get(entry["severity"], 0):
             entry["severity"] = severity
-        entry["tSec"] = min(entry["tSec"], float(detection.get("tSec", 0.0)))
+        # Relative time, like `AnomalySummary.tRelSec` and every evidence row in
+        # the same response. Ranking is unaffected — the origin shifts every
+        # onset by the same amount — but the reported number is now on the one
+        # clock the console and the LLM narrative already speak.
+        entry["tSec"] = min(
+            entry["tSec"], float(detection.get("tRelSec", detection.get("tSec", 0.0)))
+        )
         entry["anomalyIds"].append(result.anomalyId)
 
     if not by_root_cause:

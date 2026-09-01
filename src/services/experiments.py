@@ -36,9 +36,22 @@ _COPY_CHUNK_BYTES = 1024 * 1024
 
 # Owner sanitization (username -> safe folder name)
 def _sanitize_owner(owner: str) -> str:
+    """Map a username to a filesystem-safe folder name, injectively.
+
+    Sanitising alone is not injective: ``a-b``, ``a--b`` and ``a b`` all
+    collapsed to ``a-b``, so three different users shared one dataset folder,
+    and a user named ``..`` landed on ``admin``'s folder outright. When the
+    sanitised form differs from the input, a hash of the original is appended
+    so distinct usernames can never share a directory. Names that are already
+    safe (the common case: ``admin``, ``bob``) are unchanged, so existing
+    folders keep working.
+    """
     safe = re.sub(r"[^a-zA-Z0-9_.-]", "-", owner).strip("-_.")
     safe = re.sub(r"-+", "-", safe)
-    return safe or "admin"
+    if safe == owner:
+        return safe
+    digest = hashlib.sha256(owner.encode("utf-8")).hexdigest()[:8]
+    return f"{safe}-{digest}" if safe else f"user-{digest}"
 
 
 def _owner_dir(owner: str) -> Path:
@@ -129,7 +142,7 @@ def list_experiments(owner: str | None = None) -> list[dict[str, Any]]:
         if cached is not None:
             return cached
         _migrate_legacy_datasets()
-        results: list[dict[str, Any]] = []
+        owner_results: list[dict[str, Any]] = []
         if DATA_DIR.exists():
             odir = _owner_dir(owner)
             if odir.exists():
@@ -155,7 +168,7 @@ def list_experiments(owner: str | None = None) -> list[dict[str, Any]]:
                         )
                         continue
                     if item:
-                        results.append(item)
+                        owner_results.append(item)
             if owner == "admin":
                 for folder in sorted(DATA_DIR.iterdir()):
                     if not folder.is_dir():
@@ -165,10 +178,10 @@ def list_experiments(owner: str | None = None) -> list[dict[str, Any]]:
                             item = _load_item(folder)
                         except OSError:
                             continue
-                        if item and not any(r["id"] == item["id"] for r in results):
-                            results.append(item)
-        _set_owner_cached(owner, results)
-        return list(results)
+                        if item and not any(r["id"] == item["id"] for r in owner_results):
+                            owner_results.append(item)
+        _set_owner_cached(owner, owner_results)
+        return list(owner_results)
 
     with _cache_lock:
         now = time.monotonic()
@@ -210,7 +223,7 @@ def _bag_files(folder: Path) -> list[Path]:
     That made ``data/admin/bags`` (a container with 49 nested datasets) appear
     as one giant dataset and exhausted file descriptors under load
     (ENOMEM on scandir). Direct ``glob`` plus a single-level shard check is
-    sufficient - real datasets are flat (bag in folder root) or one-level
+    sufficient — real datasets are flat (bag in folder root) or one-level
     sharded, never deeply nested. Deep containers like ``bags`` are skipped
     by the caller via ``_is_dataset_folder``.
     """
@@ -274,32 +287,39 @@ def _dataset_content_hash(folder: Path) -> str | None:
     return content_hash
 
 
-def _find_duplicate_dataset(content_hash: str, exclude_id: str) -> dict[str, Any] | None:
-    """Return the DatasetItem of an existing dataset with the same bag content, if any.
+def _find_duplicate_dataset(
+    content_hash: str, exclude_id: str, owner: str = "admin"
+) -> dict[str, Any] | None:
+    """Return *this owner's* dataset with the same bag content, if any.
 
-    Scans every dataset folder under ``data/`` (legacy flat ``data/<id>`` plus
-    per-owner ``data/<owner>/<id>``) excluding ``exclude_id``. Owner directories
-    themselves (e.g. ``data/admin``) are never considered datasets, even though
-    ``_bag_files`` with one-level glob could find a nested bag inside them.
+    Scoped to ``data/<owner>/`` (plus the legacy flat ``data/<id>`` layout, but
+    only for ``admin``, who owns those). Scanning every owner's directory made
+    an upload return a stranger's DatasetItem — id, name, size and topic list —
+    and then dropped the uploader's own copy, so their dataset list stayed
+    empty. Two users are entitled to hold the same bag.
+
+    Owner directories themselves (e.g. ``data/admin``) are never treated as
+    datasets, even though ``_bag_files`` with a one-level glob could find a
+    nested bag inside them.
     """
     if not DATA_DIR.exists():
         return None
-    # Legacy flat datasets (data/<id>)
-    for folder in sorted(DATA_DIR.iterdir()):
+
+    candidates: list[Path] = []
+    owner_dir = _owner_dir(owner)
+    if owner_dir.is_dir():
+        candidates.extend(sorted(owner_dir.iterdir()))
+    if owner == "admin":
+        # Datasets predating per-owner directories live at data/<id>.
+        candidates.extend(f for f in sorted(DATA_DIR.iterdir()) if _is_dataset_folder(f))
+
+    for folder in candidates:
         if not folder.is_dir() or folder.name == exclude_id:
             continue
-        if _is_dataset_folder(folder):
-            if _dataset_content_hash(folder) == content_hash:
-                return _load_item(folder)
-        else:
-            # Owner directory: scan its children
-            for sub in sorted(folder.iterdir()):
-                if not sub.is_dir() or sub.name == exclude_id:
-                    continue
-                if not _is_dataset_folder(sub):
-                    continue
-                if _dataset_content_hash(sub) == content_hash:
-                    return _load_item(sub)
+        if not _is_dataset_folder(folder):
+            continue
+        if _dataset_content_hash(folder) == content_hash:
+            return _load_item(folder)
     return None
 
 
@@ -679,7 +699,8 @@ def save_uploaded_rosbag(filename: str, source: BinaryIO, owner: str = "admin") 
             owner_dir = _owner_dir(owner)
             if owner_dir.exists() and not any(owner_dir.iterdir()):
                 owner_dir.rmdir()
-        except Exception:
+        except OSError:
+            # A concurrent upload repopulated the dir — harmless, leave it.
             pass
         raise
 
@@ -689,7 +710,7 @@ def save_uploaded_rosbag(filename: str, source: BinaryIO, owner: str = "admin") 
     # entirely rather than indexing a folder about to be deleted.
     content_hash = _dataset_content_hash(folder)
     if content_hash is not None:
-        original = _find_duplicate_dataset(content_hash, exclude_id=dataset_id)
+        original = _find_duplicate_dataset(content_hash, exclude_id=dataset_id, owner=owner)
         if original is not None:
             shutil.rmtree(folder, ignore_errors=True)
             _invalidate_experiments_cache()
@@ -755,7 +776,8 @@ def delete_experiment(dataset_id: str, owner: str | None = None) -> bool:  # noq
                 try:
                     if not any(owner_dir.iterdir()):
                         owner_dir.rmdir()
-                except Exception:
+                except OSError:
+                    # A concurrent upload repopulated the dir — harmless.
                     pass
                 return True
     return False

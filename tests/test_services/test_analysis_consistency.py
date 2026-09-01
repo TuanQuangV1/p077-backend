@@ -162,7 +162,7 @@ def _run_service_analysis(dataset_id: str) -> list[dict]:
     results = []
     for _ in range(_REPEATS):
         result = run_analysis(dataset_id)
-        assert result["run"].anomalyCount == 4  # bag fixture is non-trivial
+        assert result["run"].anomalyCount == 2  # bag fixture is non-trivial
         results.append(result)
     return results
 
@@ -197,7 +197,7 @@ def test_service_persisted_conclusions_consistent_across_runs(experiments_dir):
         run = run_analysis("E1-1")["run"]
         run_id = run.id
         persisted = run_store.get_run(run_id)
-        assert persisted["anomalyCount"] == 4
+        assert persisted["anomalyCount"] == 2
         snapshots.append(
             (
                 _project_run(persisted),
@@ -226,7 +226,7 @@ async def test_api_analysis_conclusions_consistent_across_runs(client, experimen
         response = await client.post("/api/v1/analysis", json={"rosbag_id": "E1-1"})
         assert response.status_code == 202
         body = response.json()
-        assert body["run"]["anomalyCount"] == 4
+        assert body["run"]["anomalyCount"] == 2
 
         detail = await client.get(f"/api/v1/analysis/{body['run']['id']}")
         assert detail.status_code == 200

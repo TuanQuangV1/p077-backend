@@ -26,7 +26,7 @@ DIAGNOSTICS_DATA_DIR = Path.cwd() / "data" / "diagnostics"
 
 
 @pytest.fixture(autouse=True)
-def _isolate_state(tmp_path, monkeypatch):
+def _isolate_state(tmp_path, tmp_path_factory, monkeypatch):
     """Isolate per-test persistence, module-level caches and LLM configuration.
 
     Strict JWT mode (option B): every test runs with a deterministic JWT_SECRET
@@ -34,7 +34,11 @@ def _isolate_state(tmp_path, monkeypatch):
     reflect production behaviour. ``client`` fixture auto-injects a valid token;
     use ``unauth_client`` when you explicitly want a 401/503 check.
     """
-    monkeypatch.setenv("RUN_DB_PATH", str(tmp_path / "runs.db"))
+    # The runs DB lives outside `tmp_path` so it never lands inside a test's
+    # `experiments_dir` (which points DATA_DIR at that same `tmp_path`); auth
+    # now touches this DB on every request, so it would otherwise pollute the
+    # "upload cleaned up its folder" assertions.
+    monkeypatch.setenv("RUN_DB_PATH", str(tmp_path_factory.mktemp("runstate") / "runs.db"))
     # A developer .env holding real credentials would otherwise send analysis
     # runs to the live provider; tests that exercise the LLM stub it explicitly.
     monkeypatch.setenv("OPENAI_API_KEY", "")

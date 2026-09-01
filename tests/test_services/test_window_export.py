@@ -24,7 +24,7 @@ def _message(timestamp: float, topic: str, header: float | None = None) -> dict[
 
 
 STREAM = [
-    # /imu window [0, 1): 3 messages at 20 Hz.
+    # /imu window [0, 1): 3 messages at 10 Hz.
     _message(0.1, "/imu", header=0.0),
     _message(0.2, "/imu", header=0.1),
     _message(0.3, "/imu", header=0.2),
@@ -45,7 +45,8 @@ def test_iter_window_summaries_groups_by_topic_and_window() -> None:
 def test_summary_metrics_are_computed_per_window() -> None:
     summary = next(iter_window_summaries(STREAM, window_sec=1.0))
     assert summary["count"] == 3
-    assert summary["actual_hz"] == pytest.approx(15.0)
+    # 3 messages spanning 0.2s is 2 intervals — 10 Hz, not `count / span` (15).
+    assert summary["actual_hz"] == pytest.approx(10.0)
     assert summary["max_gap_ms"] == pytest.approx(100.0)
     assert summary["jitter_ms"] == pytest.approx(0.0)
     assert summary["expected_hz"] is None

@@ -130,7 +130,40 @@ def test_rule_detector_emits_compact_detection_summary() -> None:
     assert summary["summary"]["total_detections"] >= 1
     assert "detections" in summary
     detector_names = {item["kind"] for item in summary["detections"]}
-    assert detector_names >= {"frequency_gap", "silent_node"}
+    assert "silent_node" in detector_names
+
+
+def test_overlapping_timing_rules_report_one_event_not_three() -> None:
+    """One publish gap is one incident, however many timing rules it trips.
+
+    `frequency_gap`, `message_drop_burst` and `silent_node` all threshold the
+    same inter-message interval, so a single outage used to be reported three
+    times — doubling the operator's anomaly count and charging the health score
+    three penalties for one event.
+    """
+    stream = [
+        {"timestamp": t, "topic": "/scan", "node": "scan", "message_type": "sensor_msgs/msg/LaserScan"}
+        for t in (0.0, 0.1, 0.2, 0.3, 0.4, 2.4, 2.5, 2.6, 2.7, 2.8)  # one 2.0s gap
+    ]
+    gaps = [d for d in detect_anomalies(stream)["detections"] if d["topic"] == "/scan"]
+
+    assert len([d for d in gaps if d["kind"] in {"frequency_gap", "message_drop_burst", "silent_node"}]) == 1
+    merged = next(d for d in gaps if d["kind"] == "silent_node")
+    # The other rules' agreement is kept as evidence, not thrown away.
+    assert merged["evidence"]["rules"] == ["frequency_gap", "message_drop_burst", "silent_node"]
+    assert merged["tSec"] == pytest.approx(0.4)
+    assert merged["endSec"] == pytest.approx(2.4)
+
+
+def test_separate_outages_stay_separate_incidents() -> None:
+    """Merging is by span overlap, so two outages with healthy traffic between stay apart."""
+    stamps = [0.0, 0.1, 0.2, 2.2, 2.3, 2.4, 2.5, 4.5, 4.6, 4.7]  # gaps at 0.2->2.2 and 2.5->4.5
+    stream = [
+        {"timestamp": t, "topic": "/scan", "node": "scan", "message_type": "sensor_msgs/msg/LaserScan"}
+        for t in stamps
+    ]
+    outages = [d for d in detect_anomalies(stream)["detections"] if d["kind"] == "silent_node"]
+    assert len(outages) == 2
 
 
 def test_parse_mcap_file_supports_disk_input(tmp_path) -> None:
@@ -689,6 +722,69 @@ def test_silent_node_severity_scales_with_duration() -> None:
     assert sustained_gap["severity"] == "critical"
 
 
+def _event_driven_stream(
+    topic: str, message_type: str, period: float, burst: int, count: int, gap_sec: float
+) -> list[dict[str, Any]]:
+    """`burst` near-simultaneous messages every `period`, then one long silence."""
+    stream: list[dict[str, Any]] = []
+    for cycle in range(count):
+        for index in range(burst):
+            stream.append(
+                {
+                    "timestamp": cycle * period + index * 0.001,
+                    "topic": topic,
+                    "node": topic.lstrip("/"),
+                    "message_type": message_type,
+                }
+            )
+    last = stream[-1]["timestamp"]
+    stream.append({**stream[-1], "timestamp": last + gap_sec})
+    return stream
+
+
+def test_silent_node_catches_an_event_driven_topic_going_quiet() -> None:
+    """A topic the cadence rules skip can still be reported for a real outage.
+
+    /amcl_pose is event-driven, so `frequency_gap` and friends never look at it.
+    On the F1_01 capture that let a 115s localization outage — the lidar failure
+    taking AMCL down with it — pass with no detection at all.
+    """
+    summary = detect_anomalies(
+        _event_driven_stream(
+            "/amcl_pose",
+            "geometry_msgs/msg/PoseWithCovarianceStamped",
+            period=1.0,
+            burst=1,
+            count=30,
+            gap_sec=115.0,
+        )
+    )
+    silent = next(d for d in summary["detections"] if d["kind"] == "silent_node")
+    assert silent["topic"] == "/amcl_pose"
+    assert silent["severity"] == "critical"
+    assert silent["evidence"]["silent_duration_sec"] == pytest.approx(115.0)
+
+
+def test_silent_node_ignores_a_burst_publishers_routine_pause() -> None:
+    """A near-zero median must not turn a burst publisher's normal pause into an outage.
+
+    /diagnostics emits several entries at one instant, then waits ~1s. Its
+    median interval is ~0.001s, so a median-calibrated threshold collapses onto
+    the absolute floor and flags every ordinary pause.
+    """
+    summary = detect_anomalies(
+        _event_driven_stream(
+            "/diagnostics",
+            "diagnostic_msgs/msg/DiagnosticArray",
+            period=1.0,
+            burst=6,
+            count=30,
+            gap_sec=1.0,
+        )
+    )
+    assert not any(d["kind"] == "silent_node" for d in summary["detections"])
+
+
 def test_silent_node_not_inferred_from_active_span_alone() -> None:
     summary = detect_anomalies(
         [
@@ -761,12 +857,14 @@ def test_hz_drop_flags_sustained_rate_fall() -> None:
     messages = _hz_stream(60.0, 5.0, start=0.0) + _hz_stream(40.0, 5.0, start=5.0)
     messages += _hz_stream(10.0, 5.0, start=10.0)
     summary = detect_anomalies(messages, thresholds={"hz_drop_min_messages": 10}, expected_hz={"/scan": 60.0})
-    kinds = {d["kind"] for d in summary["detections"]}
-    assert "hz_drop" in kinds
-    assert "hz_drop_critical" in kinds
+    # Both tiers trip, on adjacent windows of one continuously degrading
+    # stream, so they are reported as a single incident at its worst tier —
+    # `rules` records that the warn tier fired too.
     critical = next(d for d in summary["detections"] if d["kind"] == "hz_drop_critical")
     assert critical["severity"] == "high"
+    assert "hz_drop" in critical["evidence"]["rules"]
     assert critical["evidence"]["expected_hz"] == pytest.approx(60.0)
+    assert critical["evidence"]["actual_hz"] == pytest.approx(10.0)  # worst window in the episode
     assert critical["evidence"]["drop_pct"] >= 0.5
 
 
@@ -776,16 +874,41 @@ def test_hz_drop_skipped_below_min_messages() -> None:
     assert not any(d["kind"].startswith("hz_drop") for d in summary["detections"])
 
 
-def test_hz_drop_infers_expected_from_median_cadence_when_no_map() -> None:
-    # Multi-window stream so the median-cadence fallback can be derived: 60 Hz
-    # nominal, 35 Hz mid window (warn tier), 20 Hz final window (critical tier).
+def test_hz_drop_infers_expected_from_window_quantile_when_no_map() -> None:
+    """Without an expected-Hz map the nominal comes from the topic's own windows.
+
+    It must be a high quantile, not the median: the degraded windows are part
+    of the same sample, so here the median is the 35 Hz middle window and the
+    20 Hz collapse would measure as a 43% dip instead of the 67% it is.
+    """
     messages = _hz_stream(60.0, 5.0)
     messages += _hz_stream(35.0, 5.0, start=5.0)
     messages += _hz_stream(20.0, 5.0, start=10.0)
     summary = detect_anomalies(messages, thresholds={"hz_drop_min_messages": 10})
-    kinds = {d["kind"] for d in summary["detections"]}
-    assert "hz_drop" in kinds
-    assert "hz_drop_critical" in kinds
+    critical = next(d for d in summary["detections"] if d["kind"] == "hz_drop_critical")
+    assert critical["evidence"]["expected_hz"] == pytest.approx(60.0)
+    assert critical["evidence"]["drop_pct"] >= 0.5
+    assert "hz_drop" in critical["evidence"]["rules"]
+
+
+def test_hz_drop_sees_a_topic_that_went_completely_silent() -> None:
+    """A dead stretch is the strongest rate drop there is, and used to be invisible.
+
+    `_window_hz` only emitted buckets that held messages, so an outage produced
+    no buckets at all and the rate rule stepped straight over it; a guard that
+    skipped any topic whose largest interval exceeded five medians then bailed
+    out on exactly the topics whose rate had collapsed. Across 38 real bags
+    `hz_drop*` fired 8 times in 539 detections and never once on a dead topic.
+    """
+    messages = _hz_stream(10.0, 20.0) + _hz_stream(10.0, 20.0, start=80.0)  # silent 20s..80s
+    summary = detect_anomalies(messages, thresholds={"hz_drop_min_messages": 10, "pre_roll_grace_sec": 0.0})
+    outage = next(d for d in summary["detections"] if d["kind"] == "silent_node")
+    # Reported once, under the kind that makes the most specific claim, with
+    # the rate rule's numbers folded in rather than duplicated as a sibling.
+    assert "hz_drop_critical" in outage["evidence"]["rules"]
+    assert outage["evidence"]["expected_hz"] == pytest.approx(10.0)
+    assert outage["evidence"]["actual_hz"] == pytest.approx(0.0)
+    assert outage["evidence"]["drop_pct"] == pytest.approx(1.0)
 
 
 def test_header_latency_flags_sustained_skew() -> None:
@@ -959,6 +1082,43 @@ def _tf_message(t: float, frame_id: str, child_frame_id: str) -> dict[str, Any]:
     }
 
 
+def test_tf_cycle_detects_a_tree_closed_into_a_loop() -> None:
+    """A second broadcaster publishing an edge backwards turns the tree into a ring.
+
+    `map -> odom -> base_footprint -> base_link` plus a rogue `base_link -> map`
+    leaves no root, so nothing downstream can resolve a transform through it.
+    Both bags carrying this fault reported only a `tf_missing_gap` on `/tf`, so
+    the diagnosis blamed a stalled broadcaster instead of the loop.
+    """
+    messages = []
+    for step in range(40):
+        t = step * 0.1
+        messages += [
+            _tf_message(t, "map", "odom"),
+            _tf_message(t, "odom", "base_footprint"),
+            _tf_message(t, "base_footprint", "base_link"),
+            _tf_message(t, "base_link", "map"),  # closes the ring
+        ]
+    detection = next(
+        d for d in detect_anomalies(messages)["detections"] if d["kind"] == "tf_cycle"
+    )
+    assert detection["severity"] == "critical"
+    assert set(detection["evidence"]["cycle"]) == {"map", "odom", "base_footprint", "base_link"}
+
+
+def test_tf_cycle_silent_on_a_healthy_tree() -> None:
+    """A normal chain has a root, so walking parents terminates and nothing fires."""
+    messages = []
+    for step in range(40):
+        t = step * 0.1
+        messages += [
+            _tf_message(t, "map", "odom"),
+            _tf_message(t, "odom", "base_footprint"),
+            _tf_message(t, "base_footprint", "base_link"),
+        ]
+    assert not any(d["kind"] == "tf_cycle" for d in detect_anomalies(messages)["detections"])
+
+
 def test_tf_missing_gap_is_evaluated_per_edge_not_masked_by_a_healthy_sibling() -> None:
     """A silent localization edge must be flagged even while a wheel joint keeps publishing.
 
@@ -1016,7 +1176,9 @@ def test_frequency_gap_severity_scales_with_sustained_breach_count() -> None:
         for t in (0.0, 0.1, 0.2, 0.3, 0.4, 2.4, 2.5, 2.6, 2.7, 2.8)  # one 2.0s gap amid steady cadence
     ]
     single_summary = detect_anomalies(single)
-    single_gap = next(d for d in single_summary["detections"] if d["kind"] == "frequency_gap")
+    # A 2.0s hole in a 10Hz stream also trips the drop-burst and silent-node
+    # thresholds, so the merged event is reported under the most specific kind.
+    single_gap = next(d for d in single_summary["detections"] if d["kind"] == "silent_node")
     assert single_gap["evidence"]["occurrence_count"] == 1
     assert single_gap["severity"] == "medium"
 
@@ -1047,7 +1209,10 @@ def test_pre_roll_grace_period_drops_startup_noise_but_keeps_later_faults() -> N
 
     summary = detect_anomalies(warmup_blip + real_fault, thresholds={"pre_roll_grace_sec": 1.0})
 
-    onsets = [d["tSec"] for d in summary["detections"] if d["kind"] == "frequency_gap"]
+    # Timing rules are merged into one detection per gap, so match on the group
+    # rather than on whichever kind survived the merge.
+    timing = {"frequency_gap", "message_drop_burst", "silent_node"}
+    onsets = [d["tSec"] for d in summary["detections"] if d["kind"] in timing]
     assert all(t >= 1.0 for t in onsets)
     assert any(t == pytest.approx(20.1) for t in onsets)
 

@@ -118,7 +118,7 @@ class AIResultSummary(BaseModel):
             return ""
         return str(v)
 
-    def model_dump(self, **kwargs: Any) -> dict[str, Any]:  # type: ignore[override]
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
         data = super().model_dump(**kwargs)
         # Keep both legacy keys for forward compat (frontend may read any of them)
         if self.llmRequestId:
@@ -212,6 +212,30 @@ class ReviewStatsResponse(BaseModel):
     pending: int
     accuracy: float | None = None
     runs: list[ReviewStatsRun]
+
+
+class ReviewRuleStat(BaseModel):
+    """How often reviewers accept the conclusions drawn from one detection rule."""
+
+    kind: str
+    topics: list[str]
+    decided: int
+    approved: int
+    rejected: int
+    edited: int
+    accuracy: float
+
+
+class ReviewRuleStatsResponse(BaseModel):
+    """Rule-level verdict tallies, worst accuracy first.
+
+    Answers "which rule do reviewers reject most often", so threshold tuning
+    starts with the rule that is actually wrong rather than a guess. Pending
+    items are excluded: they carry no judgement yet.
+    """
+
+    items: list[ReviewRuleStat]
+    decided: int
 
 
 class ReviewListResponse(BaseModel):

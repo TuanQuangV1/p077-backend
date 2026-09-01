@@ -8,9 +8,11 @@ and test isolation is preserved (the store path is configurable via the
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 import threading
+import time
 from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,6 +22,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 from src.services import perf
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_RUN_DB_PATH = Path("data/runs.db")
 
@@ -93,6 +97,15 @@ CREATE TABLE IF NOT EXISTS expert_fixes (
     created_at TEXT NOT NULL,
     PRIMARY KEY (run_id, anomaly_id)
 );
+CREATE TABLE IF NOT EXISTS auth_users (
+    username TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS jwt_blacklist (
+    jti TEXT PRIMARY KEY,
+    exp REAL NOT NULL
+);
 """
 
 
@@ -115,36 +128,54 @@ def _connect() -> sqlite3.Connection:
         try:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
-        except sqlite3.Error:
-            pass
+        except sqlite3.Error as exc:
+            # A read-only volume or an OS without shared-memory support can
+            # reject WAL. Journal mode stays at the default (DELETE) — slower
+            # under concurrency but correct — so this is recoverable; surface it.
+            logger.warning("run_store: could not enable WAL journal mode: %s", exc)
     return conn
+
+
+# `ALTER TABLE` on an already-migrated schema is expected to fail with one of
+# these — a column that is already there. Anything else is a real migration
+# fault and must not be swallowed.
+_BENIGN_MIGRATION_ERRORS = ("duplicate column name", "already exists")
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Bring an existing DB up to the current schema.
+
+    `executescript(_SCHEMA)` creates missing tables/indexes but cannot add a
+    column to a table that predates it, so the `owner` column is added here.
+    Errors that mean "already applied" are logged at debug and ignored; every
+    other `OperationalError` is logged and re-raised, because a migration that
+    half-applied and then silently passed is how a schema drifts out of sync
+    with the code without anyone noticing.
+    """
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_run_anomalies_run_id ON run_anomalies(run_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_run_ai_results_run_id ON run_ai_results(run_id)")
+
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
+        if "owner" not in cols:
+            conn.execute("ALTER TABLE runs ADD COLUMN owner TEXT NOT NULL DEFAULT 'admin'")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_owner ON runs(owner)")
+        conn.execute("UPDATE runs SET owner = 'admin' WHERE owner IS NULL OR owner = ''")
+        conn.commit()
+    except sqlite3.OperationalError as exc:
+        if any(marker in str(exc).lower() for marker in _BENIGN_MIGRATION_ERRORS):
+            logger.debug("run_store: migration step already applied: %s", exc)
+            conn.rollback()
+            return
+        logger.error("run_store: migration failed: %s", exc)
+        raise
 
 
 def _init(conn: sqlite3.Connection) -> None:
     current_path = str(_db_path())
     if not _init_state[0] or _init_state_db_path[0] != current_path:
         conn.executescript(_SCHEMA)
-        # Ensure new indexes exist even if schema was already executed before they were added
-        try:
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_run_anomalies_run_id ON run_anomalies(run_id)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_run_ai_results_run_id ON run_ai_results(run_id)")
-            conn.commit()
-        except sqlite3.Error:
-            pass
-        # Migrate legacy DBs: add owner column if missing
-        try:
-            cols = {row[1] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
-            if "owner" not in cols:
-                conn.execute("ALTER TABLE runs ADD COLUMN owner TEXT NOT NULL DEFAULT 'admin'")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_owner ON runs(owner)")
-                conn.execute("UPDATE runs SET owner = 'admin' WHERE owner IS NULL OR owner = ''")
-                conn.commit()
-            else:
-                # Ensure existing rows with empty owner are migrated
-                conn.execute("UPDATE runs SET owner = 'admin' WHERE owner IS NULL OR owner = ''")
-                conn.commit()
-        except sqlite3.Error:
-            pass
+        _migrate(conn)
         _init_state[0] = True
         _init_state_db_path[0] = current_path
 
@@ -264,16 +295,12 @@ def get_run_anomalies(conn: sqlite3.Connection, run_id: str) -> list[dict[str, A
     return [json.loads(row["payload"]) for row in rows]
 
 
-@_with_conn
-def get_runs_anomalies(conn: sqlite3.Connection, run_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
-    """Fetch anomalies for many runs in a single query (avoids N+1).
+def _runs_anomalies(conn: sqlite3.Connection, run_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
+    """Body of :func:`get_runs_anomalies`, callable while already holding a connection.
 
-    Args:
-        run_ids: Run ids to load anomalies for.
-
-    Returns:
-        Mapping of ``run_id -> [anomaly payloads]``, ordered by ``idx`` within
-        each run. Runs without anomalies are absent from the mapping.
+    `_with_conn` takes a plain (non-reentrant) lock, so a decorated function
+    calling another decorated function deadlocks. Callers that already have a
+    connection use this directly.
     """
     if not run_ids:
         return {}
@@ -286,6 +313,20 @@ def get_runs_anomalies(conn: sqlite3.Connection, run_ids: list[str]) -> dict[str
     for row in rows:
         grouped[row["run_id"]].append(json.loads(row["payload"]))
     return grouped
+
+
+@_with_conn
+def get_runs_anomalies(conn: sqlite3.Connection, run_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
+    """Fetch anomalies for many runs in a single query (avoids N+1).
+
+    Args:
+        run_ids: Run ids to load anomalies for.
+
+    Returns:
+        Mapping of ``run_id -> [anomaly payloads]``, ordered by ``idx`` within
+        each run. Runs without anomalies are absent from the mapping.
+    """
+    return _runs_anomalies(conn, run_ids)
 
 
 @_with_conn
@@ -492,6 +533,76 @@ def _sync_ai_result_review_status(
 
 
 @_with_conn
+def review_rule_stats(conn: sqlite3.Connection, owner: str | None = None) -> list[dict[str, Any]]:
+    """Verdict tallies grouped by the detection rule the conclusion was about.
+
+    Reviewers already say which AI conclusions were wrong, but nothing read
+    that back, so the system could not get better at the rules it is worst at.
+    Joining each decided review item to its anomaly's ``kind`` answers "which
+    rule do reviewers reject most often" — the input for deciding which
+    threshold to hand-tune next.
+
+    Only decided items count: a pending item carries no judgement, and folding
+    it in would make a rule nobody has reviewed yet look accurate.
+
+    Returns:
+        One row per rule kind, worst accuracy first, each with ``kind``,
+        ``topics`` (distinct topics seen for that rule), ``decided``,
+        ``approved``, ``rejected``, ``edited`` and ``accuracy`` (approved over
+        decided, 0.0-1.0).
+    """
+    query = """
+        SELECT r.run_id AS run_id, r.anomaly_id AS anomaly_id, r.review_status AS review_status
+        FROM review_items r
+        LEFT JOIN runs ON runs.id = r.run_id
+        WHERE r.review_status IN ('approved', 'rejected', 'edited')
+    """
+    params: tuple[str, ...] = ()
+    if owner is not None:
+        # Same visibility rule as `list_review_items`, so this never reports on
+        # a smaller set than the queue the reviewer actually worked through:
+        # admin also sees review items whose run row is gone.
+        query += " AND (runs.owner = ? OR runs.owner IS NULL)" if owner == "admin" else " AND runs.owner = ?"
+        params = (owner,)
+    rows = conn.execute(query, params).fetchall()
+    if not rows:
+        return []
+
+    anomalies = _runs_anomalies(conn, sorted({row["run_id"] for row in rows}))
+    kind_by_key = {
+        (run_id, str(anomaly.get("id", ""))): anomaly
+        for run_id, run_anomalies in anomalies.items()
+        for anomaly in run_anomalies
+    }
+
+    tallies: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        anomaly = kind_by_key.get((row["run_id"], row["anomaly_id"]))
+        if anomaly is None:
+            # The run's anomalies were overwritten by a re-analysis while its
+            # review items survived; the verdict no longer has a rule to blame.
+            continue
+        kind = str(anomaly.get("kind", "unknown"))
+        tally = tallies.setdefault(
+            kind,
+            {"kind": kind, "topics": set(), "decided": 0, "approved": 0, "rejected": 0, "edited": 0},
+        )
+        # Stored anomalies are the raw detections, which carry a single `topic`
+        # — the plural `topics` only appears later in the API response shape.
+        tally["topics"].add(str(anomaly.get("topic", "")))
+        tally["decided"] += 1
+        tally[row["review_status"]] += 1
+
+    return sorted(
+        (
+            {**tally, "topics": sorted(tally["topics"]), "accuracy": tally["approved"] / tally["decided"]}
+            for tally in tallies.values()
+        ),
+        key=lambda entry: (entry["accuracy"], -entry["decided"]),
+    )
+
+
+@_with_conn
 def review_stats(conn: sqlite3.Connection, owner: str | None = None) -> list[dict[str, Any]]:
     """Per-run verdict tallies for the agent-accuracy report."""
     if owner is not None:
@@ -691,3 +802,65 @@ def get_expert_fix(conn: sqlite3.Connection, run_id: str, anomaly_id: str) -> di
         "notes": row["notes"],
         "created_at": row["created_at"],
     }
+
+
+# --- Auth persistence (see src.services.auth) -------------------------------
+# Signup users and the JWT logout blacklist used to be module-level dicts, so
+# every registered account and every revoked token vanished on restart or was
+# fragmented across processes. They live in the same SQLite file as everything
+# else now; the rate limiter stays in-memory (single-instance only).
+
+
+@_with_conn
+def get_auth_user(conn: sqlite3.Connection, username: str) -> dict[str, str] | None:
+    row = conn.execute(
+        "SELECT username, password_hash, created_at FROM auth_users WHERE username = ?",
+        (username,),
+    ).fetchone()
+    if row is None:
+        return None
+    return {"username": row["username"], "password_hash": row["password_hash"], "created_at": row["created_at"]}
+
+
+@_with_conn
+def create_auth_user(conn: sqlite3.Connection, username: str, password_hash: str) -> bool:
+    """Insert a new user. Returns False if the username is already taken."""
+    try:
+        conn.execute(
+            "INSERT INTO auth_users (username, password_hash, created_at) VALUES (?, ?, ?)",
+            (username, password_hash, _now_iso()),
+        )
+    except sqlite3.IntegrityError:
+        return False
+    conn.commit()
+    return True
+
+
+@_with_conn
+def clear_auth_users(conn: sqlite3.Connection) -> None:  # for tests
+    conn.execute("DELETE FROM auth_users")
+    conn.commit()
+
+
+@_with_conn
+def blacklist_jti(conn: sqlite3.Connection, jti: str, exp: float) -> None:
+    conn.execute("INSERT OR REPLACE INTO jwt_blacklist (jti, exp) VALUES (?, ?)", (jti, exp))
+    conn.execute("DELETE FROM jwt_blacklist WHERE exp < ?", (time.time(),))
+    conn.commit()
+
+
+@_with_conn
+def is_jti_blacklisted(conn: sqlite3.Connection, jti: str) -> bool:
+    # An expired row is not "blacklisted" — the token is already invalid on its
+    # own `exp`. It is purged on the next `blacklist_jti` write.
+    row = conn.execute(
+        "SELECT 1 FROM jwt_blacklist WHERE jti = ? AND exp > ?",
+        (jti, time.time()),
+    ).fetchone()
+    return row is not None
+
+
+@_with_conn
+def clear_jwt_blacklist(conn: sqlite3.Connection) -> None:  # for tests
+    conn.execute("DELETE FROM jwt_blacklist")
+    conn.commit()

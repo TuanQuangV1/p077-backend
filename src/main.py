@@ -36,9 +36,24 @@ settings = get_settings()
 # Root handler so app/perf logs are visible under uvicorn (its default config
 # only wires up the uvicorn.* loggers).
 logging.basicConfig(level=logging.getLevelName(settings.log_level))
+
+_cors_origins = settings.cors_origin_list
+if "*" in _cors_origins:
+    # With allow_credentials the wildcard does not become a literal `*`
+    # response header — Starlette echoes the request Origin instead — so `*`
+    # still lets any site make authenticated calls. Refuse it where it matters.
+    if settings.app_env == "production":
+        raise RuntimeError(
+            "CORS_ORIGINS must be an explicit allowlist in production, not '*'. "
+            "Set it to the frontend origin(s), comma-separated."
+        )
+    if settings.app_env == "staging":
+        logger.error("CORS_ORIGINS is '*' in staging — every origin is trusted; set an explicit allowlist")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins.split(","),
+    allow_origins=_cors_origins,
+    allow_origin_regex=settings.cors_origin_regex or None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -87,15 +102,11 @@ async def measure_request(
             logger.info(message, extra={"diagnostics": details})
 
 
-def _ping_db() -> None:
-    run_store.list_runs(None)[:1]
-
-
 @app.get("/health")
 async def health() -> dict[str, str]:
     # Light liveness check that also verifies DB is reachable; never throws 500 for health probes
     try:
-        await anyio.to_thread.run_sync(_ping_db)
+        await anyio.to_thread.run_sync(lambda: run_store.list_runs(None)[:1])
     except Exception:
         # DB unreachable still returns 200 but with degraded status so orchestrator can decide
         return {"status": "degraded", "env": settings.app_env}

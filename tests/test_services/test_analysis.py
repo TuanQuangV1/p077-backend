@@ -372,6 +372,54 @@ def test_select_run_root_cause_returns_none_without_results() -> None:
     assert analysis.select_run_root_cause([], []) is None
 
 
+def test_select_run_root_cause_reports_onset_on_the_relative_clock() -> None:
+    """The headline conclusion must not be the one field left in absolute time.
+
+    A bag starting at t=358s stamps `tSec` 425.019 and `tRelSec` 66.636 on the
+    same detection. Every sibling in the response — `AnomalySummary.tRelSec`,
+    each evidence row, the LLM's own prose — reads relative, so a run root cause
+    at 425.019 points the operator at a moment past the end of a 209s recording.
+    """
+    detections = [
+        dict(_detection("/scan", "silent_node", 425.019), id="anomaly_001", severity="critical", tRelSec=66.636),
+    ]
+
+    selected = analysis.select_run_root_cause(detections, [_ai_result_for("anomaly_001", "lidar died")])
+
+    assert selected is not None
+    assert selected["tSec"] == pytest.approx(66.636)
+
+
+def test_recording_bounds_recovers_the_origin_from_a_detections_two_clocks() -> None:
+    """The rebuild path has no analysis summary, but the detections carry both clocks.
+
+    Without an origin `_shape_cluster_payload` prompts the LLM with absolute
+    seconds while `_evidence_item` stamps relative ones, so one panel narrates
+    425.1s beside an evidence row reading 66.8s.
+    """
+    detections = [
+        dict(_detection("/scan", "silent_node", 425.019), tRelSec=66.636, endSec=540.725),
+        dict(_detection("/cmd_vel", "frequency_gap", 427.301), tRelSec=68.918, endSec=540.287),
+    ]
+
+    assert analysis.recording_bounds(detections, 208.894) == {
+        "start_sec": 358.383,
+        "end_sec": pytest.approx(567.277),
+    }
+
+
+@pytest.mark.parametrize(
+    ("detections", "duration_sec"),
+    [
+        ([{"kind": "frequency_gap", "topic": "/scan", "tSec": 1.0}], 10.0),  # predates tRelSec
+        ([], 10.0),
+        ([dict(_detection("/scan", "silent_node", 425.019), tRelSec=66.636)], None),
+    ],
+)
+def test_recording_bounds_declines_rather_than_guessing(detections, duration_sec) -> None:
+    assert analysis.recording_bounds(detections, duration_sec) is None
+
+
 def test_cascade_fragment_clusters_flags_actuator_only_windows() -> None:
     """A /cmd_vel-only window has no evidence of what stopped it."""
     detections = [

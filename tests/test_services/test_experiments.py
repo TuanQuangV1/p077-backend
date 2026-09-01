@@ -20,6 +20,7 @@ from src.services.experiments import (
     _load_item,
     delete_experiment,
     experiment_bag_path,
+    list_experiments,
     save_uploaded_rosbag,
 )
 
@@ -219,6 +220,47 @@ def test_upload_duplicate_content_returns_original_and_skips_new_folder(experime
     # Only the original folder exists
     admin_dir = experiments_dir / "admin"
     assert {p.name for p in admin_dir.iterdir()} == {original["id"]}
+
+
+def test_duplicate_detection_does_not_cross_owner_boundaries(experiments_dir) -> None:
+    """Two users are entitled to hold the same bag.
+
+    `_find_duplicate_dataset` used to scan every owner's directory, so the
+    second uploader got the *first* user's DatasetItem back — id, name, size
+    and topic list — while their own copy was deleted, leaving their dataset
+    list empty. Reproduced against a live server before the fix.
+    """
+    # Distinct filenames on purpose: dataset ids derive from the filename, and
+    # `_find_duplicate_dataset` skips `exclude_id`. Uploading both as
+    # "shared.db3" gives both the id "shared", so that filter would mask the
+    # cross-owner match this test exists to catch.
+    payload_a = io.BytesIO()
+    _make_valid_db3(payload_a)
+    theirs = save_uploaded_rosbag("alpha.db3", payload_a, "alice")
+
+    payload_b = io.BytesIO()
+    _make_valid_db3(payload_b)
+    mine = save_uploaded_rosbag("beta.db3", payload_b, "bob")
+
+    assert mine.get("duplicateOf") is None
+    assert (experiments_dir / "alice" / theirs["id"]).is_dir()
+    assert (experiments_dir / "bob" / mine["id"]).is_dir()
+
+    assert [item["id"] for item in list_experiments("alice")] == [theirs["id"]]
+    assert [item["id"] for item in list_experiments("bob")] == [mine["id"]]
+
+
+def test_duplicate_detection_still_applies_within_one_owner(experiments_dir) -> None:
+    payload_first = io.BytesIO()
+    _make_valid_db3(payload_first)
+    first = save_uploaded_rosbag("first.db3", payload_first, "alice")
+
+    payload_second = io.BytesIO()
+    _make_valid_db3(payload_second)
+    second = save_uploaded_rosbag("second.db3", payload_second, "alice")
+
+    assert second["duplicateOf"] == first["id"]
+    assert {p.name for p in (experiments_dir / "alice").iterdir()} == {first["id"]}
 
 
 def test_upload_distinct_content_does_not_collide(experiments_dir) -> None:

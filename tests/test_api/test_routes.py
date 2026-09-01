@@ -452,6 +452,37 @@ async def test_list_runs_returns_real_llm_usage_newest_first(client, experiments
 
 
 @pytest.mark.asyncio
+async def test_list_runs_does_not_leak_other_owners_runs(client, unauth_client, experiments_dir):
+    """`GET /runs` was the one endpoint in the isolated set without an owner filter.
+
+    It called ``run_store.list_runs()`` with no argument, and
+    ``list_runs(owner=None)`` returns every row, so any authenticated user saw
+    every other user's bag names, model, latency, token counts and cost.
+    """
+    _write_dataset(experiments_dir / "E1-1", stamps_ns=[1_000_000_000, 1_100_000_000, 1_200_000_000])
+    created = await client.post("/api/v1/analysis", json={"rosbag_id": "E1-1"})
+    assert created.status_code == 202
+    admin_run_id = created.json()["run"]["id"]
+
+    signup = await unauth_client.post(
+        "/api/v1/auth/signup",
+        json={"username": "mallory", "password": "mallory-pass", "confirm_password": "mallory-pass"},
+    )
+    assert signup.status_code == 201
+    other_token = signup.json()["access_token"]
+
+    mine = await client.get("/api/v1/runs")
+    assert admin_run_id in [item["id"] for item in mine.json()["items"]]
+
+    theirs = await unauth_client.get(
+        "/api/v1/runs", headers={"Authorization": f"Bearer {other_token}"}
+    )
+    assert theirs.status_code == 200
+    assert theirs.json()["total"] == 0
+    assert theirs.json()["items"] == []
+
+
+@pytest.mark.asyncio
 async def test_list_runs_respects_limit(client, experiments_dir):
     _write_dataset(experiments_dir / "E1-1", stamps_ns=[1_000_000_000, 1_100_000_000, 1_200_000_000])
     await client.post("/api/v1/analysis", json={"rosbag_id": "E1-1"})
@@ -486,8 +517,11 @@ async def test_create_analysis_records_real_llm_token_usage_when_configured(clie
 
     monkeypatch.setattr(analysis, "is_llm_configured", lambda: True)
     monkeypatch.setattr(analysis, "explain_detection_cluster", fake_cluster)
-    dummy_settings = type("S", (), {"llm_provider": "openai", "model_name": "gpt-4o-mini"})()
-    monkeypatch.setattr(analysis, "get_settings", lambda: dummy_settings)
+    class _SettingsStub:
+        llm_provider = "openai"
+        model_name = "gpt-4o-mini"
+
+    monkeypatch.setattr(analysis, "get_settings", _SettingsStub)
 
     response = await client.post("/api/v1/analysis", json={"rosbag_id": "E1-1"})
     assert response.status_code == 202
@@ -515,7 +549,7 @@ async def test_create_analysis_detects_frequency_gap_on_real_db3(client, experim
     run = response.json()["run"]
     assert run["status"] == "succeeded"
     assert run["stage"] == "done"
-    assert run["anomalyCount"] == 4
+    assert run["anomalyCount"] == 2
     # silent_node severity now scales with duration (ground-truth-calibrated:
     # short gaps stay "medium", only outages >= silent_node_critical_sec are
     # "critical"); this fixture's 2.0s gap is well below that.
@@ -525,19 +559,18 @@ async def test_create_analysis_detects_frequency_gap_on_real_db3(client, experim
     assert detail.status_code == 200
     body = detail.json()
     anomalies = body["anomalies"]
-    assert len(anomalies) == 4
-    gap = next(a for a in anomalies if a["kind"] == "frequency_gap")
+    assert len(anomalies) == 2
+    # The 2.0s hole trips the gap, drop-burst and silent-node thresholds alike;
+    # they describe one event and are reported once, under the most specific kind.
+    gap = next(a for a in anomalies if a["kind"] == "silent_node")
     assert gap["topics"] == ["/scan"]
     assert gap["tSec"] == pytest.approx(1.2)
     assert gap["endSec"] == pytest.approx(3.2)
-    assert "/scan" in gap["title"]
-    assert gap["title"] in ("Publish gap on /scan", "Khoảng trống phát hành trên /scan")
-    silent = next(a for a in anomalies if a["kind"] == "silent_node")
-    assert silent["severity"] == "medium"
-    assert silent["tSec"] == pytest.approx(1.2)
+    assert gap["severity"] == "medium"
+    assert gap["evidence"]["rules"] == ["frequency_gap", "message_drop_burst", "silent_node"]
 
     ai_results = body["aiResults"]
-    assert len(ai_results) == 4
+    assert len(ai_results) == 2
     assert [r["anomalyId"] for r in ai_results] == [a["id"] for a in anomalies]
     assert all(r["reviewStatus"] == "pending" for r in ai_results)
     gap_ai = next(r for r in ai_results if r["anomalyId"] == gap["id"])
@@ -712,6 +745,61 @@ async def test_review_queue_returns_persisted_pending_items(client):
     assert item["runId"] == "run_9f21"
     assert item["anomalyId"] == "anomaly_001"
     assert item["reviewStatus"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_review_rule_stats_ranks_worst_rule_first(client):
+    """Verdicts are grouped by the rule the conclusion came from, worst first.
+
+    Review data was written but never read back, so nobody could tell which
+    detection rule reviewers keep rejecting — the input for deciding which
+    threshold to tune next.
+    """
+    # Shaped like what `run_analysis` really persists: raw detections, which
+    # carry a single `topic` (the plural `topics` only exists in the API's
+    # response shape, one conversion later).
+    run_store.save_run_anomalies(
+        "run_9f21",
+        [
+            {"id": "anomaly_001", "kind": "silent_node", "topic": "/scan", "severity": "critical"},
+            {"id": "anomaly_002", "kind": "silent_node", "topic": "/cmd_vel", "severity": "medium"},
+            {"id": "anomaly_003", "kind": "tf_conflict", "topic": "/tf", "severity": "high"},
+            {"id": "anomaly_004", "kind": "clock_drift", "topic": "/imu", "severity": "high"},
+        ],
+    )
+    for index, anomaly_id in enumerate(("anomaly_001", "anomaly_002", "anomaly_003", "anomaly_004"), start=1):
+        _seed_review_item(client, review_id=f"review_{index:03d}", anomaly_id=anomaly_id)
+
+    # silent_node: one accepted, one rejected -> 0.5. tf_conflict accepted -> 1.0.
+    # clock_drift stays pending and must not appear at all.
+    for review_id, verdict in (
+        ("review_001", "approved"),
+        ("review_002", "rejected"),
+        ("review_003", "approved"),
+    ):
+        assert (
+            await client.post(f"/api/v1/review/{review_id}/decision", json={"verdict": verdict})
+        ).status_code == 200
+
+    response = await client.get("/api/v1/review/rule-stats")
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["decided"] == 3
+    assert [item["kind"] for item in body["items"]] == ["silent_node", "tf_conflict"]
+    worst = body["items"][0]
+    assert worst["accuracy"] == 0.5
+    assert worst["decided"] == 2
+    assert worst["rejected"] == 1
+    assert worst["topics"] == ["/cmd_vel", "/scan"]
+
+
+@pytest.mark.asyncio
+async def test_review_rule_stats_empty_before_any_verdict(client):
+    _seed_review_item(client)
+    response = await client.get("/api/v1/review/rule-stats")
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "decided": 0}
 
 
 @pytest.mark.asyncio
@@ -1235,21 +1323,21 @@ async def test_dashboard_totals_reflect_real_data(client, experiments_dir):
     assert totals["rosbags"] == 1
     assert totals["analyzed"] == 1
     assert totals["messages"] == 5
-    assert totals["anomalies"] == 4
+    assert totals["anomalies"] == 2
     # This fixture's 2.0s silent_node gap is below silent_node_critical_sec,
     # so it is "medium" now (see test_create_analysis_detects_frequency_gap_on_real_db3).
     assert totals["criticalOpen"] == 0
-    assert totals["reviewPending"] == 4
+    assert totals["reviewPending"] == 2
     assert body["recentRuns"][0]["id"] == run.json()["run"]["id"]
     assert body["severity"] == [
         {"severity": "critical", "count": 0},
         {"severity": "high", "count": 0},
-        {"severity": "medium", "count": 3},
+        {"severity": "medium", "count": 1},
         {"severity": "low", "count": 1},
     ]
-    assert len(body["topIssues"]) == 4
+    assert len(body["topIssues"]) == 2
     assert len(body["trend"]) == 1
-    assert body["trend"][0]["anomalies"] == 4
+    assert body["trend"][0]["anomalies"] == 2
 
 
 @pytest.mark.asyncio
@@ -1266,14 +1354,14 @@ async def test_analysis_results_persist_across_requests(client, experiments_dir)
     detail = await client.get(f"/api/v1/analysis/{run_id}")
     assert detail.status_code == 200
     body = detail.json()
-    assert body["run"]["anomalyCount"] == 4
-    assert len(body["anomalies"]) == 4
-    assert len(body["aiResults"]) == 4
+    assert body["run"]["anomalyCount"] == 2
+    assert len(body["anomalies"]) == 2
+    assert len(body["aiResults"]) == 2
 
     review = await client.get("/api/v1/review")
     assert review.status_code == 200
     pending = review.json()["items"]
-    assert len(pending) == 4
+    assert len(pending) == 2
     assert {item["runId"] for item in pending} == {run_id}
 
 

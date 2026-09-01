@@ -41,6 +41,7 @@ class _WindowState:
         "last_ts",
         "message_type",
         "node",
+        "payload_bytes",
         "topic",
         "window_start",
     )
@@ -60,6 +61,7 @@ class _WindowState:
         self.first_ts = timestamp
         self.last_ts = timestamp
         self.count = 0
+        self.payload_bytes = 0
         self.gaps: list[float] = []
         self.drift_samples: list[float] = []
 
@@ -88,10 +90,11 @@ def iter_window_summaries(
 
     Yields:
         One dict per (topic, window): ``window_start`` (ISO-8601 UTC),
-        ``topic``, ``node``, ``message_type``, ``count``, ``expected_hz``,
-        ``actual_hz``, ``max_gap_ms``, ``jitter_ms`` (std of intervals) and
-        ``drift_ms`` (median of ``bag timestamp - header.stamp``, ``None``
-        when the stream carries no header information).
+        ``topic``, ``node``, ``message_type``, ``count``, ``bytes`` (summed
+        serialized payload size), ``expected_hz``, ``actual_hz``, ``max_gap_ms``,
+        ``jitter_ms`` (std of intervals) and ``drift_ms`` (median of
+        ``bag timestamp - header.stamp``, ``None`` when the stream carries no
+        header information).
     """
     if window_sec <= 0:
         raise ValueError("window_sec must be positive")
@@ -120,6 +123,7 @@ def iter_window_summaries(
             active[key] = state
 
         state.count += 1
+        state.payload_bytes += int(message.get("payload_bytes", 0) or 0)
         state.last_ts = timestamp
         previous = previous_ts.get(topic)
         if previous is not None and timestamp >= previous:
@@ -139,7 +143,12 @@ def _summarize(
     expected_hz: Mapping[str, float] | None,
 ) -> dict[str, Any]:
     span = state.last_ts - state.first_ts
-    actual_hz = state.count / span if span > 0 and state.count > 1 else None
+    # `count` messages span `count - 1` intervals, so `count / span` overstates
+    # the rate by `count / (count - 1)` — ~2% on a 5s window at 10Hz. The Topic
+    # Health table divides a true count-over-duration rate by this one, so the
+    # bias showed up as a permanent few-percent "drop" on topics with no
+    # detection at all. Matches `diagnostics._window_hz`, which already does this.
+    actual_hz = (state.count - 1) / span if span > 0 and state.count > 1 else None
     max_gap_ms = max(state.gaps) * 1000.0 if state.gaps else None
     jitter_ms = statistics.stdev(state.gaps) * 1000.0 if len(state.gaps) >= 2 else None
     drift_ms = statistics.median(state.drift_samples) * 1000.0 if state.drift_samples else None
@@ -151,6 +160,10 @@ def _summarize(
         "node": state.node,
         "message_type": state.message_type,
         "count": state.count,
+        # Sum of the serialized CDR size of every message in the window, from
+        # `iter_bag_messages`'s `payload_bytes`. 0 only on the SQLite timing-only
+        # fallback (db3 that failed to decode), which carries no payload column.
+        "bytes": state.payload_bytes,
         "expected_hz": round(float(expected), 4) if expected is not None else None,
         "actual_hz": round(actual_hz, 4) if actual_hz is not None else None,
         "max_gap_ms": round(max_gap_ms, 2) if max_gap_ms is not None else None,

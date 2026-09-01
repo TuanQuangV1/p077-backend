@@ -50,7 +50,35 @@ _TF_TOPICS = {"/tf", "/tf_static"}
 _EVENT_DRIVEN_MESSAGE_TYPES = {
     "diagnostic_msgs/msg/DiagnosticArray",
     "geometry_msgs/msg/PoseWithCovarianceStamped",
+    # Velocity commands only exist while the robot is driving: Nav2 stops
+    # publishing at the goal, while idle, and whenever the controller has no
+    # plan. Scoring those pauses as cadence failures made /cmd_vel produce 53%
+    # of every detection across 38 real bags — noise that buries the upstream
+    # fault the operator actually needs, and that the model then names as the
+    # root cause (see `llm.py` `_TOPIC_LAYERS`).
+    "geometry_msgs/msg/TwistStamped",
+    "geometry_msgs/msg/Twist",
 }
+# Interval quantile the silent-node rule calibrates on for event-driven topics.
+# Their median interval collapses toward zero when they publish in bursts
+# (/diagnostics: median 0.001s, routine pause 1.0s), which would make every
+# normal pause look like an outage.
+_EVENT_DRIVEN_BASELINE_QUANTILE = 0.9
+
+_SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+# Rules that all threshold the same thing — how much of a topic's expected
+# traffic failed to arrive — in descending order of how specific a claim they
+# make about it. The first one that fired names the merged detection.
+# `silent_node` states the stream stopped and for how long; the `hz_drop` pair
+# quantifies the shortfall against a nominal rate; `message_drop_burst` and
+# `frequency_gap` only say an interval crossed a threshold.
+_TIMING_KIND_PRIORITY = (
+    "silent_node",
+    "hz_drop_critical",
+    "hz_drop",
+    "message_drop_burst",
+    "frequency_gap",
+)
 
 
 def parse_rosbag2_db3(path: str | Path) -> list[dict[str, Any]]:
@@ -618,13 +646,20 @@ def _evaluate_silent_rule(
     timestamps_arr: list[float],
     observation_end: float,
     thresholds: dict[str, float],
+    baseline_quantile: float = 0.5,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Flag every sustained silent gap in a topic's publish stream.
 
     A node's *active* span is not evidence of silence.  Instead, compare each
     inter-message gap (plus a possible trailing gap to the observation end)
-    with both an absolute floor and the topic's normal median cadence. A topic
+    with both an absolute floor and the topic's own normal cadence. A topic
     that falls silent repeatedly yields one detection per outage.
+
+    `baseline_quantile` selects which interval stands for "normal". The median
+    (the default) describes a steady publisher. A burst publisher — several
+    messages at almost the same instant, then a pause — has a median near zero
+    that says nothing about its real period, so callers pass a high quantile to
+    calibrate against its slowest routine pause instead.
     """
     intervals = [(float(a), float(b), float(b - a)) for a, b in pairwise(timestamps_arr)]
     if observation_end > timestamps_arr[-1]:
@@ -635,10 +670,12 @@ def _evaluate_silent_rule(
                 float(observation_end - timestamps_arr[-1]),
             )
         )
-    median_interval = float(statistics.median(b - a for a, b in pairwise(timestamps_arr)))
+    observed = sorted(b - a for a, b in pairwise(timestamps_arr))
+    median_interval = float(statistics.median(observed))
+    baseline_interval = observed[min(len(observed) - 1, int(baseline_quantile * len(observed)))]
     minimum_threshold = float(thresholds["silent_node_min_span_sec"])
     multiplier = float(thresholds["silent_node_gap_multiplier"])
-    resolved_gap_threshold = max(minimum_threshold, median_interval * multiplier)
+    resolved_gap_threshold = max(minimum_threshold, baseline_interval * multiplier)
     critical_span = float(thresholds["silent_node_critical_sec"])
     max_gap = max(duration for _, _, duration in intervals)
     node_log_payload: dict[str, Any] = {
@@ -695,6 +732,14 @@ def _window_hz(
     Messages are bucketed into fixed windows; the effective rate of a bucket is
     ``count / occupied_span`` (``count / window_sec`` for single-message
     buckets) so partial windows do not inflate the rate.
+
+    Windows with no messages at all, between the first and last that do have
+    them, are reported as ``0.0`` Hz rather than omitted. Skipping them made a
+    silent stretch structurally invisible to every rate rule: a topic dead for
+    60s produced no buckets for those 60s, so :func:`_evaluate_hz_drop_rules`
+    iterated straight from the healthy window before it to the healthy window
+    after and never saw the outage it exists to measure. Leading and trailing
+    silence is left out — the topic's observed span is what it published over.
     """
     if not timestamps:
         return []
@@ -702,9 +747,13 @@ def _window_hz(
     for ts in timestamps:
         windows[int(ts // window_sec)].append(ts)
 
+    occupied = sorted(windows)
     result: list[tuple[float, float]] = []
-    for key in sorted(windows):
-        stamps = windows[key]
+    for key in range(occupied[0], occupied[-1] + 1):
+        stamps = windows.get(key)
+        if not stamps:
+            result.append((float(key) * window_sec, 0.0))
+            continue
         count = len(stamps)
         span = max(stamps[-1] - stamps[0], 1e-6)
         hz = (count - 1) / span if count > 1 else count / window_sec
@@ -738,16 +787,25 @@ def _evaluate_hz_drop_rules(
 
     windows = _window_hz(timestamps_arr)
     if resolved_expected is None:
-        intervals = [b - a for a, b in pairwise(timestamps_arr) if b > a]
-        if not intervals:
+        # The nominal rate is the median of the topic's own per-window rates:
+        # the cadence it holds while publishing. Deriving it from the whole
+        # stream's median interval instead (the previous approach) was paired
+        # with a guard that bailed out of the rule entirely when any interval
+        # exceeded five medians — which is exactly what a dead topic looks
+        # like, so the rate rule disabled itself on the very topics whose rate
+        # had collapsed. Across 38 bags `hz_drop*` fired 8 times in 539
+        # detections and never once on the `topic_dead` family.
+        # A high quantile, not the median: the degraded stretch is itself part
+        # of the sample, so on a topic whose outage covers half the recording
+        # the median *is* the degraded rate and the shortfall measures as zero.
+        # The 75th percentile still describes the cadence the topic holds when
+        # healthy while staying robust to a few fast windows.
+        live = sorted(hz for _, hz in windows if hz > 0)
+        if not live:
             return detections, logs
-        median_interval = float(statistics.median(intervals))
-        # Without an explicit baseline, highly bursty/event-driven topics do
-        # not have a meaningful nominal Hz.  Skip rate-drop scoring for those
-        # streams instead of treating their fastest burst as the baseline.
-        if max(intervals) > median_interval * 5.0:
-            return detections, logs
-        resolved_expected = 1.0 / median_interval
+        resolved_expected = float(live[min(len(live) - 1, int(0.75 * len(live)))])
+    if resolved_expected <= 0:
+        return detections, logs
 
     warn_pct = float(thresholds["hz_drop_warn_pct"])
     critical_pct = float(thresholds["hz_drop_critical_pct"])
@@ -765,8 +823,9 @@ def _evaluate_hz_drop_rules(
     }
     candidates: list[tuple[float, float, float, str, str, float]] = []
     for start, actual in windows:
-        if actual <= 0:
-            continue
+        # A 0 Hz window is the strongest possible reading of this rule, not a
+        # missing sample to skip: it is the topic having published nothing for
+        # a whole window while its neighbours were healthy.
         drop_pct = 1.0 - actual / resolved_expected
         if drop_pct < warn_pct:
             continue
@@ -1069,6 +1128,130 @@ def _evaluate_tf_rules(
     return detections, logs
 
 
+def _find_frame_cycle(parent_of: dict[str, str]) -> list[str] | None:
+    """Return one cycle in a ``child -> parent`` map, as frames in link order.
+
+    A transform tree is a tree: every frame has at most one parent and walking
+    parents from any frame must terminate at a root. A cycle means two nodes
+    each claim to be an ancestor of the other, so no consumer can resolve a
+    transform between them — `lookupTransform` either loops or fails.
+
+    Returned in **parent -> child** order, the direction TF itself uses when
+    naming an edge, and rotated to start at the lexicographically smallest
+    frame so the same ring found in consecutive windows compares equal and
+    those windows merge into one episode. The walk itself runs child -> parent,
+    so it is reversed before returning: printing the raw walk would name every
+    edge backwards to anyone reading it against `ros2 run tf2_tools`.
+    """
+    visited: set[str] = set()
+    for start in parent_of:
+        if start in visited:
+            continue
+        path: list[str] = []
+        seen: dict[str, int] = {}
+        node: str | None = start
+        while node is not None and node not in visited:
+            if node in seen:
+                ring = path[seen[node] :][::-1]
+                pivot = ring.index(min(ring))
+                return [*ring[pivot:], *ring[:pivot]]
+            seen[node] = len(path)
+            path.append(node)
+            node = parent_of.get(node)
+        visited.update(path)
+    return None
+
+
+def _normalized_frame(name: str) -> str:
+    """Frame id without a leading slash.
+
+    Real bags mix both spellings for the same frame — this fleet's `/tf_static`
+    carries `/base_footprint -> /base_link` while `/tf` carries
+    `odom -> base_footprint` — a legacy `tf_prefix` artifact that ROS 2 dropped.
+    Comparing the raw strings splits one tree into two disconnected graphs, and
+    a loop running through both halves is then invisible.
+    """
+    return name.lstrip("/")
+
+
+def _evaluate_tf_cycle_rule(
+    topic: str,
+    pairs: list[tuple[float, str, str, tuple[float, float, float] | None]],
+    static_parent: Mapping[str, str],
+    thresholds: dict[str, float],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Flag a transform tree that closes into a loop.
+
+    A second broadcaster publishing an edge backwards — `base_link -> map`
+    alongside the real `map -> odom -> base_footprint -> base_link` — turns the
+    tree into a ring. Nothing downstream can localize through it, yet the rule
+    engine had no test for it: on both bags carrying this fault the only thing
+    reported on `/tf` was a `tf_missing_gap`, so the diagnosis named a stalled
+    broadcaster rather than the loop.
+
+    ``static_parent`` holds the latched `/tf_static` edges, which are published
+    once and hold for the whole recording. They must be part of every window's
+    graph: on `F3_03` the ring closes through `base_footprint -> base_link`,
+    broadcast exactly once on `/tf_static`, so a graph built from `/tf` alone
+    never closes and the fault reads as a stalled broadcaster.
+
+    Dynamic edges are grouped into windows (``tf_conflict_window_sec``) and the
+    tree is rebuilt per window, because the loop only exists while both
+    broadcasters are live. Testing the whole recording at once would instead
+    flag any frame that was legitimately re-parented at some point, which is
+    :func:`_evaluate_tf_rules`' `tf_drift_jump`, a different fault.
+    """
+    window_sec = float(thresholds["tf_conflict_window_sec"])
+    log_payload: dict[str, Any] = {
+        "event": "diagnostics.rule_evaluation",
+        "rule": "tf_cycle",
+        "level": "debug",
+        "message": "Evaluated TF cycle rule.",
+        "details": {"topic": topic, "detected": False},
+    }
+
+    by_window: dict[int, dict[str, str]] = defaultdict(dict)
+    for ts, frame, child, _translation in pairs:
+        if frame and child:
+            window = by_window[int(ts // window_sec)]
+            if not window:
+                window.update(static_parent)
+            window[_normalized_frame(child)] = _normalized_frame(frame)
+
+    episodes: list[tuple[float, float, list[str]]] = []
+    for key in sorted(by_window):
+        cycle = _find_frame_cycle(by_window[key])
+        if cycle is None:
+            continue
+        start, end = float(key) * window_sec, float(key + 1) * window_sec
+        signature = cycle
+        if episodes and episodes[-1][2] == signature and episodes[-1][1] >= start - 1e-9:
+            episodes[-1] = (episodes[-1][0], end, signature)
+        else:
+            episodes.append((start, end, signature))
+
+    detections = [
+        {
+            "kind": "tf_cycle",
+            "topic": topic,
+            "severity": "critical",
+            "confidence": 0.93,
+            "tSec": start,
+            "endSec": end,
+            "evidence": {"cycle": signature, "frame_count": len(signature)},
+        }
+        for start, end, signature in episodes
+    ]
+    if detections:
+        log_payload["level"] = "warn"
+        log_payload["details"]["detected"] = True
+        log_payload["details"]["cycles"] = len(detections)
+        logger.warning("diagnostics.rule_detected", extra={"diagnostics": log_payload})
+    else:
+        logger.debug("diagnostics.rule_evaluated", extra={"diagnostics": log_payload})
+    return detections, log_payload
+
+
 def _evaluate_tf_conflict_rule(
     topic: str,
     pairs: list[tuple[float, str, str, tuple[float, float, float] | None]],
@@ -1344,6 +1527,22 @@ def _evaluate_auxiliary_rules(
         detections.extend(conflict_detections)
         logs.append(conflict_log)
 
+    # `/tf_static` is latched: broadcast once, valid for the whole recording. Its
+    # edges belong to every window's tree, not to a window of their own.
+    static_parent = {
+        _normalized_frame(child): _normalized_frame(frame)
+        for topic, pairs in tf_pairs.items()
+        if topic == "/tf_static"
+        for _ts, frame, child, _translation in pairs
+        if frame and child
+    }
+    for topic, pairs in tf_pairs.items():
+        if topic == "/tf_static":
+            continue
+        cycle_detections, cycle_log = _evaluate_tf_cycle_rule(topic, pairs, static_parent, thresholds)
+        detections.extend(cycle_detections)
+        logs.append(cycle_log)
+
     return detections, logs
 
 
@@ -1458,6 +1657,81 @@ def _empty_input_result(resolved_thresholds: dict[str, Any]) -> dict[str, Any]:
         "thresholds": resolved_thresholds,
         "logs": [empty_log_payload],
     }
+
+
+def _fold_timing_group(group: list[dict[str, Any]]) -> dict[str, Any]:
+    """Collapse one topic's overlapping timing detections into a single event.
+
+    The surviving kind is the most specific one that fired: a stream that went
+    silent is a stronger statement than a burst of drops, which is stronger than
+    a cadence blip. Evidence from the others is folded in (the primary wins any
+    key collision) and ``rules`` records every rule that agreed, so nothing the
+    detector measured is lost — only the triple-counting is.
+    """
+    primary = min(group, key=lambda d: _TIMING_KIND_PRIORITY.index(str(d["kind"])))
+    if len(group) == 1:
+        return primary
+
+    evidence = dict(primary.get("evidence", {}))
+    for detection in group:
+        for key, value in detection.get("evidence", {}).items():
+            evidence.setdefault(key, value)
+    evidence["rules"] = sorted({str(d["kind"]) for d in group})
+
+    return {
+        **primary,
+        "severity": max(
+            (str(d.get("severity", "low")) for d in group),
+            key=lambda s: _SEVERITY_RANK.get(s, 0),
+        ),
+        "confidence": max(float(d.get("confidence", 0.0)) for d in group),
+        "tSec": min(float(d["tSec"]) for d in group),
+        "endSec": max(float(d["endSec"]) for d in group),
+        "evidence": evidence,
+    }
+
+
+def _merge_timing_detections(detections: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Report one detection per publish-gap event instead of one per rule.
+
+    ``frequency_gap``, ``message_drop_burst`` and ``silent_node`` are three
+    thresholds on the same measurement — the interval between consecutive
+    messages — so one outage trips all three and lands in the run three times.
+    Measured on 38 real bags that inflated 270 real events into 539 detections:
+    the anomaly count shown to the operator doubled, the health score charged
+    the same gap three penalties, and 49% of the rows sent to the model
+    restated a fact it had already been given.
+
+    Detections on a topic are merged while their spans overlap. Two separate
+    outages have healthy traffic between them, so their spans do not touch and
+    they stay separate incidents.
+    """
+    timing_by_topic: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    merged: list[dict[str, Any]] = []
+    for detection in detections:
+        if str(detection.get("kind")) in _TIMING_KIND_PRIORITY:
+            timing_by_topic[str(detection.get("topic", ""))].append(detection)
+        else:
+            merged.append(detection)
+
+    for topic_detections in timing_by_topic.values():
+        group: list[dict[str, Any]] = []
+        group_end = 0.0
+        for detection in sorted(
+            topic_detections, key=lambda d: (float(d["tSec"]), float(d["endSec"]))
+        ):
+            if group and float(detection["tSec"]) <= group_end:
+                group.append(detection)
+                group_end = max(group_end, float(detection["endSec"]))
+                continue
+            if group:
+                merged.append(_fold_timing_group(group))
+            group = [detection]
+            group_end = float(detection["endSec"])
+        if group:
+            merged.append(_fold_timing_group(group))
+
+    return merged
 
 
 def _apply_pre_roll_grace(
@@ -1634,16 +1908,28 @@ def detect_anomalies(
             clock_drift_windows[topic].extend(drift_windows)
 
     observation_end = max(t for times in agg.topic_times.values() for t in times)
+    # Deliberately not gated on `cadence_topics`. Event-driven topics have no
+    # stable *interval*, which is why the cadence rules skip them, but going
+    # completely quiet is still a fault: on F1_01 the lidar outage takes
+    # /amcl_pose down with it for 115.7s and no rule said a word, because
+    # PoseWithCovarianceStamped is event-driven. They join on a high-quantile
+    # baseline so a burst publisher's routine pause stays normal. Latched
+    # topics publish once and are dropped by the `< 2` guard below.
     for topic, timestamps in agg.topic_times.items():
-        if topic not in cadence_topics:
-            continue
         timestamps_arr = sorted(timestamps)
         if len(timestamps_arr) < 2:
             continue
         node_counts = agg.topic_node_counts[topic]
         node = max(node_counts, key=lambda value: node_counts[value])
         silent_detections, silent_log = _evaluate_silent_rule(
-            topic, node, timestamps_arr, observation_end, resolved_thresholds
+            topic,
+            node,
+            timestamps_arr,
+            observation_end,
+            resolved_thresholds,
+            baseline_quantile=(
+                0.5 if topic in cadence_topics else _EVENT_DRIVEN_BASELINE_QUANTILE
+            ),
         )
         detections.extend(silent_detections)
         logs.append(silent_log)
@@ -1665,6 +1951,7 @@ def detect_anomalies(
     detections.extend(aux_detections)
     logs.extend(aux_logs)
 
+    detections = _merge_timing_detections(detections)
     detections = _apply_pre_roll_grace(
         detections, agg.topic_times, float(resolved_thresholds["pre_roll_grace_sec"])
     )

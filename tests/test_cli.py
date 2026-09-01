@@ -184,9 +184,18 @@ def test_datasets_list_empty_table(experiments_dir: Path, capsys: pytest.Capture
     assert "(empty)" in out
 
 
-def test_datasets_upload_and_delete(experiments_dir: Path, tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
-    source_base = tmp_path.parent / f"src_{tmp_path.name}"
-    source = _make_bag_folder(source_base, "upload-src") / "bag.db3"
+def test_datasets_upload_and_delete(
+    experiments_dir: Path, tmp_path_factory: pytest.TempPathFactory, capsys: pytest.CaptureFixture
+) -> None:
+    # The source lives outside `experiments_dir` (== DATA_DIR, via the fixture)
+    # on purpose: a real upload's source is the client's filesystem, never a
+    # folder the server already scans as a dataset. Reusing `tmp_path` for both
+    # would put "upload-src" inside DATA_DIR itself, where the content-hash
+    # dedup check (`_find_duplicate_dataset`) picks it up as a pre-existing
+    # dataset with the same bag content and short-circuits the upload to it
+    # instead of creating "bag".
+    external = tmp_path_factory.mktemp("upload-src")
+    source = _make_bag_folder(external, "upload-src") / "bag.db3"
     code, out, _ = _run(capsys, "datasets", "upload", str(source))
     assert code == 0
     assert json.loads(out)["id"] == "bag"
