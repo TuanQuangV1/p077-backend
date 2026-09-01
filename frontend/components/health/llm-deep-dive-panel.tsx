@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { BotIcon, BrainCircuitIcon, CheckCircleIcon, ChevronDownIcon, ChevronRightIcon, CopyIcon, DownloadIcon, HelpCircleIcon, LoaderIcon, RefreshCwIcon } from "lucide-react"
 import { toast } from "sonner"
 
@@ -9,12 +9,62 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { fetcher, post } from "@/lib/api"
 import type { Anomaly, HealthSummary, LLMDeepDiveResult, Severity } from "@/lib/types"
 
+/** `GET /api/v1/analysis/{id}/deep-dive` — health summary plus a ready prompt. */
+interface DeepDiveContext {
+  run_id: string
+  triggered: boolean
+  threshold: number
+  health: HealthSummary
+  prompt: string
+}
+
+/** `POST /api/v1/analysis/explain` — the LLM (or its canned fallback) response. */
+interface ExplainResponse {
+  root_cause: string
+  recommended_actions: string[]
+  explanation: string
+}
+
+const SEVERITY_TO_PRIORITY: Record<string, LLMDeepDiveResult["priority"]> = {
+  critical: "critical",
+  high: "high",
+  medium: "medium",
+  low: "low",
+}
+
+/** Fold the backend's 3-field explanation into the panel's view model, filling
+ *  priority / confidence / components from the health summary the same call
+ *  returned — the explain endpoint itself does not score those. */
+function deepDiveFromExplain(
+  explain: ExplainResponse,
+  health: HealthSummary,
+  anomalies: Anomaly[],
+): LLMDeepDiveResult {
+  const worst = health.summary.worst_severity ?? "low"
+  const priority = SEVERITY_TO_PRIORITY[worst] ?? "low"
+  const confidence = worst === "critical" ? 0.9 : worst === "high" ? 0.8 : worst === "medium" ? 0.7 : 0.6
+  const sentences = explain.explanation
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  return {
+    summary: explain.root_cause,
+    explanation: sentences.length > 0 ? sentences : [explain.explanation],
+    suggestions: explain.recommended_actions,
+    confidence,
+    priority,
+    affected_components: [...new Set(anomalies.flatMap((a) => a.topics))].slice(0, 6),
+  }
+}
+
 /**
- * Deterministic fallback used while the deep-dive endpoint isn't wired to a
- * live LLM: same heuristic the mock server used, computed client-side from
- * data already on hand.
+ * Client-side heuristic shown only when the deep-dive request fails (LLM
+ * offline, network error). The panel badges this output as a fallback so it is
+ * never mistaken for a real synthesis.
  */
 function generateFallbackAnalysis(healthScore: number, anomalies: Anomaly[]): LLMDeepDiveResult {
   if (anomalies.length === 0) {
@@ -182,28 +232,63 @@ export function LLMDeepDivePanel({
   onSelectAnomaly,
 }: LLMDeepDivePanelProps) {
   const [deepDive, setDeepDive] = useState<LLMDeepDiveResult | null>(null)
+  const [source, setSource] = useState<"llm" | "fallback" | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isAutoTriggered, setIsAutoTriggered] = useState(false)
 
   const score = health?.health_score ?? 0
   const triggerLLM = health?.trigger_llm_deep_dive ?? false
 
+  const runDeepDive = useCallback(
+    async (isCancelled: () => boolean = () => false) => {
+      if (!activeRunId || !health) return
+      setIsLoading(true)
+      try {
+        const [ctx, llm] = await Promise.all([
+          fetcher<DeepDiveContext>(`/api/v1/analysis/${activeRunId}/deep-dive`),
+          fetcher<{ ok: boolean }>("/api/v1/llm/health").catch(() => ({ ok: false })),
+        ])
+        // `explain_diagnostics` reads a flat `detections` list; the health
+        // summary nests them under `detections_by_group`, so flatten a copy.
+        const summary = {
+          ...ctx.health,
+          detections: Object.values(ctx.health.detections_by_group ?? {}).flat(),
+        }
+        const explain = await post<ExplainResponse>("/api/v1/analysis/explain", { summary })
+        if (isCancelled()) return
+        setDeepDive(deepDiveFromExplain(explain, ctx.health, anomalies))
+        // The explain endpoint returns canned text (no marker) when the LLM is
+        // not reachable, so its own health check is what tells us which it was.
+        setSource(llm.ok ? "llm" : "fallback")
+      } catch {
+        if (isCancelled()) return
+        setDeepDive(generateFallbackAnalysis(health.health_score, anomalies))
+        setSource("fallback")
+      } finally {
+        if (!isCancelled()) setIsLoading(false)
+      }
+    },
+    [activeRunId, health, anomalies],
+  )
+
+  // Which run has been auto-triggered. A ref rather than `isLoading` in the
+  // dependency array: `runDeepDive` sets `isLoading` synchronously, so that
+  // dependency re-ran this effect immediately and its cleanup cancelled the
+  // request it had just started. The cancelled call then skipped both
+  // `setDeepDive` and its own `setIsLoading(false)`, leaving the panel spinning
+  // on "Synthesizing telemetry diagnostics..." forever while the guard above
+  // refused to retry. Cancel only when the run actually changes.
+  const autoTriggeredRunRef = useRef<string | null>(null)
   useEffect(() => {
-    if (triggerLLM && activeRunId && !deepDive && !isLoading) {
-      setIsAutoTriggered(true)
-      triggerDeepDive()
-    }
-  }, [triggerLLM, activeRunId])
+    if (!triggerLLM || !activeRunId || deepDive) return
+    if (autoTriggeredRunRef.current === activeRunId) return
+    autoTriggeredRunRef.current = activeRunId
+    setIsAutoTriggered(true)
+    void runDeepDive(() => autoTriggeredRunRef.current !== activeRunId)
+  }, [triggerLLM, activeRunId, deepDive, runDeepDive])
 
-  const triggerDeepDive = async () => {
-    if (!activeRunId || isLoading || !health) return
-
-    setIsLoading(true)
-    try {
-      setDeepDive(generateFallbackAnalysis(health.health_score, anomalies))
-    } finally {
-      setIsLoading(false)
-    }
+  const triggerDeepDive = () => {
+    void runDeepDive()
   }
 
   const exportJSON = () => {
@@ -272,8 +357,19 @@ export function LLMDeepDivePanel({
             <span>LLM Deep-Dive RCA Engine</span>
             {isAutoTriggered && triggerLLM && (
               <Badge variant="outline" className="text-[10px] font-mono border-amber-500/40 text-amber-500 bg-amber-500/5">
-                Triggered (Health Index &lt; 70)
+                Auto-triggered
               </Badge>
+            )}
+            {source === "fallback" && (
+              <Tooltip>
+                <TooltipTrigger className="inline-flex items-center rounded-md border border-amber-500/40 bg-amber-500/5 px-1.5 py-0.5 text-[10px] font-mono text-amber-500 cursor-help">
+                  Fallback · LLM offline
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs text-xs">
+                  The language model is not reachable, so this is a deterministic
+                  rule-based summary, not a real synthesis.
+                </TooltipContent>
+              </Tooltip>
             )}
           </CardTitle>
           <div className="flex items-center gap-1">
