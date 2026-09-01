@@ -87,9 +87,26 @@ export interface TopicStat {
   name: string
   messageType: string
   messageCount: number
+  /** Summed serialized payload size across the recording. Absent on the
+   *  dataset-metadata topic shape, which has counts but no byte totals. */
+  bytesTotal?: number
   hz: number
   expectedHz: number
   dropRate: number
+}
+
+/** One time slice of the run's transport-timing profile, folded across every
+ *  topic in that window from the backend's `/export/windows` NDJSON. `tSec` is
+ *  relative to the recording start so it lines up with the anomaly bands. */
+export interface LatencyWindow {
+  tSec: number
+  /** Largest inter-message gap seen on any topic in the window (ms). */
+  maxGapMs: number
+  /** Worst per-topic interval jitter (stdev of publish periods) in the window (ms). */
+  jitterMs: number
+  /** Mean |bag_time - header.stamp| across topics that carry header stamps (ms),
+   *  or null when no topic in the window has header timing. */
+  driftMs: number | null
 }
 
 export interface Rosbag {
@@ -161,12 +178,27 @@ export interface Anomaly {
   topics: string[]
   confidence: number
   metric: string
+  /** Rule-specific detector readings for this anomaly (`AnomalySummary.evidence`
+   *  on the backend): a free-form map whose keys depend on the rule — e.g.
+   *  `occurrence_count`, `cycle`, `node`, `interval_sec`, `rules`. */
+  evidence?: Record<string, unknown>
 }
 
 export interface Evidence {
   topic: string
   tSec: number
   detail: string
+}
+
+/** The one conclusion that represents a whole run — ranked worst-severity then
+ *  earliest (`AnalysisDetailResponse.runRootCause`). Null when the run produced
+ *  no AI conclusions. `tSec` is relative to the recording start. */
+export interface RunRootCause {
+  rootCause: string
+  explanation: string
+  suggestedFix: string[]
+  severity: Severity
+  tSec: number
 }
 
 export interface AIResult {

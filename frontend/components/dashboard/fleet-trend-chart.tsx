@@ -10,6 +10,7 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
+  type TooltipContentProps,
 } from "recharts"
 
 export interface TrendPoint {
@@ -34,10 +35,14 @@ function formatDateLabel(dateStr: string): string {
   }
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+const CustomTooltip = ({
+  active,
+  payload,
+  label,
+}: Partial<TooltipContentProps<number, string>>) => {
   if (!active || !payload || !payload.length) return null
 
-  const dataPoint = payload[0]?.payload as TrendPoint
+  const dataPoint = payload[0]?.payload as TrendPoint | undefined
 
   return (
     <div className="rounded-xl border border-border/80 bg-popover/95 p-3 shadow-2xl backdrop-blur-md">

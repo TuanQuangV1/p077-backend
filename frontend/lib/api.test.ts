@@ -33,28 +33,16 @@ describe("resolveApiUrl", () => {
         expect(resolveApiUrl("/api/review/abc/decision")).toBe(`${BASE}/review/abc/decision`)
     })
 
-    it("passes through run timeline with query string", () => {
-        expect(resolveApiUrl("/api/runs/run_001/timeline?from=0")).toBe("/api/runs/run_001/timeline?from=0")
+    it("keeps the run logs route on the Next handler", () => {
+        expect(resolveApiUrl("/api/runs/run_001/logs")).toBe("/api/runs/run_001/logs")
     })
 
-    it("passes through run simulation", () => {
-        expect(resolveApiUrl("/api/runs/run_001/simulation")).toBe("/api/runs/run_001/simulation")
+    it("maps run health to the analysis health sub-resource", () => {
+        expect(resolveApiUrl("/api/runs/run_001/health")).toBe(`${BASE}/analysis/run_001/health`)
     })
 
-    it("passes through run ai route", () => {
-        expect(resolveApiUrl("/api/runs/run_001/ai")).toBe("/api/runs/run_001/ai")
-    })
-
-    it("passes through reports", () => {
+    it("passes unknown routes through untouched", () => {
         expect(resolveApiUrl("/api/reports")).toBe("/api/reports")
-    })
-
-    it("passes through stream", () => {
-        expect(resolveApiUrl("/api/stream")).toBe("/api/stream")
-    })
-
-    it("passes through llm routes", () => {
-        expect(resolveApiUrl("/api/llm/metrics?windowMin=60")).toBe("/api/llm/metrics?windowMin=60")
     })
 
     it("passes through direct backend v1 paths", () => {

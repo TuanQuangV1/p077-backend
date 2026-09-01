@@ -15,9 +15,9 @@ interface DataBandwidthPanelProps {
 
 interface TopicBandwidth {
   name: string
+  totalBytes: number
   avgBytes: number
-  peakBytes: number
-  zeroCount: number
+  hasZeroPayload: boolean
   percentage: number
   status: "healthy" | "warning" | "zero"
 }
@@ -68,7 +68,10 @@ function TopicBubbleCard({
         {topic.name.replace("/", "")}
       </span>
       <span className="text-lg font-bold tabular-nums font-mono" style={{ color: statusColor }}>
-        {topic.status === "zero" ? "0 B" : formatBytes(topic.avgBytes)}
+        {formatBytes(topic.totalBytes)}
+      </span>
+      <span className="text-[9px] text-muted-foreground font-mono">
+        {formatBytes(topic.avgBytes)}/msg
       </span>
       <Badge
         variant="outline"
@@ -80,9 +83,9 @@ function TopicBubbleCard({
       >
         {statusLabel}
       </Badge>
-      {topic.zeroCount > 0 && (
+      {topic.hasZeroPayload && (
         <span className="mt-0.5 text-[9px] text-muted-foreground font-mono">
-          {topic.zeroCount}x zero-byte
+          zero-byte payload
         </span>
       )}
     </button>
@@ -157,20 +160,19 @@ export function DataBandwidthPanel({
 }: DataBandwidthPanelProps) {
   const [viewMode, setViewMode] = useState<"bubbles" | "doughnut">("bubbles")
 
-  const totalMessages = topics.reduce((a, b) => a + b.messageCount, 0)
+  const totalBytes = topics.reduce((a, b) => a + (b.bytesTotal ?? 0), 0)
 
   const topicBandwidth: TopicBandwidth[] = topics.map((topic) => {
     const hasZeroPayload = payloadAnomalies.some((a) => a.topics.includes(topic.name))
+    const bytesTotal = topic.bytesTotal ?? 0
 
-    const percentage = totalMessages > 0
-      ? (topic.messageCount / totalMessages) * 100
-      : 0
+    const percentage = totalBytes > 0 ? (bytesTotal / totalBytes) * 100 : 0
 
     return {
       name: topic.name,
-      avgBytes: Math.round(topic.messageCount * 100),
-      peakBytes: Math.round(topic.messageCount * 150),
-      zeroCount: hasZeroPayload ? Math.round(topic.messageCount * 0.02) : 0,
+      totalBytes: bytesTotal,
+      avgBytes: topic.messageCount > 0 ? bytesTotal / topic.messageCount : 0,
+      hasZeroPayload,
       percentage,
       status: hasZeroPayload ? "zero" : topic.dropRate > 0.3 ? "warning" : "healthy",
     }
@@ -191,8 +193,7 @@ export function DataBandwidthPanel({
           ],
   }))
 
-  const totalZeroCount = topicBandwidth.reduce((a, b) => a + b.zeroCount, 0)
-  const hasAnomaly = payloadAnomalies.length > 0 || totalZeroCount > 0
+  const hasAnomaly = payloadAnomalies.length > 0
 
   return (
     <Card>
@@ -246,21 +247,18 @@ export function DataBandwidthPanel({
             <span className="size-2 rounded-full bg-red-500" />
             <div className="flex-1">
               <p className="text-xs font-medium text-red-600 dark:text-red-400">
-                {payloadAnomalies.length > 0
-                  ? `${payloadAnomalies.length} payload throughput anomalies`
-                  : `${totalZeroCount} zero-byte empty messages`}
+                {`${payloadAnomalies.length} payload throughput anomalies`}
               </p>
             </div>
-            <Badge
-              variant="outline"
-              className="text-[9px] font-mono"
-              style={{
-                borderColor: "#dc3545",
-                color: "#dc3545",
-              }}
-            >
-              PLD-01
-            </Badge>
+            {payloadAnomalies[0] ? (
+              <Badge
+                variant="outline"
+                className="text-[9px] font-mono"
+                style={{ borderColor: "#dc3545", color: "#dc3545" }}
+              >
+                {payloadAnomalies[0].kind}
+              </Badge>
+            ) : null}
           </div>
         )}
       </CardContent>

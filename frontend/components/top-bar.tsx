@@ -8,18 +8,17 @@ import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button, buttonVariants } from "@/components/ui/button"
-import { useLiveStream } from "@/hooks/use-live-stream"
+import { useActiveRun } from "@/hooks/use-active-run"
 import { cn } from "@/lib/utils"
 import { getAuthToken, logout, verifyToken } from "@/lib/api"
 
 /**
- * Persistent status strip. The live pill is driven by the same SSE channel the
- * rest of the app consumes, so "connected" here means telemetry is really
- * flowing, not just that the page loaded.
+ * Persistent status strip. The live pill polls `GET /api/v1/runs`, so
+ * "connected" means the backend answered and the job readout is the real
+ * stage/progress of an analysis still in flight.
  */
 export function TopBar() {
-  const { connected, ticks, job } = useLiveStream({ logLimit: 1, tickLimit: 2 })
-  const last = ticks[ticks.length - 1]
+  const { connected, job } = useActiveRun()
   const [auth, setAuth] = useState<{ valid: boolean; username: string | null }>({ valid: false, username: null })
 
   useEffect(() => {
@@ -45,8 +44,8 @@ export function TopBar() {
       <div className="flex min-w-0 items-center gap-2">
         <RadioIcon className={cn("size-3.5 shrink-0", connected ? "text-ok" : "text-muted-foreground")} />
         <span className="font-mono text-xs text-muted-foreground">
-          {connected ? "LIVE TELEMETRY" : "IDLE"}
-          <span className="hidden sm:inline"> · /ws?topics=jobs,logs,llm</span>
+          {connected ? "LIVE" : "IDLE"}
+          <span className="hidden sm:inline"> · GET /api/v1/runs</span>
         </span>
       </div>
 
@@ -57,18 +56,8 @@ export function TopBar() {
             {job.stage}
             <span className="text-foreground font-semibold">{job.progress.toFixed(0)}%</span>
           </span>
-        ) : null}
-        {last ? (
-          <>
-            <span className="hidden text-muted-foreground sm:inline">
-              tok/s <span className="text-foreground">{last.tokensPerSec}</span>
-            </span>
-            <span className="text-muted-foreground">
-              queue <span className="text-foreground">{last.queueLen}</span>
-            </span>
-          </>
         ) : (
-          <span className="text-muted-foreground">awaiting telemetry…</span>
+          <span className="hidden text-muted-foreground sm:inline">no run in flight</span>
         )}
         <Separator orientation="vertical" className="!h-4" />
         {auth.valid ? (

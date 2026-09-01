@@ -108,17 +108,27 @@ export function AIConclusion({
 
   const reviewed = result.reviewStatus !== "pending"
 
-  const modelLabel =
-    result.model === "canned-fallback"
-      ? "Heuristic Rule Engine"
-      : result.model.split("/").pop() ?? result.model
+  // `canned-fallback` is the deterministic rule-based text the backend returns
+  // when the LLM is unreachable — it must read as a degraded mode, not a model.
+  const isFallback = result.model === "canned-fallback"
+  const modelLabel = isFallback
+    ? "Rule-based fallback · LLM offline"
+    : result.model.split("/").pop() ?? result.model
 
   return (
     <Card className={cn("gap-3 py-3.5 shadow-xs border-border/70 bg-card/60", compact && "border-border/60")}>
       <CardHeader className="gap-2 px-4 pb-2 border-b border-border/40">
         <div className="flex flex-wrap items-center gap-2">
           {anomaly ? <SeverityBadge severity={anomaly.severity} /> : null}
-          <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground bg-muted/20 border-border/60">
+          <Badge
+            variant="outline"
+            className={cn(
+              "font-mono text-[10px] border-border/60",
+              isFallback
+                ? "border-amber-500/40 bg-amber-500/5 text-amber-500"
+                : "text-muted-foreground bg-muted/20",
+            )}
+          >
             {modelLabel}
           </Badge>
           {reviewed ? (

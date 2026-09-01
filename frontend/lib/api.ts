@@ -16,9 +16,9 @@ export function resolveApiUrl(url: string): string {
     if (route === "analysis/explain") return "/api/v1/analysis/explain"
     if (route.startsWith("runs/")) {
         const suffix = route.slice("runs/".length)
-        if (suffix.includes("/simulation")) return url
-        if (suffix.includes("/timeline")) return url
-        if (suffix.includes("/ai")) return url
+        // `/logs` is served by a Next route handler (the backend has no raw-log
+        // endpoint — log events arrive as `log_*` anomalies); everything else
+        // under runs/ is the analysis detail or its `/health` sub-resource.
         if (suffix.includes("/logs")) return url
         if (suffix.includes("/health")) return `/api/v1/analysis/${suffix}`
         const [runId] = suffix.split("/")
@@ -27,9 +27,6 @@ export function resolveApiUrl(url: string): string {
     if (route === "review") return "/api/v1/review"
     if (route === "review/stats") return "/api/v1/review/stats"
     if (route.startsWith("review/")) return `/api/v1/${route}`
-    if (route.startsWith("reports")) return url
-    if (route.startsWith("llm/")) return url
-    if (route.startsWith("stream")) return url
 
     return url
 }
@@ -181,10 +178,14 @@ export interface WindowSummaryRow {
     node: string
     message_type: string
     count: number
+    bytes: number
     expected_hz: number | null
     actual_hz: number
-    max_gap_ms: number
-    jitter_ms: number
+    // null when the window has too few messages to measure: max_gap needs one
+    // interval, jitter needs two. drift is null when the stream carries no
+    // header stamps.
+    max_gap_ms: number | null
+    jitter_ms: number | null
     drift_ms: number | null
 }
 

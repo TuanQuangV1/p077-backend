@@ -16,7 +16,7 @@ import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible"
 import { ChevronDownIcon } from "lucide-react"
 import { fetcher } from "@/lib/api"
 import { filterByGroup, ungrouped } from "@/lib/anomaly-groups"
-import type { Anomaly, HealthSummary, LogEvent, Rosbag, TopicStat } from "@/lib/types"
+import type { Anomaly, HealthSummary, LatencyWindow, LogEvent, Rosbag, TopicStat } from "@/lib/types"
 
 interface AnalysisHealthPanelProps {
   activeRunId: string | null
@@ -26,6 +26,9 @@ interface AnalysisHealthPanelProps {
   /** Per-topic stats derived from the run's window export; falls back to the
    *  dataset's own topic list, which is empty for bags uploaded without metadata. */
   topics?: TopicStat[]
+  /** Transport-timing slices from the run's window export, one per time bucket.
+   *  Empty when the run has no window data yet. */
+  latencyWindows?: LatencyWindow[]
   onSelectAnomaly?: (id: string) => void
   onSeek?: (tSec: number) => void
 }
@@ -36,6 +39,7 @@ export function AnalysisHealthPanel({
   anomalies,
   logs,
   topics: topicsProp,
+  latencyWindows = [],
   onSelectAnomaly,
   onSeek,
 }: AnalysisHealthPanelProps) {
@@ -51,14 +55,23 @@ export function AnalysisHealthPanel({
       return
     }
 
+    let cancelled = false
     setIsLoading(true)
     fetcher<{ health: HealthSummary } | HealthSummary>(`/api/runs/${activeRunId}/health`)
-      .then((res) => setHealth("health" in res ? res.health : res))
+      .then((res) => {
+        if (!cancelled) setHealth("health" in res ? res.health : res)
+      })
       .catch((err) => {
+        if (cancelled) return
         console.error("Failed to fetch health:", err)
         setHealth(null)
       })
-      .finally(() => setIsLoading(false))
+      .finally(() => {
+        if (!cancelled) setIsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [activeRunId])
 
   // Group anomalies by type
@@ -182,8 +195,8 @@ export function AnalysisHealthPanel({
               {/* Row 3: Transport Latency & Bandwidth Throughput (Spacious 50/50 Columns) */}
               <div className="grid gap-4 lg:grid-cols-2 items-stretch">
                 <LatencyJitterPanel
+                  windows={latencyWindows}
                   latencyAnomalies={latencyAnomalies}
-                  durationSec={durationSec}
                 />
 
                 <DataBandwidthPanel

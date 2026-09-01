@@ -32,13 +32,13 @@ describe("api integration", () => {
     })
 
     it("fetcher passes through Next.js-only routes unchanged", async () => {
-        const fetchMock = vi.fn().mockResolvedValue(okResponse({ lanes: [] }))
+        const fetchMock = vi.fn().mockResolvedValue(okResponse({ logs: [] }))
         vi.stubGlobal("fetch", fetchMock)
 
-        await fetcher("/api/runs/run_001/timeline?from=0&to=120")
+        await fetcher("/api/runs/run_001/logs")
 
         expect(fetchMock).toHaveBeenCalledWith(
-            "/api/runs/run_001/timeline?from=0&to=120",
+            "/api/runs/run_001/logs",
             expect.objectContaining({ headers: {} }),
         )
     })

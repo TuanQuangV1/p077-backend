@@ -30,6 +30,8 @@ const STATUS_COLORS: Record<string, string> = {
 // event-driven / latched and have no stable publish cadence. Keeping
 // them here produced false Critical (e.g. /tf_static 0/0) and
 // polluted the sensor view. Covered by dedicated panels (logs, TF tree).
+// Mirrors the backend's own exclusion set — `_EVENT_DRIVEN_MESSAGE_TYPES`
+// and `_TF_TOPICS` in src/services/diagnostics.py; keep the two in sync.
 const HZ_EXCLUDED_TOPIC_NAMES = new Set<string>([
   "/tf_static",
   "/diagnostics",
